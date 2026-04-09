@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Lead, User } from "./src/types.ts";
+import db, { initDb } from "./src/db.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,76 +13,98 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Mock Data
-  let leads: Lead[] = [
-    { 
-      id: "1", 
-      name: "John Doe", 
-      email: "john@example.com", 
-      company: "TechCorp", 
-      status: "CONTACTADO", 
-      value: 5000, 
-      sucursal: "CDMX",
-      segmento: "CONTROLADORES DE PLAGAS",
-      createdAt: new Date().toISOString(), 
-      updatedAt: new Date().toISOString(),
-      history: [] 
-    },
-    { 
-      id: "2", 
-      name: "Jane Smith", 
-      email: "jane@example.com", 
-      company: "Innovate Ltd", 
-      status: "NEGOCIACION", 
-      assignedTo: "seller-1", 
-      value: 12000, 
-      sucursal: "Jalisco",
-      segmento: "GRANOS ALMACENADOS",
-      createdAt: new Date().toISOString(), 
-      updatedAt: new Date().toISOString(),
-      history: [
-        { id: "h1", status: "NEGOCIACION", comment: "Initial assignment", updatedBy: "admin-1", timestamp: new Date().toISOString() }
-      ] 
-    },
-    { 
-      id: "3", 
-      name: "Bob Wilson", 
-      email: "bob@example.com", 
-      company: "Global Systems", 
-      status: "CONTACTADO", 
-      value: 8000, 
-      sucursal: "Nuevo León",
-      segmento: "DISTRIBUIDORES",
-      createdAt: new Date().toISOString(), 
-      updatedAt: new Date().toISOString(),
-      history: [] 
-    },
-  ];
+  // Initialize Database
+  initDb();
 
-  let users: User[] = [
-    { id: "admin-1", name: "Admin User", email: "admin@leadflow.com", role: "Admin", performance: { totalClosed: 0, totalValue: 0, conversionRate: 0, salesGoal: 100000 } },
-    { id: "seller-1", name: "Alice Seller", email: "alice@leadflow.com", role: "Seller", performance: { totalClosed: 5, totalValue: 45000, conversionRate: 0.25, salesGoal: 50000 } },
-    { id: "seller-2", name: "Charlie Seller", email: "charlie@leadflow.com", role: "Seller", performance: { totalClosed: 3, totalValue: 28000, conversionRate: 0.18, salesGoal: 50000 } },
-  ];
+  // Helper to get users with calculated performance and workload
+  function getUsersWithPerformance(): User[] {
+    const users = db.prepare('SELECT * FROM users').all() as any[];
+    return users.map(user => {
+      const stats = db.prepare(`
+        SELECT 
+          COUNT(*) as totalClosed,
+          SUM(value) as totalValue
+        FROM leads 
+        WHERE assignedTo = ? AND status IN ('FACTURADO', 'ENTREGADO')
+      `).get(user.id) as { totalClosed: number, totalValue: number };
+
+      const totalAssigned = db.prepare('SELECT COUNT(*) as count FROM leads WHERE assignedTo = ?').get(user.id) as { count: number };
+      
+      const workload = db.prepare(`
+        SELECT 
+          COUNT(*) as activeLeads,
+          SUM(value) as pipelineValue
+        FROM leads 
+        WHERE assignedTo = ? AND status NOT IN ('FACTURADO', 'ENTREGADO', 'RECHAZADO')
+      `).get(user.id) as { activeLeads: number, pipelineValue: number };
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        performance: {
+          totalClosed: stats.totalClosed || 0,
+          totalValue: stats.totalValue || 0,
+          conversionRate: totalAssigned.count > 0 ? (stats.totalClosed || 0) / totalAssigned.count : 0,
+          salesGoal: user.salesGoal
+        },
+        workload: {
+          activeLeads: workload.activeLeads || 0,
+          pipelineValue: workload.pipelineValue || 0
+        }
+      };
+    });
+  }
+
+  // Helper to get leads with history
+  function getLeadsWithHistory(): Lead[] {
+    const leads = db.prepare('SELECT * FROM leads').all() as any[];
+    return leads.map(lead => {
+      const history = db.prepare('SELECT * FROM lead_history WHERE leadId = ? ORDER BY timestamp ASC').all(lead.id) as any[];
+      return { 
+        ...lead, 
+        history: history.map(h => ({
+          ...h,
+          quotedAmount: h.quotedAmount ?? undefined,
+          invoicedAmount: h.invoicedAmount ?? undefined
+        }))
+      };
+    });
+  }
 
   // API Routes
   app.post("/api/login", (req, res) => {
     const { email } = req.body;
-    const user = users.find(u => u.email === email);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
     if (user) {
-      res.json(user);
+      const usersWithPerf = getUsersWithPerformance();
+      const fullUser = usersWithPerf.find(u => u.id === user.id);
+      res.json(fullUser);
     } else {
       res.status(401).json({ error: "User not found" });
+    }
+  });
+
+  app.post("/api/users", (req, res) => {
+    const { name, email, role, salesGoal } = req.body;
+    const id = Math.random().toString(36).substr(2, 9);
+    try {
+      db.prepare('INSERT INTO users (id, name, email, role, salesGoal) VALUES (?, ?, ?, ?, ?)')
+        .run(id, name, email, role, salesGoal || 0);
+      res.status(201).json(getUsersWithPerformance().find(u => u.id === id));
+    } catch (error) {
+      res.status(400).json({ error: "Email already exists" });
     }
   });
 
   app.post("/api/users/:id/role", (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
-    const user = users.find(u => u.id === id);
-    if (user) {
-      user.role = role;
-      res.json(user);
+    const result = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
+    if (result.changes > 0) {
+      const usersWithPerf = getUsersWithPerformance();
+      res.json(usersWithPerf.find(u => u.id === id));
     } else {
       res.status(404).json({ error: "User not found" });
     }
@@ -90,31 +113,32 @@ async function startServer() {
   app.post("/api/users/:id/goal", (req, res) => {
     const { id } = req.params;
     const { goal } = req.body;
-    const user = users.find(u => u.id === id);
-    if (user) {
-      user.performance.salesGoal = goal;
-      res.json(user);
+    const result = db.prepare('UPDATE users SET salesGoal = ? WHERE id = ?').run(goal, id);
+    if (result.changes > 0) {
+      const usersWithPerf = getUsersWithPerformance();
+      res.json(usersWithPerf.find(u => u.id === id));
     } else {
       res.status(404).json({ error: "User not found" });
     }
   });
 
   app.get("/api/leads", (req, res) => {
-    res.json(leads);
+    res.json(getLeadsWithHistory());
   });
 
   app.get("/api/users", (req, res) => {
-    res.json(users);
+    res.json(getUsersWithPerformance());
   });
 
   app.post("/api/leads/:id/assign", (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
-    const lead = leads.find(l => l.id === id);
-    if (lead) {
-      lead.assignedTo = userId;
-      lead.status = "ASIGNADO";
-      lead.updatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    const result = db.prepare('UPDATE leads SET assignedTo = ?, status = ?, updatedAt = ? WHERE id = ?')
+      .run(userId, 'ASIGNADO', now, id);
+    
+    if (result.changes > 0) {
+      const lead = getLeadsWithHistory().find(l => l.id === id);
       res.json(lead);
     } else {
       res.status(404).json({ error: "Lead not found" });
@@ -124,42 +148,43 @@ async function startServer() {
   app.post("/api/leads/:id/status", (req, res) => {
     const { id } = req.params;
     const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount } = req.body;
-    const lead = leads.find(l => l.id === id);
+    const now = new Date().toISOString();
+    
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
     if (lead) {
-      lead.status = status;
-      lead.updatedAt = new Date().toISOString();
-      
+      let finalValue = lead.value;
+      let qAmount = lead.quotedAmount;
+      let iAmount = lead.invoicedAmount;
+
       if (status === "COTIZADO" && quotedAmount !== undefined) {
-        lead.quotedAmount = quotedAmount;
+        qAmount = quotedAmount;
       }
       if (status === "FACTURADO" && invoicedAmount !== undefined) {
-        lead.invoicedAmount = invoicedAmount;
-        // Also update the lead value to the actual invoiced amount
-        lead.value = invoicedAmount;
+        iAmount = invoicedAmount;
+        finalValue = invoicedAmount;
       }
+
+      db.prepare('UPDATE leads SET status = ?, updatedAt = ?, value = ?, quotedAmount = ?, invoicedAmount = ? WHERE id = ?')
+        .run(status, now, finalValue, qAmount, iAmount, id);
       
       // Add to history
-      lead.history.push({
-        id: Math.random().toString(36).substr(2, 9),
+      db.prepare(`
+        INSERT INTO lead_history (id, leadId, status, comment, evidenceUrl, quotedAmount, invoicedAmount, updatedBy, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        Math.random().toString(36).substr(2, 9),
+        id,
         status,
-        comment: comment || `Status updated to ${status}`,
-        evidenceUrl,
-        quotedAmount: status === "COTIZADO" ? quotedAmount : undefined,
-        invoicedAmount: status === "FACTURADO" ? invoicedAmount : undefined,
-        updatedBy: userId || "System",
-        timestamp: new Date().toISOString()
-      });
+        comment || `Status updated to ${status}`,
+        evidenceUrl || null,
+        status === "COTIZADO" ? quotedAmount : null,
+        status === "FACTURADO" ? invoicedAmount : null,
+        userId || "System",
+        now
+      );
       
-      // Update performance if closed (FACTURADO or ENTREGADO)
-      if ((status === "FACTURADO" || status === "ENTREGADO") && lead.assignedTo) {
-        const user = users.find(u => u.id === lead.assignedTo);
-        if (user) {
-          user.performance.totalClosed += 1;
-          user.performance.totalValue += lead.value;
-        }
-      }
-      
-      res.json(lead);
+      const updatedLead = getLeadsWithHistory().find(l => l.id === id);
+      res.json(updatedLead);
     } else {
       res.status(404).json({ error: "Lead not found" });
     }
@@ -167,22 +192,42 @@ async function startServer() {
 
   app.post("/api/leads", (req, res) => {
     const { userId, ...leadData } = req.body;
-    const newLead: Lead = {
-      ...leadData,
-      id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: userId ? "ASIGNADO" : "CONTACTADO",
-      assignedTo: userId || undefined,
-      history: userId ? [{
-        id: Math.random().toString(36).substr(2, 9),
-        status: "ASIGNADO",
-        comment: "Lead created and self-assigned",
-        updatedBy: userId,
-        timestamp: new Date().toISOString()
-      }] : []
-    };
-    leads.push(newLead);
+    const id = Math.random().toString(36).substr(2, 9);
+    const now = new Date().toISOString();
+    const status = userId ? "ASIGNADO" : "CONTACTADO";
+
+    db.prepare(`
+      INSERT INTO leads (id, name, email, company, status, assignedTo, value, sucursal, segmento, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      leadData.name,
+      leadData.email,
+      leadData.company,
+      status,
+      userId || null,
+      leadData.value,
+      leadData.sucursal,
+      leadData.segmento,
+      now,
+      now
+    );
+
+    if (userId) {
+      db.prepare(`
+        INSERT INTO lead_history (id, leadId, status, comment, updatedBy, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        Math.random().toString(36).substr(2, 9),
+        id,
+        "ASIGNADO",
+        "Lead created and self-assigned",
+        userId,
+        now
+      );
+    }
+
+    const newLead = getLeadsWithHistory().find(l => l.id === id);
     res.status(201).json(newLead);
   });
 

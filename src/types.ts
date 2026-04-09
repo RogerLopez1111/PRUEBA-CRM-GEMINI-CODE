@@ -39,6 +39,10 @@ export interface User {
     conversionRate: number;
     salesGoal: number;
   };
+  workload?: {
+    activeLeads: number;
+    pipelineValue: number;
+  };
 }
 
 export interface PerformanceMetric {

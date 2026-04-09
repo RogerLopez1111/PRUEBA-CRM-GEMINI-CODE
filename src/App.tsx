@@ -12,6 +12,7 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle,
+  AlertTriangle,
   Plus,
   Filter,
   BarChart3,
@@ -183,52 +184,18 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
               ?
             </div>
           )}
-          <Dialog>
-            <DialogTrigger nativeButton={true} render={<Button variant="ghost" size="icon-xs" className="h-6 w-6 rounded-full hover:bg-slate-100" title="View Timeline"><History className="w-3 h-3" /></Button>} />
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Lead Timeline: {lead.name}</DialogTitle>
-                <DialogDescription>History of all status changes and comments.</DialogDescription>
-              </DialogHeader>
-              <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
-                <div className="relative border-l-2 border-slate-100 ml-3 space-y-8">
-                  {lead.history.length === 0 ? (
-                    <p className="text-center text-slate-400 italic py-8">No history recorded yet.</p>
-                  ) : (
-                    [...lead.history].reverse().map((item) => (
-                      <div key={item.id} className="relative pl-8">
-                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-primary" />
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {getStatusBadge(item.status)}
-                              <span className="text-xs text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase">by {users.find(u => u.id === item.updatedBy)?.name || "System"}</span>
-                          </div>
-                          <p className="text-sm text-slate-700 mt-1">{item.comment}</p>
-                          {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
-                            <div className="flex gap-2 mt-2">
-                              {item.quotedAmount !== undefined && (
-                                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-100 text-[10px]">
-                                  Cotizado: ${item.quotedAmount.toLocaleString()}
-                                </Badge>
-                              )}
-                              {item.invoicedAmount !== undefined && (
-                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px]">
-                                  Facturado: ${item.invoicedAmount.toLocaleString()}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button 
+            variant="ghost" 
+            size="icon-xs" 
+            className="h-6 w-6 rounded-full hover:bg-slate-100" 
+            title="View Timeline"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate();
+            }}
+          >
+            <History className="w-3 h-3" />
+          </Button>
         </div>
         <div className="flex items-center gap-2">
           <Button 
@@ -259,7 +226,9 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
+  const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [newLead, setNewLead] = useState({ name: "", email: "", company: "", value: 0, sucursal: SUCURSALES[0], segmento: SEGMENTOS[0] });
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000 });
   const [loginEmail, setLoginEmail] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -286,6 +255,9 @@ export default function App() {
 
   // Performance Filters
   const [perfUserFilter, setPerfUserFilter] = useState<string>("all");
+
+  // Admin Sub-tabs
+  const [adminSubTab, setAdminSubTab] = useState<string>("users");
 
   // DND State
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -517,6 +489,27 @@ export default function App() {
     }
   };
 
+  const handleCreateUser = async () => {
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser)
+      });
+      if (res.ok) {
+        toast.success("New user created successfully");
+        setIsNewUserOpen(false);
+        setNewUser({ name: "", email: "", role: "Seller", salesGoal: 50000 });
+        fetchData();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to create user");
+      }
+    } catch (error) {
+      toast.error("Failed to create user");
+    }
+  };
+
   const getStatusBadge = (status: LeadStatus) => {
     switch (status) {
       case "ASIGNADO": return <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">Asignado</Badge>;
@@ -528,6 +521,31 @@ export default function App() {
       case "RECHAZADO": return <Badge variant="destructive">Rechazado</Badge>;
       default: return <Badge>{status}</Badge>;
     }
+  };
+
+  const getTimeStuck = (updatedAt: string) => {
+    const lastUpdate = new Date(updatedAt).getTime();
+    const now = new Date().getTime();
+    const diffInMs = now - lastUpdate;
+    
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+    const diffInDays = Math.floor(diffInHours / 24);
+
+    if (diffInDays > 0) return `${diffInDays}d ${diffInHours % 24}h`;
+    if (diffInHours > 0) return `${diffInHours}h`;
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+    return `${diffInMinutes}m`;
+  };
+
+  const getStuckLevel = (updatedAt: string) => {
+    const lastUpdate = new Date(updatedAt).getTime();
+    const now = new Date().getTime();
+    const diffInMs = now - lastUpdate;
+    const diffInHours = diffInMs / (1000 * 60 * 60);
+
+    if (diffInHours > 72) return "critical"; // More than 3 days
+    if (diffInHours > 24) return "warning"; // More than 1 day
+    return "normal";
   };
 
   if (!currentUser) {
@@ -551,15 +569,18 @@ export default function App() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Input 
-                    type="email" 
-                    placeholder="name@leadflow.com" 
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    required
-                    className="h-12"
-                  />
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 ml-1">Email Address</label>
+                    <Input 
+                      type="email" 
+                      placeholder="name@leadflow.com" 
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      required
+                      className="h-12"
+                    />
+                  </div>
                   <p className="text-[10px] text-slate-400 text-center">
                     Try: admin@leadflow.com or alice@leadflow.com
                   </p>
@@ -1039,64 +1060,13 @@ export default function App() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <Dialog>
-                            <DialogTrigger nativeButton={true} render={<Button variant="outline" className="w-full sm:w-auto mt-auto gap-2"><History className="w-4 h-4" /> Timeline</Button>} />
-                            <DialogContent className="sm:max-w-[500px]">
-                              <DialogHeader>
-                                <DialogTitle>Lead Timeline: {lead.name}</DialogTitle>
-                                <DialogDescription>History of all status changes and comments.</DialogDescription>
-                              </DialogHeader>
-                              <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
-                                <div className="relative border-l-2 border-slate-100 ml-3 space-y-8">
-                                  {lead.history.length === 0 ? (
-                                    <p className="text-center text-slate-400 italic py-8">No history recorded yet.</p>
-                                  ) : (
-                                    [...lead.history].reverse().map((item, idx) => (
-                                      <div key={item.id} className="relative pl-8">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-primary" />
-                                        <div className="flex flex-col gap-1">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              {getStatusBadge(item.status)}
-                                              <span className="text-xs text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
-                                            </div>
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase">by {users.find(u => u.id === item.updatedBy)?.name || "System"}</span>
-                                          </div>
-                                          <p className="text-sm text-slate-700 mt-1">{item.comment}</p>
-                                          {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
-                                            <div className="flex gap-2 mt-2">
-                                              {item.quotedAmount !== undefined && (
-                                                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-100 text-[10px]">
-                                                  Cotizado: ${item.quotedAmount.toLocaleString()}
-                                                </Badge>
-                                              )}
-                                              {item.invoicedAmount !== undefined && (
-                                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px]">
-                                                  Facturado: ${item.invoicedAmount.toLocaleString()}
-                                                </Badge>
-                                              )}
-                                            </div>
-                                          )}
-                                          {item.evidenceUrl && (
-                                            <a 
-                                              href={item.evidenceUrl} 
-                                              target="_blank" 
-                                              rel="noopener noreferrer"
-                                              className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-2 bg-primary/5 w-fit px-2 py-1 rounded"
-                                            >
-                                              <Paperclip className="w-3 h-3" />
-                                              View Evidence
-                                              <ExternalLink className="w-2 h-2" />
-                                            </a>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                          <Button 
+                            variant="outline" 
+                            className="w-full sm:w-auto mt-auto gap-2"
+                            onClick={() => openStatusUpdate(lead)}
+                          >
+                            <History className="w-4 h-4" /> Timeline
+                          </Button>
                         </div>
                       </div>
                       <div className="bg-slate-50 px-6 py-3 flex items-center justify-between border-t">
@@ -1189,13 +1159,6 @@ export default function App() {
                 onDragEnd={handleDragEnd}
               >
                 {(["ASIGNADO", "CONTACTADO", "NEGOCIACION", "COTIZADO", "FACTURADO", "ENTREGADO", "RECHAZADO"] as LeadStatus[])
-                  .filter(status => {
-                    if (status === "CONTACTADO") {
-                      if (currentUser.role === "Seller") return false;
-                      if (currentUser.role === "Admin" && kanbanFilterSeller !== "all") return false;
-                    }
-                    return true;
-                  })
                   .map((status) => (
                   <KanbanColumn 
                     key={status}
@@ -1342,88 +1305,126 @@ export default function App() {
                   ? users.filter(u => u.id === perfUserFilter) 
                   : users.filter(u => u.id === currentUser.id)
                 ).map((user) => {
-                const userLeads = leads.filter(l => l.assignedTo === user.id);
-                const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
-                const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
-                const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
-                
-                const soldCount = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").length;
-                const quotedCount = userLeads.filter(l => l.status === "COTIZADO").length;
-                const lostCount = userLeads.filter(l => l.status === "RECHAZADO").length;
+                  const userLeads = leads.filter(l => l.assignedTo === user.id);
+                  const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
+                  const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
+                  const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
+                  
+                  const soldCount = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").length;
+                  const quotedCount = userLeads.filter(l => l.status === "COTIZADO").length;
+                  const lostCount = userLeads.filter(l => l.status === "RECHAZADO").length;
 
-                const pieData = [
-                  { name: 'Vendido', value: soldValue, color: '#10b981' },
-                  { name: 'Cotizado', value: quotedValue, color: '#f59e0b' },
-                  { name: 'Perdido', value: lostValue, color: '#ef4444' },
-                ].filter(d => d.value > 0);
+                  const pieData = [
+                    { name: 'Vendido', value: soldValue, color: '#10b981' },
+                    { name: 'Cotizado', value: quotedValue, color: '#f59e0b' },
+                    { name: 'Perdido', value: lostValue, color: '#ef4444' },
+                  ].filter(d => d.value > 0);
 
-                const lostLeads = userLeads.filter(l => l.status === "RECHAZADO");
+                  const lostLeads = userLeads.filter(l => l.status === "RECHAZADO");
 
-                return (
-                  <div key={user.id} className="lg:col-span-3 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <Card className="border-none shadow-sm bg-white overflow-hidden lg:col-span-1">
-                      <div className="h-2 bg-primary w-full opacity-20" />
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border">
-                              <UserCheck className="w-5 h-5 text-slate-600" />
+                  return (
+                    <div key={user.id} className="lg:col-span-3 space-y-6">
+                      {/* Summary Scorecard */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Card className="border-none shadow-sm bg-white">
+                          <CardContent className="p-4 flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
+                              <CheckCircle2 className="w-6 h-6 text-green-600" />
                             </div>
                             <div>
-                              <CardTitle className="text-base">{user.name}</CardTitle>
-                              <CardDescription>{user.role}</CardDescription>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Vendido</p>
+                              <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
+                              <p className="text-[10px] text-slate-400">{soldCount} deals closed</p>
                             </div>
-                          </div>
-                          {soldValue >= user.performance.salesGoal && (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Goal Met</Badge>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total Vendido</p>
-                            <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Meta de Ventas</p>
-                            <p className="text-xl font-bold text-slate-900">${user.performance.salesGoal.toLocaleString()}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-500 font-medium">Progreso de Meta</span>
-                            <span className="font-bold">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}%</span>
-                          </div>
-                          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
-                            <motion.div 
-                              initial={{ width: 0 }}
-                              animate={{ width: `${Math.min(100, (soldValue / user.performance.salesGoal) * 100)}%` }}
-                              className={cn(
-                                "h-full transition-all",
-                                soldValue >= user.performance.salesGoal ? "bg-green-500" : "bg-primary"
-                              )}
-                            />
-                          </div>
-                        </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="border-none shadow-sm bg-white">
+                          <CardContent className="p-4 flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
+                              <FileText className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cotizado</p>
+                              <p className="text-xl font-bold text-amber-600">${quotedValue.toLocaleString()}</p>
+                              <p className="text-[10px] text-slate-400">{quotedCount} active quotes</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="border-none shadow-sm bg-white">
+                          <CardContent className="p-4 flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
+                              <AlertCircle className="w-6 h-6 text-red-600" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Perdido</p>
+                              <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
+                              <p className="text-[10px] text-slate-400">{lostCount} deals lost</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="border-none shadow-sm bg-white">
+                          <CardContent className="p-4 flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-primary/5 flex items-center justify-center">
+                              <TrendingUp className="w-6 h-6 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Meta de Ventas</p>
+                              <p className="text-xl font-bold text-slate-900">${user.performance.salesGoal.toLocaleString()}</p>
+                              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}% achieved</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
 
-                        <div className="pt-4 border-t grid grid-cols-3 gap-2">
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 font-medium uppercase">Ventas</p>
-                            <p className="text-lg font-bold">{soldCount}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 font-medium uppercase">Cotizados</p>
-                            <p className="text-lg font-bold text-amber-600">{quotedCount}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 font-medium uppercase">Perdidos</p>
-                            <p className="text-lg font-bold text-red-600">{lostCount}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <Card className="border-none shadow-sm bg-white overflow-hidden lg:col-span-1">
+                          <div className="h-2 bg-primary w-full opacity-20" />
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border">
+                                  <UserCheck className="w-5 h-5 text-slate-600" />
+                                </div>
+                                <div>
+                                  <CardTitle className="text-base">{user.name}</CardTitle>
+                                  <CardDescription>{user.role}</CardDescription>
+                                </div>
+                              </div>
+                              {soldValue >= user.performance.salesGoal && (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Goal Met</Badge>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-6">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-500 font-medium">Progreso de Meta</span>
+                                <span className="font-bold">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}%</span>
+                              </div>
+                              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${Math.min(100, (soldValue / user.performance.salesGoal) * 100)}%` }}
+                                  className={cn(
+                                    "h-full transition-all",
+                                    soldValue >= user.performance.salesGoal ? "bg-green-500" : "bg-primary"
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-500">Tasa de Conversión</span>
+                                <span className="text-sm font-bold">{(user.performance.conversionRate * 100).toFixed(1)}%</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-500">Leads Activos</span>
+                                <span className="text-sm font-bold">{user.workload?.activeLeads || 0}</span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
 
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader>
@@ -1490,193 +1491,440 @@ export default function App() {
                       </CardContent>
                     </Card>
                   </div>
-                );
-              })}
-            </div>
-            )}
-          </TabsContent>
+                </div>
+              );
+            })}
+          </div>
+          )}
+        </TabsContent>
 
           {currentUser.role === "Admin" && (
             <TabsContent value="admin" className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight">Administration Hub</h2>
                   <p className="text-slate-500">Manage user roles, goals, and oversee team workload.</p>
                 </div>
+                <Tabs value={adminSubTab} onValueChange={setAdminSubTab} className="w-full md:w-auto">
+                  <TabsList className="bg-slate-100/50 p-1">
+                    <TabsTrigger value="users" className="text-xs px-4">Users</TabsTrigger>
+                    <TabsTrigger value="workload" className="text-xs px-4">Workload</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-4">Global Activity</TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
               <div className="grid grid-cols-1 gap-8">
-                {/* User Management */}
-                <Card className="border-none shadow-sm bg-white">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Settings className="w-5 h-5 text-slate-400" />
-                      User Management
-                    </CardTitle>
-                    <CardDescription>Assign roles and set individual sales targets.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-slate-50/50">
-                          <TableHead className="font-semibold">User</TableHead>
-                          <TableHead className="font-semibold">Email</TableHead>
-                          <TableHead className="font-semibold">Role</TableHead>
-                          <TableHead className="font-semibold">Sales Goal ($)</TableHead>
-                          <TableHead className="text-right font-semibold">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {users.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell className="font-medium">{user.name}</TableCell>
-                            <TableCell>{user.email}</TableCell>
-                            <TableCell>
-                              <Select 
-                                value={user.role} 
-                                onValueChange={(val) => handleUpdateRole(user.id, val as "Admin" | "Seller")}
-                              >
-                                <SelectTrigger className="w-[110px] h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Admin">Admin</SelectItem>
-                                  <SelectItem value="Seller">Seller</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
+                {adminSubTab === "users" && (
+                  <Card className="border-none shadow-sm bg-white">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <Settings className="w-5 h-5 text-slate-400" />
+                            User Management
+                          </CardTitle>
+                          <CardDescription>Assign roles and set individual sales targets.</CardDescription>
+                        </div>
+                        <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
+                          <DialogTrigger render={<Button className="gap-2" />}>
+                            <UserPlus className="w-4 h-4" />
+                            Add User
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Add New Team Member</DialogTitle>
+                              <DialogDescription>Create a new user account for the CRM.</DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <div className="grid gap-2">
+                                <label className="text-sm font-medium">Full Name</label>
                                 <Input 
-                                  type="number" 
-                                  className="w-32 h-8" 
-                                  defaultValue={user.performance.salesGoal}
-                                  onBlur={(e) => {
-                                    const newVal = Number(e.target.value);
-                                    if (newVal !== user.performance.salesGoal) {
-                                      handleUpdateGoal(user.id, newVal);
-                                    }
-                                  }}
+                                  placeholder="John Doe" 
+                                  value={newUser.name}
+                                  onChange={(e) => setNewUser({...newUser, name: e.target.value})}
                                 />
                               </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" className="h-8">View Details</Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-
-                {/* Team Oversight */}
-                <div className="space-y-4">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2">
-                      <Users className="w-5 h-5 text-slate-400" />
-                      Team Workload Oversight
-                    </h3>
-                    
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="relative w-full md:w-64">
-                        <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                        <Input 
-                          placeholder="Search leads or companies..." 
-                          className="pl-9 h-9"
-                          value={adminSearch}
-                          onChange={(e) => setAdminSearch(e.target.value)}
-                        />
+                              <div className="grid gap-2">
+                                <label className="text-sm font-medium">Email Address</label>
+                                <Input 
+                                  type="email"
+                                  placeholder="john@leadflow.com" 
+                                  value={newUser.email}
+                                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                  <label className="text-sm font-medium">Role</label>
+                                  <Select 
+                                    value={newUser.role} 
+                                    onValueChange={(val) => setNewUser({...newUser, role: val as "Admin" | "Seller"})}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Admin">Admin</SelectItem>
+                                      <SelectItem value="Seller">Seller</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <label className="text-sm font-medium">Sales Goal ($)</label>
+                                  <Input 
+                                    type="number"
+                                    value={newUser.salesGoal}
+                                    onChange={(e) => setNewUser({...newUser, salesGoal: Number(e.target.value)})}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancel</Button>
+                              <Button onClick={handleCreateUser} disabled={!newUser.name || !newUser.email}>Create User</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                       </div>
-                      <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
-                        <SelectTrigger className="w-[150px] h-9">
-                          <SelectValue placeholder="All Sellers" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Sellers</SelectItem>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {users.map(u => (
-                            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50/50">
+                            <TableHead className="font-semibold">User</TableHead>
+                            <TableHead className="font-semibold">Role</TableHead>
+                            <TableHead className="font-semibold">Workload</TableHead>
+                            <TableHead className="font-semibold">Pipeline Value</TableHead>
+                            <TableHead className="font-semibold">Sales Goal ($)</TableHead>
+                            <TableHead className="text-right font-semibold">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{user.name}</span>
+                                  <span className="text-xs text-slate-400">{user.email}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Select 
+                                  value={user.role} 
+                                  onValueChange={(val) => handleUpdateRole(user.id, val as "Admin" | "Seller")}
+                                >
+                                  <SelectTrigger className="w-[110px] h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Admin">Admin</SelectItem>
+                                    <SelectItem value="Seller">Seller</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col gap-1.5 w-32">
+                                  <div className="flex justify-between text-[10px] font-bold">
+                                    <span>{user.workload?.activeLeads || 0} Leads</span>
+                                    <span className={
+                                      (user.workload?.activeLeads || 0) > 10 ? "text-red-500" : 
+                                      (user.workload?.activeLeads || 0) > 5 ? "text-orange-500" : "text-green-500"
+                                    }>
+                                      {(user.workload?.activeLeads || 0) > 10 ? "High" : 
+                                       (user.workload?.activeLeads || 0) > 5 ? "Medium" : "Low"}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full transition-all ${
+                                        (user.workload?.activeLeads || 0) > 10 ? "bg-red-500" : 
+                                        (user.workload?.activeLeads || 0) > 5 ? "bg-orange-500" : "bg-green-500"
+                                      }`}
+                                      style={{ width: `${Math.min(((user.workload?.activeLeads || 0) / 15) * 100, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">
+                                ${(user.workload?.pipelineValue || 0).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Input 
+                                    type="number" 
+                                    className="w-28 h-8" 
+                                    defaultValue={user.performance.salesGoal}
+                                    onBlur={(e) => {
+                                      const newVal = Number(e.target.value);
+                                      if (newVal !== user.performance.salesGoal) {
+                                        handleUpdateGoal(user.id, newVal);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="sm" className="h-8">View Details</Button>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
-                        <SelectTrigger className="w-[150px] h-9">
-                          <SelectValue placeholder="All Statuses" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Statuses</SelectItem>
-                          <SelectItem value="ASIGNADO">Asignado</SelectItem>
-                          <SelectItem value="CONTACTADO">Contactado</SelectItem>
-                          <SelectItem value="NEGOCIACION">Negociación</SelectItem>
-                          <SelectItem value="COTIZADO">Cotizado</SelectItem>
-                          <SelectItem value="FACTURADO">Facturado</SelectItem>
-                          <SelectItem value="ENTREGADO">Entregado</SelectItem>
-                          <SelectItem value="RECHAZADO">Rechazado</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {adminSubTab === "workload" && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        <Users className="w-5 h-5 text-slate-400" />
+                        Team Workload Oversight
+                      </h3>
+                      
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Search</p>
+                          <div className="relative w-full md:w-64">
+                            <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input 
+                              placeholder="Search leads or companies..." 
+                              className="pl-9 h-9"
+                              value={adminSearch}
+                              onChange={(e) => setAdminSearch(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seller</p>
+                          <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
+                            <SelectTrigger className="w-[150px] h-9">
+                              <SelectValue placeholder="All Sellers" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Sellers</SelectItem>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {users.map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</p>
+                          <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
+                            <SelectTrigger className="w-[150px] h-9">
+                              <SelectValue placeholder="All Statuses" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Statuses</SelectItem>
+                              <SelectItem value="ASIGNADO">Asignado</SelectItem>
+                              <SelectItem value="CONTACTADO">Contactado</SelectItem>
+                              <SelectItem value="NEGOCIACION">Negociación</SelectItem>
+                              <SelectItem value="COTIZADO">Cotizado</SelectItem>
+                              <SelectItem value="FACTURADO">Facturado</SelectItem>
+                              <SelectItem value="ENTREGADO">Entregado</SelectItem>
+                              <SelectItem value="RECHAZADO">Rechazado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {leads
+                        .filter(l => {
+                          const matchesSeller = adminFilterSeller === "all" || 
+                                              (adminFilterSeller === "unassigned" && !l.assignedTo) || 
+                                              l.assignedTo === adminFilterSeller;
+                          const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
+                          const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
+                                              l.company.toLowerCase().includes(adminSearch.toLowerCase());
+                          return matchesSeller && matchesStatus && matchesSearch;
+                        })
+                        .map((lead) => {
+                          const stuckLevel = getStuckLevel(lead.updatedAt);
+                          return (
+                            <Card key={lead.id} className={cn(
+                              "border-none shadow-sm bg-white hover:ring-1 hover:ring-primary/20 transition-all cursor-pointer relative overflow-hidden",
+                              stuckLevel === "critical" && "ring-1 ring-red-200 bg-red-50/10",
+                              stuckLevel === "warning" && "ring-1 ring-orange-200 bg-orange-50/10"
+                            )} onClick={() => openStatusUpdate(lead)}>
+                              {stuckLevel !== "normal" && (
+                                <div className={cn(
+                                  "absolute top-0 right-0 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white rounded-bl-lg",
+                                  stuckLevel === "critical" ? "bg-red-500" : "bg-orange-500"
+                                )}>
+                                  {stuckLevel === "critical" ? "Critical Delay" : "Delayed"}
+                                </div>
+                              )}
+                              <CardHeader className="p-4 pb-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  {getStatusBadge(lead.status)}
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {lead.id}</span>
+                                </div>
+                                <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
+                                <CardDescription className="text-xs">{lead.company}</CardDescription>
+                              </CardHeader>
+                              <CardContent className="p-4 pt-2 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-slate-500">Value</span>
+                                  <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
+                                </div>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold">
+                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name.charAt(0) : "?"}
+                                      </div>
+                                      <span className="text-xs text-slate-600">
+                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name : "Unassigned"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                      <Clock className="w-3 h-3" />
+                                      <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between bg-slate-50/50 p-2 rounded-lg">
+                                    <span className="text-[10px] font-medium text-slate-500">Tiempo de la última actualización:</span>
+                                    <div className="flex items-center gap-1">
+                                      {stuckLevel !== "normal" && <AlertTriangle className={cn("w-3 h-3", stuckLevel === "critical" ? "text-red-500" : "text-orange-500")} />}
+                                      <span className={cn(
+                                        "text-[10px] font-bold",
+                                        stuckLevel === "critical" ? "text-red-600" : 
+                                        stuckLevel === "warning" ? "text-orange-600" : "text-slate-600"
+                                      )}>
+                                        {getTimeStuck(lead.updatedAt)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      {leads.filter(l => {
+                          const matchesSeller = adminFilterSeller === "all" || 
+                                              (adminFilterSeller === "unassigned" && !l.assignedTo) || 
+                                              l.assignedTo === adminFilterSeller;
+                          const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
+                          const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
+                                              l.company.toLowerCase().includes(adminSearch.toLowerCase());
+                          return matchesSeller && matchesStatus && matchesSearch;
+                        }).length === 0 && (
+                        <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border-2 border-dashed border-slate-100">
+                          <Filter className="w-8 h-8 mb-2 opacity-20" />
+                          <p className="text-sm">No leads match your current filters.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
+                )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {leads
-                      .filter(l => {
-                        const matchesSeller = adminFilterSeller === "all" || 
-                                            (adminFilterSeller === "unassigned" && !l.assignedTo) || 
-                                            l.assignedTo === adminFilterSeller;
-                        const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
-                        const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
-                                            l.company.toLowerCase().includes(adminSearch.toLowerCase());
-                        return matchesSeller && matchesStatus && matchesSearch;
-                      })
-                      .map((lead) => (
-                        <Card key={lead.id} className="border-none shadow-sm bg-white hover:ring-1 hover:ring-primary/20 transition-all cursor-pointer" onClick={() => openStatusUpdate(lead)}>
-                          <CardHeader className="p-4 pb-2">
-                            <div className="flex items-center justify-between mb-1">
-                              {getStatusBadge(lead.status)}
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {lead.id}</span>
-                            </div>
-                            <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
-                            <CardDescription className="text-xs">{lead.company}</CardDescription>
-                          </CardHeader>
-                          <CardContent className="p-4 pt-2 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-slate-500">Value</span>
-                              <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
-                            </div>
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold">
-                                  {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name.charAt(0) : "?"}
-                                </div>
-                                <span className="text-xs text-slate-600">
-                                  {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name : "Unassigned"}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                                <Clock className="w-3 h-3" />
-                                <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    {leads.filter(l => {
-                        const matchesSeller = adminFilterSeller === "all" || 
-                                            (adminFilterSeller === "unassigned" && !l.assignedTo) || 
-                                            l.assignedTo === adminFilterSeller;
-                        const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
-                        const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
-                                            l.company.toLowerCase().includes(adminSearch.toLowerCase());
-                        return matchesSeller && matchesStatus && matchesSearch;
-                      }).length === 0 && (
-                      <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border-2 border-dashed border-slate-100">
-                        <Filter className="w-8 h-8 mb-2 opacity-20" />
-                        <p className="text-sm">No leads match your current filters.</p>
+                {adminSubTab === "activity" && (
+                  <Card className="border-none shadow-sm bg-white">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <History className="w-5 h-5 text-slate-400" />
+                            Global Activity Timeline
+                          </CardTitle>
+                          <CardDescription>A complete history of all updates across the team.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
+                            <SelectTrigger className="w-[150px] h-8 text-xs">
+                              <SelectValue placeholder="Filter by Seller" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Sellers</SelectItem>
+                              {users.map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50/50">
+                            <TableHead className="font-semibold">Seller</TableHead>
+                            <TableHead className="font-semibold">Lead / Company</TableHead>
+                            <TableHead className="font-semibold">Update</TableHead>
+                            <TableHead className="font-semibold">Comment</TableHead>
+                            <TableHead className="font-semibold">Amount</TableHead>
+                            <TableHead className="text-right font-semibold">Date</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {leads
+                            .flatMap(l => l.history.map(h => ({ ...h, leadName: l.name, leadCompany: l.company, leadId: l.id, assignedTo: l.assignedTo })))
+                            .filter(h => adminFilterSeller === "all" || h.updatedBy === adminFilterSeller)
+                            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                            .map((update) => (
+                              <TableRow key={update.id} className="group hover:bg-slate-50/50 transition-colors">
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                                      {users.find(u => u.id === update.updatedBy)?.name.charAt(0) || "S"}
+                                    </div>
+                                    <span className="text-sm font-medium">
+                                      {users.find(u => u.id === update.updatedBy)?.name || "System"}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-700">{update.leadName}</span>
+                                    <span className="text-[10px] text-slate-400">{update.leadCompany}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  {getStatusBadge(update.status)}
+                                </TableCell>
+                                <TableCell className="max-w-[250px]">
+                                  <p className="text-xs text-slate-600 line-clamp-2 italic">"{update.comment}"</p>
+                                </TableCell>
+                                <TableCell>
+                                  {update.quotedAmount !== undefined && (
+                                    <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                                      C: ${update.quotedAmount.toLocaleString()}
+                                    </span>
+                                  )}
+                                  {update.invoicedAmount !== undefined && (
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                      F: ${update.invoicedAmount.toLocaleString()}
+                                    </span>
+                                  )}
+                                  {update.quotedAmount === undefined && update.invoicedAmount === undefined && (
+                                    <span className="text-[10px] text-slate-300">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-medium text-slate-600">{new Date(update.timestamp).toLocaleDateString()}</span>
+                                    <span className="text-[10px] text-slate-400">{new Date(update.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          {leads.flatMap(l => l.history).length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="h-32 text-center text-slate-400">
+                                No activity recorded yet.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </TabsContent>
           )}
@@ -1685,89 +1933,170 @@ export default function App() {
 
       {/* Status Update Dialog */}
       <Dialog open={isStatusUpdateOpen} onOpenChange={setIsStatusUpdateOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Update Lead Status</DialogTitle>
-            <DialogDescription>
-              Moving <strong>{selectedLead?.name}</strong> to <strong>{statusUpdate.status}</strong>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-slate-400" />
-                Comment
-              </label>
-              <Input 
-                placeholder="Describe the update..." 
-                value={statusUpdate.comment}
-                onChange={(e) => setStatusUpdate({...statusUpdate, comment: e.target.value})}
-              />
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col p-0">
+          <div className="flex flex-col md:flex-row h-full">
+            {/* Left Side: Timeline History */}
+            <div className="w-full md:w-1/2 border-r border-slate-100 flex flex-col">
+              <DialogHeader className="p-6 pb-2">
+                <DialogTitle className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-primary" />
+                  Historial: {selectedLead?.name}
+                </DialogTitle>
+                <DialogDescription>
+                  Timeline of all status changes and comments.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto p-6 pt-4">
+                <div className="relative border-l-2 border-slate-100 ml-3 space-y-8">
+                  {!selectedLead || selectedLead.history.length === 0 ? (
+                    <p className="text-center text-slate-400 italic py-8">No history recorded yet.</p>
+                  ) : (
+                    [...selectedLead.history].reverse().map((item) => (
+                      <div key={item.id} className="relative pl-8">
+                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-primary" />
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(item.status)}
+                              <span className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
+                            </div>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase">by {users.find(u => u.id === item.updatedBy)?.name || "System"}</span>
+                          </div>
+                          <p className="text-xs text-slate-700 mt-1">{item.comment}</p>
+                          {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
+                            <div className="flex gap-2 mt-2">
+                              {item.quotedAmount !== undefined && (
+                                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-100 text-[9px] py-0">
+                                  Cotizado: ${item.quotedAmount.toLocaleString()}
+                                </Badge>
+                              )}
+                              {item.invoicedAmount !== undefined && (
+                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[9px] py-0">
+                                  Facturado: ${item.invoicedAmount.toLocaleString()}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
 
-            {statusUpdate.status === "COTIZADO" && (
-              <div className="grid gap-2 p-3 bg-orange-50 rounded-lg border border-orange-100">
-                <label className="text-sm font-bold text-orange-700 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4" />
-                  Monto Cotizado ($)
-                </label>
-                <Input 
-                  type="number"
-                  placeholder="0.00" 
-                  value={statusUpdate.quotedAmount}
-                  onChange={(e) => setStatusUpdate({...statusUpdate, quotedAmount: Number(e.target.value)})}
-                  className="bg-white border-orange-200 focus-visible:ring-orange-500"
-                />
-                <p className="text-[10px] text-orange-600">Ingrese el valor total de los productos cotizados.</p>
-              </div>
-            )}
+            {/* Right Side: Update Form */}
+            <div className="w-full md:w-1/2 flex flex-col bg-slate-50/30">
+              <DialogHeader className="p-6 pb-2">
+                <DialogTitle className="flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-primary" />
+                  Nueva Actualización
+                </DialogTitle>
+                <DialogDescription>
+                  Registra un nuevo avance para este lead.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevo Estado</label>
+                  <Select 
+                    value={statusUpdate.status} 
+                    onValueChange={(val) => setStatusUpdate({...statusUpdate, status: val as LeadStatus})}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Seleccionar estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ASIGNADO">Asignado</SelectItem>
+                      <SelectItem value="CONTACTADO">Contactado</SelectItem>
+                      <SelectItem value="NEGOCIACION">Negociación</SelectItem>
+                      <SelectItem value="COTIZADO">Cotizado</SelectItem>
+                      <SelectItem value="FACTURADO">Facturado</SelectItem>
+                      <SelectItem value="ENTREGADO">Entregado</SelectItem>
+                      <SelectItem value="RECHAZADO">Rechazado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {statusUpdate.status === "FACTURADO" && (
-              <div className="grid gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                <label className="text-sm font-bold text-indigo-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Monto Facturado ($)
-                </label>
-                <Input 
-                  type="number"
-                  placeholder="0.00" 
-                  value={statusUpdate.invoicedAmount}
-                  onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
-                  className="bg-white border-indigo-200 focus-visible:ring-indigo-500"
-                />
-                <p className="text-[10px] text-indigo-600">Ingrese el valor real de la factura emitida.</p>
-              </div>
-            )}
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <MessageSquare className="w-3 h-3" />
+                    Comentario
+                  </label>
+                  <Input 
+                    placeholder="Describe el avance..." 
+                    value={statusUpdate.comment}
+                    onChange={(e) => setStatusUpdate({...statusUpdate, comment: e.target.value})}
+                    className="bg-white"
+                  />
+                </div>
 
-            <div className="grid gap-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-slate-400" />
-                Evidence URL (Optional)
-              </label>
-              <Input 
-                placeholder="https://example.com/evidence.pdf" 
-                value={statusUpdate.evidenceUrl}
-                onChange={(e) => setStatusUpdate({...statusUpdate, evidenceUrl: e.target.value})}
-              />
-              <p className="text-[10px] text-slate-400">Link to a document, screenshot, or meeting recording.</p>
+                {statusUpdate.status === "COTIZADO" && (
+                  <div className="grid gap-2 p-3 bg-orange-50 rounded-lg border border-orange-100">
+                    <label className="text-xs font-bold text-orange-700 flex items-center gap-2">
+                      <TrendingUp className="w-3 h-3" />
+                      Monto Cotizado ($)
+                    </label>
+                    <Input 
+                      type="number"
+                      placeholder="0.00" 
+                      value={statusUpdate.quotedAmount}
+                      onChange={(e) => setStatusUpdate({...statusUpdate, quotedAmount: Number(e.target.value)})}
+                      className="bg-white border-orange-200 focus-visible:ring-orange-500 h-8 text-sm"
+                    />
+                  </div>
+                )}
+
+                {statusUpdate.status === "FACTURADO" && (
+                  <div className="grid gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                      <FileText className="w-3 h-3" />
+                      Monto Facturado ($)
+                    </label>
+                    <Input 
+                      type="number"
+                      placeholder="0.00" 
+                      value={statusUpdate.invoicedAmount}
+                      onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
+                      className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Paperclip className="w-3 h-3" />
+                    URL de Evidencia (Opcional)
+                  </label>
+                  <Input 
+                    placeholder="https://example.com/evidencia.pdf" 
+                    value={statusUpdate.evidenceUrl}
+                    onChange={(e) => setStatusUpdate({...statusUpdate, evidenceUrl: e.target.value})}
+                    className="bg-white h-8 text-sm"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
+                <Button variant="ghost" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cancelar</Button>
+                <Button 
+                  size="sm"
+                  onClick={() => handleStatusChange(
+                    selectedLead!.id, 
+                    statusUpdate.status as LeadStatus, 
+                    statusUpdate.comment, 
+                    statusUpdate.evidenceUrl,
+                    statusUpdate.quotedAmount,
+                    statusUpdate.invoicedAmount
+                  )}
+                  disabled={!statusUpdate.comment}
+                  className="gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Confirmar Actualización
+                </Button>
+              </DialogFooter>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStatusUpdateOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={() => handleStatusChange(
-                selectedLead!.id, 
-                statusUpdate.status as LeadStatus, 
-                statusUpdate.comment, 
-                statusUpdate.evidenceUrl,
-                statusUpdate.quotedAmount,
-                statusUpdate.invoicedAmount
-              )}
-              disabled={!statusUpdate.comment}
-            >
-              Confirm Update
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
