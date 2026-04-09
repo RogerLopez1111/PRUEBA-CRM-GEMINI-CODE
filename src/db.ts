@@ -168,61 +168,122 @@ export function initDb() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM Vendedor').get() as { count: number };
   if (userCount.count === 0) {
     const now = new Date().toISOString();
-    
-    // Seed Sucursales
+
+    // Seed lookup tables (5 rows each)
+    const insertLookup = (table: string, pkCol: string, rows: [string, string][]) => {
+      const stmt = db.prepare(`INSERT INTO ${table} (${pkCol}, Descripcion) VALUES (?, ?)`);
+      rows.forEach(([id, desc]) => stmt.run(id, desc));
+    };
+
+    insertLookup('Estado', 'Es_Cve_Estado', [
+      ['ES01', 'Ciudad de México'], ['ES02', 'Jalisco'], ['ES03', 'Nuevo León'],
+      ['ES04', 'Puebla'], ['ES05', 'Querétaro']
+    ]);
+    insertLookup('Zona', 'Zn_Cve_Zona', [
+      ['ZN01', 'Norte'], ['ZN02', 'Sur'], ['ZN03', 'Este'],
+      ['ZN04', 'Oeste'], ['ZN05', 'Centro']
+    ]);
+    insertLookup('Empresa', 'Em_Cve_Empresa', [
+      ['EM01', 'Empresa Principal'], ['EM02', 'Subsidiaria Norte'], ['EM03', 'Subsidiaria Sur'],
+      ['EM04', 'Subsidiaria Este'], ['EM05', 'Subsidiaria Oeste']
+    ]);
+    insertLookup('Grupo_Sucursal', 'Gs_Cve_Grupo_Sucursal', [
+      ['GS01', 'Grupo Sucursal A'], ['GS02', 'Grupo Sucursal B'], ['GS03', 'Grupo Sucursal C'],
+      ['GS04', 'Grupo Sucursal D'], ['GS05', 'Grupo Sucursal E']
+    ]);
+    insertLookup('Grupo_Vendedor', 'Gv_Cve_Grupo_Vendedor', [
+      ['GV01', 'Equipo Norte'], ['GV02', 'Equipo Sur'], ['GV03', 'Equipo Este'],
+      ['GV04', 'Equipo Oeste'], ['GV05', 'Equipo Centro']
+    ]);
+    insertLookup('Giro_Comercial', 'Gm_Cve_Giro_Comercial', [
+      ['GM01', 'Tecnología'], ['GM02', 'Manufactura'], ['GM03', 'Comercio'],
+      ['GM04', 'Servicios'], ['GM05', 'Agricultura']
+    ]);
+    insertLookup('Grupo_Comercial', 'Gc_Cve_Grupo_Comercial', [
+      ['GC01', 'Grupo A'], ['GC02', 'Grupo B'], ['GC03', 'Grupo C'],
+      ['GC04', 'Grupo D'], ['GC05', 'Grupo E']
+    ]);
+    insertLookup('Cadena_Comercial', 'Cc_Cve_Cadena_Comercial', [
+      ['CC01', 'Cadena A'], ['CC02', 'Cadena B'], ['CC03', 'Cadena C'],
+      ['CC04', 'Cadena D'], ['CC05', 'Cadena E']
+    ]);
+    insertLookup('Promotor', 'Pr_Cve_Promotor', [
+      ['PR01', 'Promotor 1'], ['PR02', 'Promotor 2'], ['PR03', 'Promotor 3'],
+      ['PR04', 'Promotor 4'], ['PR05', 'Promotor 5']
+    ]);
+    insertLookup('Comisionista_Externo', 'Ce_Cve_Comisionista_Externo', [
+      ['CE01', 'Comisionista 1'], ['CE02', 'Comisionista 2'], ['CE03', 'Comisionista 3'],
+      ['CE04', 'Comisionista 4'], ['CE05', 'Comisionista 5']
+    ]);
+    insertLookup('Distribuidor', 'Ds_Cve_Distribuidor', [
+      ['DS01', 'Distribuidor Norte'], ['DS02', 'Distribuidor Sur'], ['DS03', 'Distribuidor Este'],
+      ['DS04', 'Distribuidor Oeste'], ['DS05', 'Distribuidor Centro']
+    ]);
+    insertLookup('Ruta', 'Rt_Cve_Ruta', [
+      ['RT01', 'Ruta Norte'], ['RT02', 'Ruta Sur'], ['RT03', 'Ruta Este'],
+      ['RT04', 'Ruta Oeste'], ['RT05', 'Ruta Centro']
+    ]);
+    insertLookup('Sector', 'Sc_Cve_Sector', [
+      ['SCT01', 'Sector Industrial'], ['SCT02', 'Sector Comercial'], ['SCT03', 'Sector Servicios'],
+      ['SCT04', 'Sector Agrícola'], ['SCT05', 'Sector Gobierno']
+    ]);
+    insertLookup('Tipo_Cliente', 'Tc_Cve_Tipo_Cliente', [
+      ['TC01', 'Cliente Regular'], ['TC02', 'Cliente VIP'], ['TC03', 'Cliente Mayorista'],
+      ['TC04', 'Cliente Minorista'], ['TC05', 'Cliente Nuevo']
+    ]);
+
+    // Seed Sucursales (5 rows)
     const insertSucursal = db.prepare('INSERT INTO Sucursal (Sc_Cve_Sucursal, Sc_Descripcion, Sc_Ciudad, Sc_Estado, Sc_Pais) VALUES (?, ?, ?, ?, ?)');
-    insertSucursal.run('S001', 'CDMX', 'CDMX', 'CDMX', 'México');
-    insertSucursal.run('S002', 'Jalisco', 'Guadalajara', 'Jalisco', 'México');
-    insertSucursal.run('S003', 'Nuevo León', 'Monterrey', 'Nuevo León', 'México');
+    insertSucursal.run('S001', 'CDMX',       'Ciudad de México', 'CDMX',       'México');
+    insertSucursal.run('S002', 'Jalisco',     'Guadalajara',     'Jalisco',    'México');
+    insertSucursal.run('S003', 'Nuevo León',  'Monterrey',       'Nuevo León', 'México');
+    insertSucursal.run('S004', 'Puebla',      'Puebla',          'Puebla',     'México');
+    insertSucursal.run('S005', 'Querétaro',   'Querétaro',       'Querétaro',  'México');
 
-    // Seed Segmentos
+    // Seed Segmentos (5 rows)
     const insertSegmento = db.prepare('INSERT INTO Segmento (Sg_Cve_Segmento, Descripcion) VALUES (?, ?)');
-    const segmentos = [
-      ["SEG01", "SIN SEGMENTO"],
-      ["SEG02", "AUTOCONTROL"],
-      ["SEG03", "CONTROLADORES DE PLAGAS"],
-      ["SEG04", "DISTRIBUIDORES"],
-      ["SEG05", "GRANOS ALMACENADOS"],
-      ["SEG06", "MOSTRADOR"],
-      ["SEG07", "ESPECIALES"],
-      ["SEG08", "CLIENTES INCOBRABLES"],
-      ["SEG09", "GOBIERNO MUNICIPAL"],
-      ["SEG10", "VENTAS POR SERVICIOS"],
-      ["SEG11", "VENTA DE ACTIVOS"],
-      ["SEG12", "MAYORISTAS ABARROTEROS"],
-      ["SEG13", "VENTAS EN LINEA"],
-      ["SEG14", "GOBIERNO ESTATAL"]
-    ];
-    segmentos.forEach(([id, desc]) => insertSegmento.run(id, desc));
+    insertSegmento.run('SEG01', 'SIN SEGMENTO');
+    insertSegmento.run('SEG02', 'AUTOCONTROL');
+    insertSegmento.run('SEG03', 'CONTROLADORES DE PLAGAS');
+    insertSegmento.run('SEG04', 'DISTRIBUIDORES');
+    insertSegmento.run('SEG05', 'GRANOS ALMACENADOS');
 
-    // Seed Vendedores
+    // Seed Vendedores (5 rows)
     const insertVendedor = db.prepare(`
-      INSERT INTO Vendedor (Vn_Cve_Vendedor, Vn_Descripcion, Vn_Email, Vn_Rol_CRM, Vn_Meta_Ventas_CRM, Vn_Sucursal, Fecha_Alta) 
+      INSERT INTO Vendedor (Vn_Cve_Vendedor, Vn_Descripcion, Vn_Email, Vn_Rol_CRM, Vn_Meta_Ventas_CRM, Vn_Sucursal, Fecha_Alta)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    insertVendedor.run('admin-1', 'Usuario Admin', 'admin@leadflow.com', 'Admin', 100000, 'S001', now);
-    insertVendedor.run('seller-1', 'Alicia Vendedora', 'alice@leadflow.com', 'Seller', 50000, 'S002', now);
-    insertVendedor.run('seller-2', 'Carlos Vendedor', 'carlie@leadflow.com', 'Seller', 50000, 'S003', now);
+    insertVendedor.run('admin-1',  'Usuario Admin',    'admin@leadflow.com',  'Admin',  100000, 'S001', now);
+    insertVendedor.run('seller-1', 'Alicia Torres',    'alicia@leadflow.com', 'Seller',  50000, 'S001', now);
+    insertVendedor.run('seller-2', 'Carlos Ramírez',   'carlos@leadflow.com', 'Seller',  60000, 'S002', now);
+    insertVendedor.run('seller-3', 'María López',      'maria@leadflow.com',  'Seller',  55000, 'S003', now);
+    insertVendedor.run('seller-4', 'Roberto García',   'roberto@leadflow.com','Seller',  45000, 'S004', now);
 
-    // Seed Clientes
+    // Seed Clientes (5 rows, one per status stage)
     const insertCliente = db.prepare(`
       INSERT INTO Cliente (
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_email_contacto_1, Cl_Contacto_1, 
-        Cl_Status_CRM, Vn_Cve_Vendedor, Cl_Valor_CRM, Sc_Cve_Sucursal, Sg_Cve_Segmento, 
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_email_contacto_1, Cl_Contacto_1,
+        Cl_Status_CRM, Vn_Cve_Vendedor, Cl_Valor_CRM, Sc_Cve_Sucursal, Sg_Cve_Segmento,
         Cl_CreatedAt_CRM, Cl_UpdatedAt_CRM
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
-    insertCliente.run('1', 'TechCorp', 'juan@ejemplo.com', 'Juan Pérez', 'CONTACTADO', null, 5000, 'S001', 'SEG03', now, now);
-    insertCliente.run('2', 'Innovate Ltd', 'juana@ejemplo.com', 'Juana Smith', 'NEGOCIACION', 'seller-1', 12000, 'S002', 'SEG05', now, now);
-    insertCliente.run('3', 'Global Systems', 'roberto@ejemplo.com', 'Roberto Wilson', 'CONTACTADO', null, 8000, 'S003', 'SEG04', now, now);
+    insertCliente.run('lead-1', 'TechCorp SA de CV',      'juan@techcorp.mx',      'Juan Pérez',      'CONTACTADO',  null,       5000,  'S001', 'SEG03', now, now);
+    insertCliente.run('lead-2', 'Innovate Ltd',           'juana@innovate.mx',     'Juana Smith',     'NEGOCIACION', 'seller-1', 12000, 'S002', 'SEG05', now, now);
+    insertCliente.run('lead-3', 'Global Systems SA',      'roberto@global.mx',     'Roberto Wilson',  'COTIZADO',    'seller-2',  8000, 'S003', 'SEG04', now, now);
+    insertCliente.run('lead-4', 'MegaTech SA de CV',      'ana@megatech.mx',       'Ana González',    'FACTURADO',   'seller-3', 25000, 'S004', 'SEG02', now, now);
+    insertCliente.run('lead-5', 'DataSoft Inc',           'luis@datasoft.mx',      'Luis Hernández',  'ENTREGADO',   'seller-4', 18000, 'S005', 'SEG01', now, now);
 
+    // Seed lead_history (5 rows)
     const insertHistory = db.prepare(`
       INSERT INTO lead_history (id, leadId, status, comment, updatedBy, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    insertHistory.run('h1', '2', 'NEGOCIACION', 'Asignación inicial', 'admin-1', now);
+    insertHistory.run('h1', 'lead-2', 'NEGOCIACION', 'Cliente interesado, en negociación de precios',  'seller-1', now);
+    insertHistory.run('h2', 'lead-3', 'COTIZADO',    'Cotización enviada por $8,000',                  'seller-2', now);
+    insertHistory.run('h3', 'lead-4', 'COTIZADO',    'Cotización aprobada por el cliente',             'seller-3', now);
+    insertHistory.run('h4', 'lead-4', 'FACTURADO',   'Factura emitida por $25,000',                    'seller-3', now);
+    insertHistory.run('h5', 'lead-5', 'ENTREGADO',   'Producto entregado y cliente satisfecho',        'seller-4', now);
   }
 }
 
