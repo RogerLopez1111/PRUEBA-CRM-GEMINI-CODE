@@ -80,24 +80,6 @@ import {
   Legend
 } from 'recharts';
 
-const SUCURSALES = ["CDMX", "Jalisco", "Nuevo León", "Querétaro", "Puebla", "Yucatán", "Baja California"];
-const SEGMENTOS = [
-  "SIN SEGMENTO",
-  "AUTOCONTROL",
-  "CONTROLADORES DE PLAGAS",
-  "DISTRIBUIDORES",
-  "GRANOS ALMACENADOS",
-  "MOSTRADOR",
-  "ESPECIALES",
-  "CLIENTES INCOBRABLES",
-  "GOBIERNO MUNICIPAL",
-  "VENTAS POR SERVICIOS",
-  "VENTA DE ACTIVOS",
-  "MAYORISTAS ABARROTEROS",
-  "VENTAS EN LINEA",
-  "GOBIERNO ESTATAL"
-];
-
 function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?: string, status: LeadStatus, leads: Lead[], users: User[], onUpdate: (lead: Lead, newStatus?: LeadStatus) => void, getStatusBadge: (status: LeadStatus) => React.ReactNode }) {
   const { setNodeRef } = useDroppable({
     id: status,
@@ -188,7 +170,7 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
             variant="ghost" 
             size="icon-xs" 
             className="h-6 w-6 rounded-full hover:bg-slate-100" 
-            title="View Timeline"
+            title="Ver Historial"
             onClick={(e) => {
               e.stopPropagation();
               onUpdate();
@@ -206,7 +188,7 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
               e.stopPropagation();
               onUpdate();
             }}
-            title="Update Status"
+            title="Actualizar Estado"
           >
             <MessageSquare className="w-3 h-3" />
           </Button>
@@ -223,12 +205,14 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
 export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [sucursales, setSucursales] = useState<{id: string, name: string}[]>([]);
+  const [segmentos, setSegmentos] = useState<{id: string, name: string}[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
-  const [newLead, setNewLead] = useState({ name: "", email: "", company: "", value: 0, sucursal: SUCURSALES[0], segmento: SEGMENTOS[0] });
-  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000 });
+  const [newLead, setNewLead] = useState({ name: "", email: "", company: "", value: 0, sucursal: "", segmento: "" });
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -284,18 +268,33 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [leadsRes, usersRes] = await Promise.all([
+      const [leadsRes, usersRes, sucursalesRes, segmentosRes] = await Promise.all([
         fetch("/api/leads"),
-        fetch("/api/users")
+        fetch("/api/users"),
+        fetch("/api/lookups/sucursales"),
+        fetch("/api/lookups/segmentos")
       ]);
       const leadsData = await leadsRes.json();
       const usersData = await usersRes.json();
+      const sucursalesData = await sucursalesRes.json();
+      const segmentosData = await segmentosRes.json();
+      
       setLeads(leadsData);
       setUsers(usersData);
+      setSucursales(sucursalesData);
+      setSegmentos(segmentosData);
+      
+      // Set defaults for new lead if not already set
+      setNewLead(prev => ({
+        ...prev,
+        sucursal: prev.sucursal || (sucursalesData.length > 0 ? sucursalesData[0].name : ""),
+        segmento: prev.segmento || (segmentosData.length > 0 ? segmentosData[0].name : "")
+      }));
+      
       setLoading(false);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
+      toast.error("Error al cargar los datos");
     }
   };
 
@@ -313,19 +312,19 @@ export default function App() {
         if (user.role === "Seller") setPerfUserFilter(user.id);
         else setPerfUserFilter("all");
         localStorage.setItem("leadflow_user", JSON.stringify(user));
-        toast.success(`Welcome back, ${user.name}`);
+        toast.success(`Bienvenido de nuevo, ${user.name}`);
       } else {
-        toast.error("Invalid email address");
+        toast.error("Correo electrónico inválido");
       }
     } catch (error) {
-      toast.error("Login failed");
+      toast.error("Error al iniciar sesión");
     }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem("leadflow_user");
-    toast.info("Logged out successfully");
+    toast.info("Sesión cerrada exitosamente");
   };
 
   const handleAssign = async (leadId: string, userId: string) => {
@@ -336,11 +335,11 @@ export default function App() {
         body: JSON.stringify({ userId })
       });
       if (res.ok) {
-        toast.success("Lead assigned successfully");
+        toast.success("Lead asignado exitosamente");
         fetchData();
       }
     } catch (error) {
-      toast.error("Failed to assign lead");
+      toast.error("Error al asignar lead");
     }
   };
 
@@ -366,7 +365,7 @@ export default function App() {
         })
       });
       if (res.ok) {
-        toast.success(`Lead marked as ${status}`);
+        toast.success(`Lead marcado como ${status}`);
         setIsStatusUpdateOpen(false);
         setStatusUpdate({ 
           status: "" as LeadStatus, 
@@ -440,20 +439,20 @@ export default function App() {
         })
       });
       if (res.ok) {
-        toast.success(currentUser?.role === "Seller" ? "Lead created and assigned to you" : "New lead created");
+        toast.success(currentUser?.role === "Seller" ? "Lead creado y asignado a ti" : "Nuevo lead creado");
         setIsNewLeadOpen(false);
         setNewLead({ 
           name: "", 
           email: "", 
           company: "", 
           value: 0, 
-          sucursal: SUCURSALES[0], 
-          segmento: SEGMENTOS[0] 
+          sucursal: sucursales.length > 0 ? sucursales[0].name : "", 
+          segmento: segmentos.length > 0 ? segmentos[0].name : "" 
         });
         fetchData();
       }
     } catch (error) {
-      toast.error("Failed to create lead");
+      toast.error("Error al crear lead");
     }
   };
 
@@ -465,11 +464,11 @@ export default function App() {
         body: JSON.stringify({ role })
       });
       if (res.ok) {
-        toast.success("User role updated");
+        toast.success("Rol de usuario actualizado");
         fetchData();
       }
     } catch (error) {
-      toast.error("Failed to update role");
+      toast.error("Error al actualizar rol");
     }
   };
 
@@ -481,11 +480,11 @@ export default function App() {
         body: JSON.stringify({ goal })
       });
       if (res.ok) {
-        toast.success("Sales goal updated");
+        toast.success("Meta de ventas actualizada");
         fetchData();
       }
     } catch (error) {
-      toast.error("Failed to update goal");
+      toast.error("Error al actualizar meta");
     }
   };
 
@@ -497,16 +496,16 @@ export default function App() {
         body: JSON.stringify(newUser)
       });
       if (res.ok) {
-        toast.success("New user created successfully");
+        toast.success("Nuevo usuario creado exitosamente");
         setIsNewUserOpen(false);
-        setNewUser({ name: "", email: "", role: "Seller", salesGoal: 50000 });
+        setNewUser({ name: "", email: "", role: "Seller", salesGoal: 50000, sucursal: "" });
         fetchData();
       } else {
         const data = await res.json();
-        toast.error(data.error || "Failed to create user");
+        toast.error(data.error || "Error al crear usuario");
       }
     } catch (error) {
-      toast.error("Failed to create user");
+      toast.error("Error al crear usuario");
     }
   };
 
@@ -565,16 +564,16 @@ export default function App() {
                 </div>
               </div>
               <CardTitle className="text-2xl font-bold tracking-tight">LeadFlow CRM</CardTitle>
-              <CardDescription>Enter your email to access your sales dashboard</CardDescription>
+              <CardDescription>Ingresa tu correo para acceder a tu panel de ventas</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 ml-1">Email Address</label>
+                    <label className="text-sm font-medium text-slate-700 ml-1">Correo Electrónico</label>
                     <Input 
                       type="email" 
-                      placeholder="name@leadflow.com" 
+                      placeholder="nombre@leadflow.com" 
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
                       required
@@ -582,12 +581,12 @@ export default function App() {
                     />
                   </div>
                   <p className="text-[10px] text-slate-400 text-center">
-                    Try: admin@leadflow.com or alice@leadflow.com
+                    Prueba con: admin@leadflow.com o alice@leadflow.com
                   </p>
                 </div>
                 <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold">
                   <LogIn className="w-5 h-5" />
-                  Sign In
+                  Iniciar Sesión
                 </Button>
               </form>
             </CardContent>
@@ -602,7 +601,7 @@ export default function App() {
       <div className="flex items-center justify-center h-screen bg-slate-50">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="w-12 h-12 bg-primary/20 rounded-full" />
-          <p className="text-slate-500 font-medium">Loading LeadFlow...</p>
+          <p className="text-slate-500 font-medium">Cargando LeadFlow...</p>
         </div>
       </div>
     );
@@ -635,7 +634,7 @@ export default function App() {
               } />
               <DialogContent className="sm:max-w-[300px]">
                 <DialogHeader>
-                  <DialogTitle>Account</DialogTitle>
+                  <DialogTitle>Cuenta</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                   <div className="flex flex-col items-center gap-2">
@@ -649,7 +648,7 @@ export default function App() {
                   </div>
                   <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}>
                     <LogOut className="w-4 h-4" />
-                    Sign Out
+                    Cerrar Sesión
                   </Button>
                 </div>
               </DialogContent>
@@ -665,12 +664,12 @@ export default function App() {
               {currentUser.role === "Admin" && (
                 <TabsTrigger value="leads" className="gap-2 px-6">
                   <LayoutDashboard className="w-4 h-4" />
-                  All Leads
+                  Todos los Leads
                 </TabsTrigger>
               )}
               <TabsTrigger value="my-leads" className="gap-2 px-6">
                 <UserCheck className="w-4 h-4" />
-                My Leads
+                Mis Leads
               </TabsTrigger>
               <TabsTrigger value="kanban" className="gap-2 px-6">
                 <Kanban className="w-4 h-4" />
@@ -678,12 +677,12 @@ export default function App() {
               </TabsTrigger>
               <TabsTrigger value="performance" className="gap-2 px-6">
                 <BarChart3 className="w-4 h-4" />
-                Performance
+                Rendimiento
               </TabsTrigger>
               {currentUser.role === "Admin" && (
                 <TabsTrigger value="admin" className="gap-2 px-6">
                   <ShieldCheck className="w-4 h-4" />
-                  Admin Hub
+                  Panel Admin
                 </TabsTrigger>
               )}
             </TabsList>
@@ -692,32 +691,32 @@ export default function App() {
               <Dialog open={isNewLeadOpen} onOpenChange={setIsNewLeadOpen}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2 shadow-sm" />}>
                   <Plus className="w-4 h-4" />
-                  New Lead
+                  Nuevo Lead
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Create New Lead</DialogTitle>
-                    <DialogDescription>Enter the details of the potential customer.</DialogDescription>
+                    <DialogTitle>Crear Nuevo Lead</DialogTitle>
+                    <DialogDescription>Ingresa los detalles del cliente potencial.</DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Name</label>
+                      <label className="text-sm font-medium">Nombre</label>
                       <Input 
-                        placeholder="John Doe" 
+                        placeholder="Juan Pérez" 
                         value={newLead.name}
                         onChange={(e) => setNewLead({...newLead, name: e.target.value})}
                       />
                     </div>
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Email</label>
+                      <label className="text-sm font-medium">Correo</label>
                       <Input 
-                        placeholder="john@example.com" 
+                        placeholder="juan@ejemplo.com" 
                         value={newLead.email}
                         onChange={(e) => setNewLead({...newLead, email: e.target.value})}
                       />
                     </div>
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Company</label>
+                      <label className="text-sm font-medium">Empresa</label>
                       <Input 
                         placeholder="TechCorp" 
                         value={newLead.company}
@@ -725,7 +724,7 @@ export default function App() {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Potential Value ($)</label>
+                      <label className="text-sm font-medium">Valor Potencial ($)</label>
                       <Input 
                         type="number" 
                         placeholder="5000" 
@@ -738,11 +737,11 @@ export default function App() {
                         <label className="text-sm font-medium">Sucursal</label>
                         <Select value={newLead.sucursal} onValueChange={(val) => setNewLead({...newLead, sucursal: val})}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Sucursal" />
+                            <SelectValue placeholder="Seleccionar Sucursal" />
                           </SelectTrigger>
                           <SelectContent>
-                            {SUCURSALES.map(s => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            {sucursales.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -751,11 +750,11 @@ export default function App() {
                         <label className="text-sm font-medium">Segmento</label>
                         <Select value={newLead.segmento} onValueChange={(val) => setNewLead({...newLead, segmento: val})}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Segmento" />
+                            <SelectValue placeholder="Seleccionar Segmento" />
                           </SelectTrigger>
                           <SelectContent>
-                            {SEGMENTOS.map(s => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            {segmentos.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -763,8 +762,8 @@ export default function App() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsNewLeadOpen(false)}>Cancel</Button>
-                    <Button onClick={handleCreateLead}>Create Lead</Button>
+                    <Button variant="outline" onClick={() => setIsNewLeadOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleCreateLead}>Crear Lead</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -779,7 +778,7 @@ export default function App() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-500">Total Leads</p>
+                        <p className="text-sm font-medium text-slate-500">Total de Leads</p>
                         <h3 className="text-2xl font-bold">{leads.length}</h3>
                       </div>
                       <div className="bg-blue-50 p-2 rounded-lg">
@@ -792,8 +791,8 @@ export default function App() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-500">New Leads</p>
-                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "New").length}</h3>
+                        <p className="text-sm font-medium text-slate-500">Nuevos Leads</p>
+                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "CONTACTADO").length}</h3>
                       </div>
                       <div className="bg-orange-50 p-2 rounded-lg">
                         <Clock className="w-5 h-5 text-orange-600" />
@@ -805,8 +804,8 @@ export default function App() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-500">Closed Deals</p>
-                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "Closed").length}</h3>
+                        <p className="text-sm font-medium text-slate-500">Tratos Cerrados</p>
+                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "ENTREGADO").length}</h3>
                       </div>
                       <div className="bg-green-50 p-2 rounded-lg">
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -818,7 +817,7 @@ export default function App() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-500">Total Pipeline</p>
+                        <p className="text-sm font-medium text-slate-500">Pipeline Total</p>
                         <h3 className="text-2xl font-bold">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
                       </div>
                       <div className="bg-indigo-50 p-2 rounded-lg">
@@ -834,27 +833,27 @@ export default function App() {
                 <CardHeader className="bg-white border-b py-4">
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg font-semibold">Recent Leads</CardTitle>
+                      <CardTitle className="text-lg font-semibold">Leads Recientes</CardTitle>
                     </div>
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex-1 min-w-[200px] space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Search</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar</p>
                         <Input 
-                          placeholder="Search by name or company..." 
+                          placeholder="Buscar por nombre o empresa..." 
                           value={adminSearch}
                           onChange={(e) => setAdminSearch(e.target.value)}
                           className="h-9"
                         />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seller</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
                         <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
                           <SelectTrigger className="w-[150px] h-9">
-                            <SelectValue placeholder="All Sellers" />
+                            <SelectValue placeholder="Todos los Vendedores" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Sellers</SelectItem>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                            <SelectItem value="all">Todos los Vendedores</SelectItem>
+                            <SelectItem value="unassigned">Sin asignar</SelectItem>
                             {users.map(u => (
                               <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                             ))}
@@ -862,13 +861,13 @@ export default function App() {
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
                         <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
                           <SelectTrigger className="w-[150px] h-9">
-                            <SelectValue placeholder="All Statuses" />
+                            <SelectValue placeholder="Todos los Estados" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Statuses</SelectItem>
+                            <SelectItem value="all">Todos los Estados</SelectItem>
                             <SelectItem value="ASIGNADO">Asignado</SelectItem>
                             <SelectItem value="CONTACTADO">Contactado</SelectItem>
                             <SelectItem value="NEGOCIACION">Negociación</SelectItem>
@@ -883,12 +882,12 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
                         <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
                           <SelectTrigger className="w-[150px] h-9">
-                            <SelectValue placeholder="All Sucursales" />
+                            <SelectValue placeholder="Todas las Sucursales" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Sucursales</SelectItem>
-                            {SUCURSALES.map(s => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            <SelectItem value="all">Todas las Sucursales</SelectItem>
+                            {sucursales.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -897,12 +896,12 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Segmento</p>
                         <Select value={adminFilterSegmento} onValueChange={setAdminFilterSegmento}>
                           <SelectTrigger className="w-[150px] h-9">
-                            <SelectValue placeholder="All Segmentos" />
+                            <SelectValue placeholder="Todos los Segmentos" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Segmentos</SelectItem>
-                            {SEGMENTOS.map(s => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            <SelectItem value="all">Todos los Segmentos</SelectItem>
+                            {segmentos.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -915,13 +914,13 @@ export default function App() {
                     <TableHeader>
                       <TableRow className="bg-slate-50/50">
                         <TableHead className="font-semibold">Lead</TableHead>
-                        <TableHead className="font-semibold">Company</TableHead>
+                        <TableHead className="font-semibold">Empresa</TableHead>
                         <TableHead className="font-semibold">Sucursal</TableHead>
                         <TableHead className="font-semibold">Segmento</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Assigned To</TableHead>
-                        <TableHead className="font-semibold">Value</TableHead>
-                        <TableHead className="text-right font-semibold">Actions</TableHead>
+                        <TableHead className="font-semibold">Estado</TableHead>
+                        <TableHead className="font-semibold">Asignado a</TableHead>
+                        <TableHead className="font-semibold">Valor</TableHead>
+                        <TableHead className="text-right font-semibold">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -972,7 +971,7 @@ export default function App() {
                                   <span className="text-sm">{users.find(u => u.id === lead.assignedTo)?.name}</span>
                                 </div>
                               ) : (
-                                <span className="text-xs text-slate-400 italic">Unassigned</span>
+                                <span className="text-xs text-slate-400 italic">Sin asignar</span>
                               )}
                             </TableCell>
                             <TableCell className="font-mono text-sm font-medium">
@@ -983,7 +982,7 @@ export default function App() {
                                 {!lead.assignedTo && (
                                   <Select onValueChange={(val: string) => handleAssign(lead.id, val)}>
                                     <SelectTrigger className="w-[140px] h-8">
-                                      <SelectValue placeholder="Assign to..." />
+                                      <SelectValue placeholder="Asignar a..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {users.map(user => (
@@ -1007,8 +1006,8 @@ export default function App() {
           <TabsContent value="my-leads" className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">My Active Leads</h2>
-                <p className="text-slate-500">Manage and update the status of leads assigned to you.</p>
+                <h2 className="text-2xl font-bold tracking-tight">Mis Leads Activos</h2>
+                <p className="text-slate-500">Gestiona y actualiza el estado de los leads asignados a ti.</p>
               </div>
             </div>
 
@@ -1017,7 +1016,7 @@ export default function App() {
                 <Card className="border-dashed border-2 bg-transparent">
                   <CardContent className="flex flex-col items-center justify-center py-12 text-slate-400">
                     <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-                    <p>No leads assigned to you yet.</p>
+                    <p>Aún no tienes leads asignados.</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -1041,13 +1040,13 @@ export default function App() {
 
                         <div className="flex flex-col sm:flex-row items-center gap-3">
                           <div className="w-full sm:w-auto">
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-1.5 ml-1">Update Status</p>
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-1.5 ml-1">Actualizar Estado</p>
                             <Select 
                               value={lead.status} 
                               onValueChange={(val) => openStatusUpdate(lead, val as LeadStatus)}
                             >
                               <SelectTrigger className="w-full sm:w-[180px]">
-                                <SelectValue placeholder="Change status" />
+                                <SelectValue placeholder="Cambiar estado" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="ASIGNADO">Asignado</SelectItem>
@@ -1065,15 +1064,15 @@ export default function App() {
                             className="w-full sm:w-auto mt-auto gap-2"
                             onClick={() => openStatusUpdate(lead)}
                           >
-                            <History className="w-4 h-4" /> Timeline
+                            <History className="w-4 h-4" /> Historial
                           </Button>
                         </div>
                       </div>
                       <div className="bg-slate-50 px-6 py-3 flex items-center justify-between border-t">
-                        <span className="text-xs text-slate-400">Last updated: {new Date(lead.updatedAt).toLocaleDateString()}</span>
+                        <span className="text-xs text-slate-400">Última actualización: {new Date(lead.updatedAt).toLocaleDateString()}</span>
                         <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
                           <Clock className="w-3 h-3" />
-                          <span>Active for {Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days</span>
+                          <span>Activo por {Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} días</span>
                         </div>
                       </div>
                     </CardContent>
@@ -1086,17 +1085,17 @@ export default function App() {
           <TabsContent value="kanban" className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Sales Pipeline</h2>
-                <p className="text-slate-500">Visual overview of all active leads across the pipeline.</p>
+                <h2 className="text-2xl font-bold tracking-tight">Pipeline de Ventas</h2>
+                <p className="text-slate-500">Visión general de todos los leads activos en el pipeline.</p>
               </div>
 
               <div className="flex flex-wrap items-end gap-3">
                 <div className="relative w-full md:w-64 space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Search Leads</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar Leads</p>
                   <div className="relative">
                     <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                     <Input 
-                      placeholder="Search leads..." 
+                      placeholder="Buscar leads..." 
                       className="pl-9 h-9"
                       value={kanbanSearch}
                       onChange={(e) => setKanbanSearch(e.target.value)}
@@ -1107,12 +1106,12 @@ export default function App() {
                   <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
                   <Select value={kanbanFilterSucursal} onValueChange={setKanbanFilterSucursal}>
                     <SelectTrigger className="w-[150px] h-9">
-                      <SelectValue placeholder="All Sucursales" />
+                      <SelectValue placeholder="Todas las Sucursales" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Sucursales</SelectItem>
-                      {SUCURSALES.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem value="all">Todas las Sucursales</SelectItem>
+                      {sucursales.map(s => (
+                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1121,26 +1120,26 @@ export default function App() {
                   <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Segmento</p>
                   <Select value={kanbanFilterSegmento} onValueChange={setKanbanFilterSegmento}>
                     <SelectTrigger className="w-[150px] h-9">
-                      <SelectValue placeholder="All Segmentos" />
+                      <SelectValue placeholder="Todos los Segmentos" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Segmentos</SelectItem>
-                      {SEGMENTOS.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem value="all">Todos los Segmentos</SelectItem>
+                      {segmentos.map(s => (
+                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 {currentUser.role === "Admin" && (
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seller</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
                     <Select value={kanbanFilterSeller} onValueChange={setKanbanFilterSeller}>
                       <SelectTrigger className="w-[150px] h-9">
-                        <SelectValue placeholder="All Sellers" />
+                        <SelectValue placeholder="Todos los Vendedores" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Sellers</SelectItem>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        <SelectItem value="all">Todos los Vendedores</SelectItem>
+                        <SelectItem value="unassigned">Sin asignar</SelectItem>
                         {users.map(u => (
                           <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                         ))}
@@ -1218,23 +1217,23 @@ export default function App() {
           <TabsContent value="performance" className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Performance Analytics</h2>
+                <h2 className="text-2xl font-bold tracking-tight">Análisis de Rendimiento</h2>
                 <p className="text-slate-500">
                   {currentUser.role === "Admin" 
-                    ? "Team-wide sales performance and pipeline health." 
-                    : "Your personal sales metrics and pipeline progress."}
+                    ? "Rendimiento de ventas de todo el equipo y salud del pipeline." 
+                    : "Tus métricas de ventas personales y progreso del pipeline."}
                 </p>
               </div>
 
               {currentUser.role === "Admin" && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Filter by Seller</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Filtrar por Vendedor</p>
                   <Select value={perfUserFilter} onValueChange={setPerfUserFilter}>
                     <SelectTrigger className="w-[200px] h-10">
-                      <SelectValue placeholder="Select View" />
+                      <SelectValue placeholder="Seleccionar Vista" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Team Overview</SelectItem>
+                      <SelectItem value="all">Resumen del Equipo</SelectItem>
                       {users.map(u => (
                         <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                       ))}
@@ -1247,14 +1246,14 @@ export default function App() {
             {currentUser.role === "Admin" && perfUserFilter === "all" ? (
               <Card className="border-none shadow-sm bg-white overflow-hidden">
                 <CardHeader>
-                  <CardTitle>Team Performance Summary</CardTitle>
-                  <CardDescription>Overview of all sellers and their current pipeline status.</CardDescription>
+                  <CardTitle>Resumen de Rendimiento del Equipo</CardTitle>
+                  <CardDescription>Resumen de todos los vendedores y su estado actual del pipeline.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-slate-50/50">
-                        <TableHead className="font-semibold">Seller</TableHead>
+                        <TableHead className="font-semibold">Vendedor</TableHead>
                         <TableHead className="font-semibold">Vendido ($)</TableHead>
                         <TableHead className="font-semibold">Cotizado ($)</TableHead>
                         <TableHead className="font-semibold">Perdido ($)</TableHead>
@@ -1334,7 +1333,7 @@ export default function App() {
                             <div>
                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Vendido</p>
                               <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{soldCount} deals closed</p>
+                              <p className="text-[10px] text-slate-400">{soldCount} tratos cerrados</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -1346,7 +1345,7 @@ export default function App() {
                             <div>
                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cotizado</p>
                               <p className="text-xl font-bold text-amber-600">${quotedValue.toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{quotedCount} active quotes</p>
+                              <p className="text-[10px] text-slate-400">{quotedCount} cotizaciones activas</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -1358,7 +1357,7 @@ export default function App() {
                             <div>
                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Perdido</p>
                               <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{lostCount} deals lost</p>
+                              <p className="text-[10px] text-slate-400">{lostCount} tratos perdidos</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -1370,7 +1369,7 @@ export default function App() {
                             <div>
                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Meta de Ventas</p>
                               <p className="text-xl font-bold text-slate-900">${user.performance.salesGoal.toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}% achieved</p>
+                              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}% alcanzado</p>
                             </div>
                           </CardContent>
                         </Card>
@@ -1387,11 +1386,11 @@ export default function App() {
                                 </div>
                                 <div>
                                   <CardTitle className="text-base">{user.name}</CardTitle>
-                                  <CardDescription>{user.role}</CardDescription>
+                                  <CardDescription>{user.role === "Admin" ? "Administrador" : "Vendedor"}</CardDescription>
                                 </div>
                               </div>
                               {soldValue >= user.performance.salesGoal && (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Goal Met</Badge>
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Meta Cumplida</Badge>
                               )}
                             </div>
                           </CardHeader>
@@ -1457,7 +1456,7 @@ export default function App() {
                         ) : (
                           <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
                             <BarChart3 className="w-8 h-8 opacity-20" />
-                            <p className="text-xs italic">No data to visualize</p>
+                            <p className="text-xs italic">No hay datos para visualizar</p>
                           </div>
                         )}
                       </CardContent>
@@ -1466,7 +1465,7 @@ export default function App() {
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader>
                         <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Motivos de Rechazo</CardTitle>
-                        <CardDescription className="text-[10px]">Latest comments from lost deals.</CardDescription>
+                        <CardDescription className="text-[10px]">Últimos comentarios de tratos perdidos.</CardDescription>
                       </CardHeader>
                       <CardContent className="max-h-[250px] overflow-y-auto space-y-3">
                         {lostLeads.length > 0 ? (
@@ -1478,14 +1477,14 @@ export default function App() {
                                   <p className="text-xs font-bold text-slate-700">{lead.company}</p>
                                   <span className="text-[10px] font-mono text-slate-400">${lead.value.toLocaleString()}</span>
                                 </div>
-                                <p className="text-xs text-slate-500 italic">"{lastComment || "No reason provided"}"</p>
+                                <p className="text-xs text-slate-500 italic">"{lastComment || "No se proporcionó motivo"}"</p>
                               </div>
                             );
                           })
                         ) : (
                           <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2 py-12">
                             <TrendingUp className="w-8 h-8 opacity-20" />
-                            <p className="text-xs italic">No lost deals yet</p>
+                            <p className="text-xs italic">Aún no hay tratos perdidos</p>
                           </div>
                         )}
                       </CardContent>
@@ -1502,14 +1501,14 @@ export default function App() {
             <TabsContent value="admin" className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight">Administration Hub</h2>
-                  <p className="text-slate-500">Manage user roles, goals, and oversee team workload.</p>
+                  <h2 className="text-2xl font-bold tracking-tight">Centro de Administración</h2>
+                  <p className="text-slate-500">Gestiona roles de usuario, metas y supervisa la carga de trabajo del equipo.</p>
                 </div>
                 <Tabs value={adminSubTab} onValueChange={setAdminSubTab} className="w-full md:w-auto">
                   <TabsList className="bg-slate-100/50 p-1">
-                    <TabsTrigger value="users" className="text-xs px-4">Users</TabsTrigger>
-                    <TabsTrigger value="workload" className="text-xs px-4">Workload</TabsTrigger>
-                    <TabsTrigger value="activity" className="text-xs px-4">Global Activity</TabsTrigger>
+                    <TabsTrigger value="users" className="text-xs px-4">Usuarios</TabsTrigger>
+                    <TabsTrigger value="workload" className="text-xs px-4">Carga de Trabajo</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-4">Actividad Global</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -1522,41 +1521,41 @@ export default function App() {
                         <div>
                           <CardTitle className="text-lg flex items-center gap-2">
                             <Settings className="w-5 h-5 text-slate-400" />
-                            User Management
+                            Gestión de Usuarios
                           </CardTitle>
-                          <CardDescription>Assign roles and set individual sales targets.</CardDescription>
+                          <CardDescription>Asigna roles y establece objetivos de ventas individuales.</CardDescription>
                         </div>
                         <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
                           <DialogTrigger render={<Button className="gap-2" />}>
                             <UserPlus className="w-4 h-4" />
-                            Add User
+                            Agregar Usuario
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
-                              <DialogTitle>Add New Team Member</DialogTitle>
-                              <DialogDescription>Create a new user account for the CRM.</DialogDescription>
+                              <DialogTitle>Agregar Nuevo Miembro al Equipo</DialogTitle>
+                              <DialogDescription>Crea una nueva cuenta de usuario para el CRM.</DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                               <div className="grid gap-2">
-                                <label className="text-sm font-medium">Full Name</label>
+                                <label className="text-sm font-medium">Nombre Completo</label>
                                 <Input 
-                                  placeholder="John Doe" 
+                                  placeholder="Juan Pérez" 
                                   value={newUser.name}
                                   onChange={(e) => setNewUser({...newUser, name: e.target.value})}
                                 />
                               </div>
                               <div className="grid gap-2">
-                                <label className="text-sm font-medium">Email Address</label>
+                                <label className="text-sm font-medium">Correo Electrónico</label>
                                 <Input 
                                   type="email"
-                                  placeholder="john@leadflow.com" 
+                                  placeholder="juan@leadflow.com" 
                                   value={newUser.email}
                                   onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                                 />
                               </div>
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="grid gap-2">
-                                  <label className="text-sm font-medium">Role</label>
+                                  <label className="text-sm font-medium">Rol</label>
                                   <Select 
                                     value={newUser.role} 
                                     onValueChange={(val) => setNewUser({...newUser, role: val as "Admin" | "Seller"})}
@@ -1566,23 +1565,39 @@ export default function App() {
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="Admin">Admin</SelectItem>
-                                      <SelectItem value="Seller">Seller</SelectItem>
+                                      <SelectItem value="Seller">Vendedor</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div className="grid gap-2">
-                                  <label className="text-sm font-medium">Sales Goal ($)</label>
-                                  <Input 
-                                    type="number"
-                                    value={newUser.salesGoal}
-                                    onChange={(e) => setNewUser({...newUser, salesGoal: Number(e.target.value)})}
-                                  />
+                                  <label className="text-sm font-medium">Sucursal</label>
+                                  <Select 
+                                    value={newUser.sucursal} 
+                                    onValueChange={(val) => setNewUser({...newUser, sucursal: val})}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {sucursales.map(s => (
+                                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
+                              </div>
+                              <div className="grid gap-2">
+                                <label className="text-sm font-medium">Meta de Ventas ($)</label>
+                                <Input 
+                                  type="number"
+                                  value={newUser.salesGoal}
+                                  onChange={(e) => setNewUser({...newUser, salesGoal: Number(e.target.value)})}
+                                />
                               </div>
                             </div>
                             <DialogFooter>
-                              <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancel</Button>
-                              <Button onClick={handleCreateUser} disabled={!newUser.name || !newUser.email}>Create User</Button>
+                              <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancelar</Button>
+                              <Button onClick={handleCreateUser} disabled={!newUser.name || !newUser.email}>Crear Usuario</Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
@@ -1592,12 +1607,12 @@ export default function App() {
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-slate-50/50">
-                            <TableHead className="font-semibold">User</TableHead>
-                            <TableHead className="font-semibold">Role</TableHead>
-                            <TableHead className="font-semibold">Workload</TableHead>
-                            <TableHead className="font-semibold">Pipeline Value</TableHead>
-                            <TableHead className="font-semibold">Sales Goal ($)</TableHead>
-                            <TableHead className="text-right font-semibold">Actions</TableHead>
+                            <TableHead className="font-semibold">Usuario</TableHead>
+                            <TableHead className="font-semibold">Rol</TableHead>
+                            <TableHead className="font-semibold">Carga de Trabajo</TableHead>
+                            <TableHead className="font-semibold">Valor del Pipeline</TableHead>
+                            <TableHead className="font-semibold">Meta de Ventas ($)</TableHead>
+                            <TableHead className="text-right font-semibold">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1619,7 +1634,7 @@ export default function App() {
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="Admin">Admin</SelectItem>
-                                    <SelectItem value="Seller">Seller</SelectItem>
+                                    <SelectItem value="Seller">Vendedor</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </TableCell>
@@ -1631,8 +1646,8 @@ export default function App() {
                                       (user.workload?.activeLeads || 0) > 10 ? "text-red-500" : 
                                       (user.workload?.activeLeads || 0) > 5 ? "text-orange-500" : "text-green-500"
                                     }>
-                                      {(user.workload?.activeLeads || 0) > 10 ? "High" : 
-                                       (user.workload?.activeLeads || 0) > 5 ? "Medium" : "Low"}
+                                      {(user.workload?.activeLeads || 0) > 10 ? "Alta" : 
+                                       (user.workload?.activeLeads || 0) > 5 ? "Media" : "Baja"}
                                     </span>
                                   </div>
                                   <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -1665,7 +1680,7 @@ export default function App() {
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button variant="ghost" size="sm" className="h-8">View Details</Button>
+                                <Button variant="ghost" size="sm" className="h-8">Ver Detalles</Button>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1680,16 +1695,16 @@ export default function App() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <h3 className="text-lg font-bold flex items-center gap-2">
                         <Users className="w-5 h-5 text-slate-400" />
-                        Team Workload Oversight
+                        Supervisión de Carga de Trabajo
                       </h3>
                       
                       <div className="flex flex-wrap items-center gap-4">
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Search</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar</p>
                           <div className="relative w-full md:w-64">
                             <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                             <Input 
-                              placeholder="Search leads or companies..." 
+                              placeholder="Buscar leads o empresas..." 
                               className="pl-9 h-9"
                               value={adminSearch}
                               onChange={(e) => setAdminSearch(e.target.value)}
@@ -1697,14 +1712,14 @@ export default function App() {
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Seller</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
                           <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
                             <SelectTrigger className="w-[150px] h-9">
-                              <SelectValue placeholder="All Sellers" />
+                              <SelectValue placeholder="Todos los Vendedores" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All Sellers</SelectItem>
-                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              <SelectItem value="all">Todos los Vendedores</SelectItem>
+                              <SelectItem value="unassigned">Sin asignar</SelectItem>
                               {users.map(u => (
                                 <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                               ))}
@@ -1712,13 +1727,13 @@ export default function App() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Status</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
                           <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
                             <SelectTrigger className="w-[150px] h-9">
-                              <SelectValue placeholder="All Statuses" />
+                              <SelectValue placeholder="Todos los Estados" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All Statuses</SelectItem>
+                              <SelectItem value="all">Todos los Estados</SelectItem>
                               <SelectItem value="ASIGNADO">Asignado</SelectItem>
                               <SelectItem value="CONTACTADO">Contactado</SelectItem>
                               <SelectItem value="NEGOCIACION">Negociación</SelectItem>
@@ -1756,7 +1771,7 @@ export default function App() {
                                   "absolute top-0 right-0 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white rounded-bl-lg",
                                   stuckLevel === "critical" ? "bg-red-500" : "bg-orange-500"
                                 )}>
-                                  {stuckLevel === "critical" ? "Critical Delay" : "Delayed"}
+                                  {stuckLevel === "critical" ? "Retraso Crítico" : "Retrasado"}
                                 </div>
                               )}
                               <CardHeader className="p-4 pb-2">
@@ -1769,7 +1784,7 @@ export default function App() {
                               </CardHeader>
                               <CardContent className="p-4 pt-2 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-slate-500">Value</span>
+                                  <span className="text-xs text-slate-500">Valor</span>
                                   <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
                                 </div>
                                 <div className="space-y-2 pt-2 border-t border-slate-50">
@@ -1779,7 +1794,7 @@ export default function App() {
                                         {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name.charAt(0) : "?"}
                                       </div>
                                       <span className="text-xs text-slate-600">
-                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name : "Unassigned"}
+                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name : "Sin asignar"}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1 text-[10px] text-slate-400">
@@ -1816,7 +1831,7 @@ export default function App() {
                         }).length === 0 && (
                         <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border-2 border-dashed border-slate-100">
                           <Filter className="w-8 h-8 mb-2 opacity-20" />
-                          <p className="text-sm">No leads match your current filters.</p>
+                          <p className="text-sm">No hay leads que coincidan con los filtros actuales.</p>
                         </div>
                       )}
                     </div>
@@ -1830,17 +1845,17 @@ export default function App() {
                         <div>
                           <CardTitle className="text-lg flex items-center gap-2">
                             <History className="w-5 h-5 text-slate-400" />
-                            Global Activity Timeline
+                            Línea de Tiempo de Actividad Global
                           </CardTitle>
-                          <CardDescription>A complete history of all updates across the team.</CardDescription>
+                          <CardDescription>Un historial completo de todas las actualizaciones del equipo.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
                           <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
                             <SelectTrigger className="w-[150px] h-8 text-xs">
-                              <SelectValue placeholder="Filter by Seller" />
+                              <SelectValue placeholder="Filtrar por Vendedor" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All Sellers</SelectItem>
+                              <SelectItem value="all">Todos los Vendedores</SelectItem>
                               {users.map(u => (
                                 <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                               ))}
@@ -1853,12 +1868,12 @@ export default function App() {
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-slate-50/50">
-                            <TableHead className="font-semibold">Seller</TableHead>
-                            <TableHead className="font-semibold">Lead / Company</TableHead>
-                            <TableHead className="font-semibold">Update</TableHead>
-                            <TableHead className="font-semibold">Comment</TableHead>
-                            <TableHead className="font-semibold">Amount</TableHead>
-                            <TableHead className="text-right font-semibold">Date</TableHead>
+                            <TableHead className="font-semibold">Vendedor</TableHead>
+                            <TableHead className="font-semibold">Lead / Empresa</TableHead>
+                            <TableHead className="font-semibold">Actualización</TableHead>
+                            <TableHead className="font-semibold">Comentario</TableHead>
+                            <TableHead className="font-semibold">Monto</TableHead>
+                            <TableHead className="text-right font-semibold">Fecha</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1874,7 +1889,7 @@ export default function App() {
                                       {users.find(u => u.id === update.updatedBy)?.name.charAt(0) || "S"}
                                     </div>
                                     <span className="text-sm font-medium">
-                                      {users.find(u => u.id === update.updatedBy)?.name || "System"}
+                                      {users.find(u => u.id === update.updatedBy)?.name || "Sistema"}
                                     </span>
                                   </div>
                                 </TableCell>
@@ -1916,7 +1931,7 @@ export default function App() {
                           {leads.flatMap(l => l.history).length === 0 && (
                             <TableRow>
                               <TableCell colSpan={6} className="h-32 text-center text-slate-400">
-                                No activity recorded yet.
+                                Aún no se ha registrado actividad.
                               </TableCell>
                             </TableRow>
                           )}
@@ -1943,13 +1958,13 @@ export default function App() {
                   Historial: {selectedLead?.name}
                 </DialogTitle>
                 <DialogDescription>
-                  Timeline of all status changes and comments.
+                  Línea de tiempo de todos los cambios de estado y comentarios.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex-1 overflow-y-auto p-6 pt-4">
                 <div className="relative border-l-2 border-slate-100 ml-3 space-y-8">
                   {!selectedLead || selectedLead.history.length === 0 ? (
-                    <p className="text-center text-slate-400 italic py-8">No history recorded yet.</p>
+                    <p className="text-center text-slate-400 italic py-8">Aún no se ha registrado historial.</p>
                   ) : (
                     [...selectedLead.history].reverse().map((item) => (
                       <div key={item.id} className="relative pl-8">
@@ -1960,7 +1975,7 @@ export default function App() {
                               {getStatusBadge(item.status)}
                               <span className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
                             </div>
-                            <span className="text-[8px] font-bold text-slate-500 uppercase">by {users.find(u => u.id === item.updatedBy)?.name || "System"}</span>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase">por {users.find(u => u.id === item.updatedBy)?.name || "Sistema"}</span>
                           </div>
                           <p className="text-xs text-slate-700 mt-1">{item.comment}</p>
                           {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
