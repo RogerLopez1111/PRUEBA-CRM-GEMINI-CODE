@@ -1,8 +1,8 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Lead, User, LeadStatus } from "./src/types.ts";
-import { supabase } from "./src/db.ts";
+import { Lead, User, LeadStatus } from "./src/types";
+import { supabase } from "./src/db";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
