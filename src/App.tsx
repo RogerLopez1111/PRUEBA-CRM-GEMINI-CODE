@@ -675,7 +675,7 @@ export default function App() {
               </TabsTrigger>
               <TabsTrigger value="kanban" className="gap-2 px-6">
                 <Kanban className="w-4 h-4" />
-                Kanban
+                Pipeline
               </TabsTrigger>
               <TabsTrigger value="performance" className="gap-2 px-6">
                 <BarChart3 className="w-4 h-4" />
