@@ -295,6 +295,7 @@ export default function App() {
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Error al cargar los datos");
+      setLoading(false);
     }
   };
 
@@ -313,6 +314,7 @@ export default function App() {
         else setPerfUserFilter("all");
         localStorage.setItem("leadflow_user", JSON.stringify(user));
         toast.success(`Bienvenido de nuevo, ${user.name}`);
+        fetchData();
       } else {
         toast.error("Correo electrónico inválido");
       }
