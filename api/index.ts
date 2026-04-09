@@ -204,9 +204,21 @@ app.post("/api/leads/:id/assign", async (req, res) => {
   const { userId } = req.body;
   const now = new Date().toISOString();
 
+  // Look up the seller's branch so the lead is automatically placed in it
+  const { data: seller } = await supabase
+    .from("vendedores")
+    .select("sucursal_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const updates: Record<string, any> = { vendedor_id: userId, status: "ASIGNADO", updated_at: now };
+  if (seller?.sucursal_id) {
+    updates.sucursal_id = seller.sucursal_id;
+  }
+
   const { error } = await supabase
     .from("clientes")
-    .update({ vendedor_id: userId, status: "ASIGNADO", updated_at: now })
+    .update(updates)
     .eq("id", id);
 
   if (!error) {
@@ -263,17 +275,29 @@ app.post("/api/leads", async (req, res) => {
   const now = new Date().toISOString();
   const status = userId ? "ASIGNADO" : "CONTACTADO";
 
-  const { data: sucursalRow } = await supabase
-    .from("sucursales")
-    .select("id")
-    .or(`nombre.eq.${leadData.sucursal},id.eq.${leadData.sucursal}`)
-    .maybeSingle();
-
   const { data: segmentoRow } = await supabase
     .from("segmentos")
     .select("id")
     .or(`descripcion.eq.${leadData.segmento},id.eq.${leadData.segmento}`)
     .maybeSingle();
+
+  // If a seller is assigned, use their branch; otherwise fall back to the provided sucursal
+  let sucursalId = "S001";
+  if (userId) {
+    const { data: seller } = await supabase
+      .from("vendedores")
+      .select("sucursal_id")
+      .eq("id", userId)
+      .maybeSingle();
+    sucursalId = seller?.sucursal_id || "S001";
+  } else if (leadData.sucursal) {
+    const { data: sucursalRow } = await supabase
+      .from("sucursales")
+      .select("id")
+      .or(`nombre.eq.${leadData.sucursal},id.eq.${leadData.sucursal}`)
+      .maybeSingle();
+    sucursalId = sucursalRow?.id || "S001";
+  }
 
   await supabase.from("clientes").insert({
     id,
@@ -283,7 +307,7 @@ app.post("/api/leads", async (req, res) => {
     status,
     vendedor_id: userId || null,
     valor: leadData.value,
-    sucursal_id: sucursalRow?.id || "S001",
+    sucursal_id: sucursalId,
     segmento_id: segmentoRow?.id || "SEG01",
     created_at: now,
     updated_at: now,
