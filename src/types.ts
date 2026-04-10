@@ -12,9 +12,24 @@ export interface LeadHistory {
   timestamp: string;
 }
 
+export interface Client {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  phone?: string;
+  rfc?: string;
+  city?: string;
+  state?: string;
+  assignedSellerId: string; // Vn_Cve_Vendedor
+  sucursalId: string; // Sc_Cve_Sucursal
+  createdAt: string;
+}
+
 export interface Lead {
   id: string; // Cl_Cve_Cliente
-  name: string; // Cl_Contacto_1
+  clientId: string; // Link to Client
+  name: string; // Cl_Contacto_1 (Denormalized for convenience)
   email: string; // Cl_email_contacto_1
   company: string; // Cl_Razon_Social
   status: LeadStatus; // Cl_Status_CRM
@@ -41,6 +56,7 @@ export interface User {
   name: string; // Vn_Descripcion
   email: string; // Vn_Email
   role: 'Admin' | 'Seller'; // Vn_Rol_CRM
+  sucursalId: string; // Sc_Cve_Sucursal
   performance: {
     totalClosed: number;
     totalValue: number;

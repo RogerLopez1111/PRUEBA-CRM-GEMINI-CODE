@@ -273,7 +273,7 @@ app.post("/api/leads", async (req, res) => {
   const { userId, ...leadData } = req.body;
   const id = Math.random().toString(36).substr(2, 9);
   const now = new Date().toISOString();
-  const status = userId ? "ASIGNADO" : "CONTACTADO";
+  const status = "ASIGNADO";
 
   const { data: segmentoRow } = await supabase
     .from("segmentos")
@@ -313,16 +313,14 @@ app.post("/api/leads", async (req, res) => {
     updated_at: now,
   });
 
-  if (userId) {
-    await supabase.from("lead_history").insert({
-      id: Math.random().toString(36).substr(2, 9),
-      lead_id: id,
-      status: "ASIGNADO",
-      comment: "Lead created and self-assigned",
-      updated_by: userId,
-      timestamp: now,
-    });
-  }
+  await supabase.from("lead_history").insert({
+    id: Math.random().toString(36).substr(2, 9),
+    lead_id: id,
+    status: "ASIGNADO",
+    comment: userId ? "Lead created and self-assigned" : "Lead created in ASIGNADO stage",
+    updated_by: userId || "System",
+    timestamp: now,
+  });
 
   const leads = await getLeadsWithHistory();
   res.status(201).json(leads.find((l) => l.id === id));

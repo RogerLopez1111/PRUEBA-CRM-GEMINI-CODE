@@ -14,6 +14,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Plus,
+  Search,
   Filter,
   BarChart3,
   LayoutDashboard,
@@ -37,10 +38,12 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { Lead, User, LeadStatus } from "./types";
+import { Lead, User, LeadStatus, Client } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -147,7 +150,13 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
       style={style}
       {...attributes}
       {...listeners}
-      className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing group relative"
+      onClick={(e) => {
+        // Only trigger if we're not dragging
+        if (!isDragging) {
+          onUpdate();
+        }
+      }}
+      className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:border-primary/50 transition-all group relative"
     >
       <div className="flex justify-between items-start mb-2">
         <h4 className="font-bold text-sm group-hover:text-primary transition-colors">{lead.name}</h4>
@@ -166,32 +175,8 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
               ?
             </div>
           )}
-          <Button 
-            variant="ghost" 
-            size="icon-xs" 
-            className="h-6 w-6 rounded-full hover:bg-slate-100" 
-            title="Ver Historial"
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate();
-            }}
-          >
-            <History className="w-3 h-3" />
-          </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="ghost" 
-            size="icon-xs" 
-            className="h-6 w-6 rounded-full hover:bg-slate-100" 
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate();
-            }}
-            title="Actualizar Estado"
-          >
-            <MessageSquare className="w-3 h-3" />
-          </Button>
           <div className="flex items-center gap-1 text-[10px] text-slate-400">
             <Clock className="w-3 h-3" />
             <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
@@ -205,13 +190,24 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
 export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [sucursales, setSucursales] = useState<{id: string, name: string}[]>([]);
   const [segmentos, setSegmentos] = useState<{id: string, name: string}[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
+  const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
-  const [newLead, setNewLead] = useState({ name: "", email: "", company: "", value: 0, sucursal: "", segmento: "" });
+  const [newLead, setNewLead] = useState({ 
+    name: "", 
+    email: "", 
+    company: "", 
+    value: 0, 
+    sucursal: "", 
+    segmento: "",
+    isExistingClient: false,
+    clientId: ""
+  });
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
@@ -230,6 +226,7 @@ export default function App() {
   const [adminFilterSucursal, setAdminFilterSucursal] = useState<string>("all");
   const [adminFilterSegmento, setAdminFilterSegmento] = useState<string>("all");
   const [adminSearch, setAdminSearch] = useState("");
+  const [myLeadsSearch, setMyLeadsSearch] = useState("");
 
   // Kanban Filters
   const [kanbanFilterSeller, setKanbanFilterSeller] = useState<string>("all");
@@ -268,26 +265,29 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [leadsRes, usersRes, sucursalesRes, segmentosRes] = await Promise.all([
+      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes] = await Promise.all([
         fetch("/api/leads"),
         fetch("/api/users"),
+        fetch("/api/clients"),
         fetch("/api/lookups/sucursales"),
         fetch("/api/lookups/segmentos")
       ]);
       const leadsData = await leadsRes.json();
       const usersData = await usersRes.json();
+      const clientsData = await clientsRes.json();
       const sucursalesData = await sucursalesRes.json();
       const segmentosData = await segmentosRes.json();
       
       setLeads(leadsData);
       setUsers(usersData);
+      setClients(clientsData);
       setSucursales(sucursalesData);
       setSegmentos(segmentosData);
       
       // Set defaults for new lead if not already set
       setNewLead(prev => ({
         ...prev,
-        sucursal: prev.sucursal || (sucursalesData.length > 0 ? sucursalesData[0].name : ""),
+        sucursal: prev.sucursal || (currentUser?.role === "Seller" ? sucursalesData.find((s: any) => s.id === currentUser.sucursalId)?.name : "") || (sucursalesData.length > 0 ? sucursalesData[0].name : ""),
         segmento: prev.segmento || (segmentosData.length > 0 ? segmentosData[0].name : "")
       }));
       
@@ -448,8 +448,10 @@ export default function App() {
           email: "", 
           company: "", 
           value: 0, 
-          sucursal: sucursales.length > 0 ? sucursales[0].name : "", 
-          segmento: segmentos.length > 0 ? segmentos[0].name : "" 
+          sucursal: (currentUser?.role === "Seller" ? sucursales.find(s => s.id === currentUser.sucursalId)?.name : "") || (sucursales.length > 0 ? sucursales[0].name : ""), 
+          segmento: segmentos.length > 0 ? segmentos[0].name : "",
+          isExistingClient: false,
+          clientId: ""
         });
         fetchData();
       }
@@ -695,14 +697,16 @@ export default function App() {
                   <Plus className="w-4 h-4" />
                   Nuevo Lead
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
                     <DialogTitle>Crear Nuevo Lead</DialogTitle>
-                    <DialogDescription>Ingresa los detalles del cliente potencial.</DialogDescription>
+                    <DialogDescription>
+                      Registra un nuevo lead en el sistema. Puedes crear un cliente nuevo o seleccionar uno existente.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Nombre</label>
+                      <label className="text-sm font-medium">Nombre del Contacto</label>
                       <Input 
                         placeholder="Juan Pérez" 
                         value={newLead.name}
@@ -710,8 +714,9 @@ export default function App() {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Correo</label>
+                      <label className="text-sm font-medium">Correo Electrónico</label>
                       <Input 
+                        type="email" 
                         placeholder="juan@ejemplo.com" 
                         value={newLead.email}
                         onChange={(e) => setNewLead({...newLead, email: e.target.value})}
@@ -719,12 +724,61 @@ export default function App() {
                     </div>
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Empresa</label>
-                      <Input 
-                        placeholder="TechCorp" 
-                        value={newLead.company}
-                        onChange={(e) => setNewLead({...newLead, company: e.target.value})}
-                      />
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="TechCorp" 
+                          value={newLead.company}
+                          onChange={(e) => setNewLead({
+                            ...newLead, 
+                            company: e.target.value,
+                            isExistingClient: false,
+                            clientId: ""
+                          })}
+                          className="flex-1"
+                        />
+                        <Popover open={isClientSearchOpen} onOpenChange={setIsClientSearchOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="shrink-0">
+                              <Search className="w-4 h-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[300px]" align="end">
+                            <Command>
+                              <CommandInput placeholder="Buscar cliente existente..." />
+                              <CommandList>
+                                <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                                <CommandGroup heading="Clientes Registrados">
+                                  {clients.map((client) => (
+                                    <CommandItem
+                                      key={client.id}
+                                      value={`${client.name} ${client.company}`}
+                                      onSelect={() => {
+                                        setNewLead({
+                                          ...newLead,
+                                          isExistingClient: true,
+                                          clientId: client.id,
+                                          name: client.name,
+                                          company: client.company,
+                                          email: client.email,
+                                          sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal
+                                        });
+                                        setIsClientSearchOpen(false);
+                                      }}
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="font-medium">{client.company}</span>
+                                        <span className="text-xs text-slate-500">{client.name}</span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
+
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Valor Potencial ($)</label>
                       <Input 
@@ -734,6 +788,7 @@ export default function App() {
                         onChange={(e) => setNewLead({...newLead, value: Number(e.target.value)})}
                       />
                     </div>
+                    
                     <div className="grid grid-cols-2 gap-4">
                       <div className="grid gap-2">
                         <label className="text-sm font-medium">Sucursal</label>
@@ -794,7 +849,7 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-slate-500">Nuevos Leads</p>
-                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "CONTACTADO").length}</h3>
+                        <h3 className="text-2xl font-bold">{leads.filter(l => l.status === "ASIGNADO").length}</h3>
                       </div>
                       <div className="bg-orange-50 p-2 rounded-lg">
                         <Clock className="w-5 h-5 text-orange-600" />
@@ -856,9 +911,12 @@ export default function App() {
                           <SelectContent>
                             <SelectItem value="all">Todos los Vendedores</SelectItem>
                             <SelectItem value="unassigned">Sin asignar</SelectItem>
-                            {users.map(u => (
-                              <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                            ))}
+                            {users
+                              .filter(u => adminFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === adminFilterSucursal)?.id)
+                              .map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                              ))
+                            }
                           </SelectContent>
                         </Select>
                       </div>
@@ -1006,23 +1064,46 @@ export default function App() {
           )}
 
           <TabsContent value="my-leads" className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight">Mis Leads Activos</h2>
                 <p className="text-slate-500">Gestiona y actualiza el estado de los leads asignados a ti.</p>
               </div>
+              <div className="w-full md:w-72">
+                <div className="relative">
+                  <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input 
+                    placeholder="Buscar cliente o empresa..." 
+                    className="pl-9 h-10 shadow-sm bg-white"
+                    value={myLeadsSearch}
+                    onChange={(e) => setMyLeadsSearch(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {leads.filter(l => l.assignedTo === currentUser.id).length === 0 ? (
+              {leads.filter(l => {
+                const isAssigned = l.assignedTo === currentUser.id;
+                const matchesSearch = !myLeadsSearch || 
+                  l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) || 
+                  l.company.toLowerCase().includes(myLeadsSearch.toLowerCase());
+                return isAssigned && matchesSearch;
+              }).length === 0 ? (
                 <Card className="border-dashed border-2 bg-transparent">
                   <CardContent className="flex flex-col items-center justify-center py-12 text-slate-400">
                     <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-                    <p>Aún no tienes leads asignados.</p>
+                    <p>{myLeadsSearch ? "No se encontraron leads que coincidan con la búsqueda." : "Aún no tienes leads asignados."}</p>
                   </CardContent>
                 </Card>
               ) : (
-                leads.filter(l => l.assignedTo === currentUser.id).map((lead) => (
+                leads.filter(l => {
+                  const isAssigned = l.assignedTo === currentUser.id;
+                  const matchesSearch = !myLeadsSearch || 
+                    l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) || 
+                    l.company.toLowerCase().includes(myLeadsSearch.toLowerCase());
+                  return isAssigned && matchesSearch;
+                }).map((lead) => (
                   <Card key={lead.id} className="border-none shadow-sm bg-white overflow-hidden">
                     <CardContent className="p-0">
                       <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-6">
@@ -1142,9 +1223,12 @@ export default function App() {
                       <SelectContent>
                         <SelectItem value="all">Todos los Vendedores</SelectItem>
                         <SelectItem value="unassigned">Sin asignar</SelectItem>
-                        {users.map(u => (
-                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                        ))}
+                        {users
+                          .filter(u => kanbanFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === kanbanFilterSucursal)?.id)
+                          .map(u => (
+                            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                          ))
+                        }
                       </SelectContent>
                     </Select>
                   </div>
@@ -1722,8 +1806,25 @@ export default function App() {
                             <SelectContent>
                               <SelectItem value="all">Todos los Vendedores</SelectItem>
                               <SelectItem value="unassigned">Sin asignar</SelectItem>
-                              {users.map(u => (
-                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                              {users
+                                .filter(u => adminFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === adminFilterSucursal)?.id)
+                                .map(u => (
+                                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                ))
+                              }
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
+                          <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
+                            <SelectTrigger className="w-[150px] h-9">
+                              <SelectValue placeholder="Todas las Sucursales" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todas las Sucursales</SelectItem>
+                              {sucursales.map(s => (
+                                <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -1953,7 +2054,10 @@ export default function App() {
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col p-0">
           <div className="flex flex-col md:flex-row h-full">
             {/* Left Side: Timeline History */}
-            <div className="w-full md:w-1/2 border-r border-slate-100 flex flex-col">
+            <div className={cn(
+              "flex flex-col border-slate-100",
+              statusUpdate.status === selectedLead?.status ? "w-full" : "w-full md:w-1/2 border-r"
+            )}>
               <DialogHeader className="p-6 pb-2">
                 <DialogTitle className="flex items-center gap-2">
                   <History className="w-5 h-5 text-primary" />
@@ -2000,119 +2104,126 @@ export default function App() {
                   )}
                 </div>
               </div>
+              {statusUpdate.status === selectedLead?.status && (
+                <DialogFooter className="p-4 bg-white border-t">
+                  <Button variant="outline" onClick={() => setIsStatusUpdateOpen(false)}>Cerrar</Button>
+                </DialogFooter>
+              )}
             </div>
 
             {/* Right Side: Update Form */}
-            <div className="w-full md:w-1/2 flex flex-col bg-slate-50/30">
-              <DialogHeader className="p-6 pb-2">
-                <DialogTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-primary" />
-                  Nueva Actualización
-                </DialogTitle>
-                <DialogDescription>
-                  Registra un nuevo avance para este lead.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
-                <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevo Estado</label>
-                  <Select 
-                    value={statusUpdate.status} 
-                    onValueChange={(val) => setStatusUpdate({...statusUpdate, status: val as LeadStatus})}
-                  >
-                    <SelectTrigger className="bg-white">
-                      <SelectValue placeholder="Seleccionar estado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ASIGNADO">Asignado</SelectItem>
-                      <SelectItem value="CONTACTADO">Contactado</SelectItem>
-                      <SelectItem value="NEGOCIACION">Negociación</SelectItem>
-                      <SelectItem value="COTIZADO">Cotizado</SelectItem>
-                      <SelectItem value="FACTURADO">Facturado</SelectItem>
-                      <SelectItem value="ENTREGADO">Entregado</SelectItem>
-                      <SelectItem value="RECHAZADO">Rechazado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            {statusUpdate.status !== selectedLead?.status && (
+              <div className="w-full md:w-1/2 flex flex-col bg-slate-50/30">
+                <DialogHeader className="p-6 pb-2">
+                  <DialogTitle className="flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-primary" />
+                    Nueva Actualización
+                  </DialogTitle>
+                  <DialogDescription>
+                    Registra un nuevo avance para este lead.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevo Estado</label>
+                    <Select 
+                      value={statusUpdate.status} 
+                      onValueChange={(val) => setStatusUpdate({...statusUpdate, status: val as LeadStatus})}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Seleccionar estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ASIGNADO">Asignado</SelectItem>
+                        <SelectItem value="CONTACTADO">Contactado</SelectItem>
+                        <SelectItem value="NEGOCIACION">Negociación</SelectItem>
+                        <SelectItem value="COTIZADO">Cotizado</SelectItem>
+                        <SelectItem value="FACTURADO">Facturado</SelectItem>
+                        <SelectItem value="ENTREGADO">Entregado</SelectItem>
+                        <SelectItem value="RECHAZADO">Rechazado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <MessageSquare className="w-3 h-3" />
-                    Comentario
-                  </label>
-                  <Input 
-                    placeholder="Describe el avance..." 
-                    value={statusUpdate.comment}
-                    onChange={(e) => setStatusUpdate({...statusUpdate, comment: e.target.value})}
-                    className="bg-white"
-                  />
-                </div>
-
-                {statusUpdate.status === "COTIZADO" && (
-                  <div className="grid gap-2 p-3 bg-orange-50 rounded-lg border border-orange-100">
-                    <label className="text-xs font-bold text-orange-700 flex items-center gap-2">
-                      <TrendingUp className="w-3 h-3" />
-                      Monto Cotizado ($)
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <MessageSquare className="w-3 h-3" />
+                      Comentario
                     </label>
                     <Input 
-                      type="number"
-                      placeholder="0.00" 
-                      value={statusUpdate.quotedAmount}
-                      onChange={(e) => setStatusUpdate({...statusUpdate, quotedAmount: Number(e.target.value)})}
-                      className="bg-white border-orange-200 focus-visible:ring-orange-500 h-8 text-sm"
+                      placeholder="Describe el avance..." 
+                      value={statusUpdate.comment}
+                      onChange={(e) => setStatusUpdate({...statusUpdate, comment: e.target.value})}
+                      className="bg-white"
                     />
                   </div>
-                )}
 
-                {statusUpdate.status === "FACTURADO" && (
-                  <div className="grid gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                    <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
-                      <FileText className="w-3 h-3" />
-                      Monto Facturado ($)
-                    </label>
-                    <Input 
-                      type="number"
-                      placeholder="0.00" 
-                      value={statusUpdate.invoicedAmount}
-                      onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
-                      className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
-                    />
-                  </div>
-                )}
-
-                <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <Paperclip className="w-3 h-3" />
-                    URL de Evidencia (Opcional)
-                  </label>
-                  <Input 
-                    placeholder="https://example.com/evidencia.pdf" 
-                    value={statusUpdate.evidenceUrl}
-                    onChange={(e) => setStatusUpdate({...statusUpdate, evidenceUrl: e.target.value})}
-                    className="bg-white h-8 text-sm"
-                  />
-                </div>
-              </div>
-              <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
-                <Button variant="ghost" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cancelar</Button>
-                <Button 
-                  size="sm"
-                  onClick={() => handleStatusChange(
-                    selectedLead!.id, 
-                    statusUpdate.status as LeadStatus, 
-                    statusUpdate.comment, 
-                    statusUpdate.evidenceUrl,
-                    statusUpdate.quotedAmount,
-                    statusUpdate.invoicedAmount
+                  {statusUpdate.status === "COTIZADO" && (
+                    <div className="grid gap-2 p-3 bg-orange-50 rounded-lg border border-orange-100">
+                      <label className="text-xs font-bold text-orange-700 flex items-center gap-2">
+                        <TrendingUp className="w-3 h-3" />
+                        Monto Cotizado ($)
+                      </label>
+                      <Input 
+                        type="number"
+                        placeholder="0.00" 
+                        value={statusUpdate.quotedAmount}
+                        onChange={(e) => setStatusUpdate({...statusUpdate, quotedAmount: Number(e.target.value)})}
+                        className="bg-white border-orange-200 focus-visible:ring-orange-500 h-8 text-sm"
+                      />
+                    </div>
                   )}
-                  disabled={!statusUpdate.comment}
-                  className="gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Confirmar Actualización
-                </Button>
-              </DialogFooter>
-            </div>
+
+                  {statusUpdate.status === "FACTURADO" && (
+                    <div className="grid gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                      <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                        <FileText className="w-3 h-3" />
+                        Monto Facturado ($)
+                      </label>
+                      <Input 
+                        type="number"
+                        placeholder="0.00" 
+                        value={statusUpdate.invoicedAmount}
+                        onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
+                        className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Paperclip className="w-3 h-3" />
+                      URL de Evidencia (Opcional)
+                    </label>
+                    <Input 
+                      placeholder="https://example.com/evidencia.pdf" 
+                      value={statusUpdate.evidenceUrl}
+                      onChange={(e) => setStatusUpdate({...statusUpdate, evidenceUrl: e.target.value})}
+                      className="bg-white h-8 text-sm"
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
+                  <Button variant="ghost" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cancelar</Button>
+                  <Button 
+                    size="sm"
+                    onClick={() => handleStatusChange(
+                      selectedLead!.id, 
+                      statusUpdate.status as LeadStatus, 
+                      statusUpdate.comment, 
+                      statusUpdate.evidenceUrl,
+                      statusUpdate.quotedAmount,
+                      statusUpdate.invoicedAmount
+                    )}
+                    disabled={!statusUpdate.comment}
+                    className="gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmar Actualización
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -52,6 +52,7 @@ async function getUsersWithPerformance(): Promise<User[]> {
           pipelineValue,
         },
         Vn_Sucursal: v.sucursal_id,
+        sucursalId: v.sucursal_id,
       };
     })
   );
@@ -72,6 +73,7 @@ async function getLeadsWithHistory(): Promise<Lead[]> {
     company: c.razon_social,
     status: c.status as LeadStatus,
     assignedTo: c.vendedor_id,
+    clientId: c.id,
     value: c.valor || 0,
     sucursal: (c.sucursales as any)?.nombre || "",
     segmento: (c.segmentos as any)?.descripcion || "",
@@ -182,6 +184,29 @@ export function createApp() {
     res.json(await getLeadsWithHistory());
   });
 
+  app.get("/api/clients", async (_req, res) => {
+    const { data: clients } = await supabase
+      .from("clientes")
+      .select("*, sucursales(nombre)")
+      .order("contacto", { ascending: true });
+    
+    if (!clients) return res.json([]);
+
+    res.json(clients.map(c => ({
+      id: c.id,
+      name: c.contacto || "",
+      email: c.email || "",
+      company: c.razon_social,
+      phone: c.telefono_1,
+      rfc: c.r_f_c,
+      city: c.ciudad,
+      state: c.estado,
+      assignedSellerId: c.vendedor_id,
+      sucursalId: c.sucursal_id,
+      createdAt: c.created_at
+    })));
+  });
+
   app.get("/api/lookups/sucursales", async (_req, res) => {
     const { data } = await supabase.from("sucursales").select("id, nombre");
     res.json((data || []).map((s) => ({ id: s.id, name: s.nombre })));
@@ -251,50 +276,94 @@ export function createApp() {
   });
 
   app.post("/api/leads", async (req, res) => {
-    const { userId, ...leadData } = req.body;
-    const id = Math.random().toString(36).substr(2, 9);
+    const { userId, isExistingClient, clientId, ...leadData } = req.body;
     const now = new Date().toISOString();
-    const status = userId ? "ASIGNADO" : "CONTACTADO";
+    const status = "ASIGNADO";
+    
+    let targetClientId = clientId;
 
-    const { data: sucursalRow } = await supabase
-      .from("sucursales")
-      .select("id")
-      .or(`nombre.eq.${leadData.sucursal},id.eq.${leadData.sucursal}`)
-      .maybeSingle();
+    if (!isExistingClient) {
+      targetClientId = Math.random().toString(36).substr(2, 9);
+      
+      const { data: sucursalRow } = await supabase
+        .from("sucursales")
+        .select("id")
+        .or(`nombre.eq.${leadData.sucursal},id.eq.${leadData.sucursal}`)
+        .maybeSingle();
 
-    const { data: segmentoRow } = await supabase
-      .from("segmentos")
-      .select("id")
-      .or(`descripcion.eq.${leadData.segmento},id.eq.${leadData.segmento}`)
-      .maybeSingle();
+      const { data: segmentoRow } = await supabase
+        .from("segmentos")
+        .select("id")
+        .or(`descripcion.eq.${leadData.segmento},id.eq.${leadData.segmento}`)
+        .maybeSingle();
 
-    await supabase.from("clientes").insert({
-      id,
-      contacto: leadData.name,
-      email: leadData.email,
-      razon_social: leadData.company,
-      status,
-      vendedor_id: userId || null,
-      valor: leadData.value,
-      sucursal_id: sucursalRow?.id || "S001",
-      segmento_id: segmentoRow?.id || "SEG01",
-      created_at: now,
-      updated_at: now,
-    });
-
-    if (userId) {
-      await supabase.from("lead_history").insert({
-        id: Math.random().toString(36).substr(2, 9),
-        lead_id: id,
-        status: "ASIGNADO",
-        comment: "Lead created and self-assigned",
-        updated_by: userId,
-        timestamp: now,
+      await supabase.from("clientes").insert({
+        id: targetClientId,
+        contacto: leadData.name,
+        email: leadData.email,
+        razon_social: leadData.company,
+        status,
+        vendedor_id: userId || null,
+        valor: leadData.value,
+        sucursal_id: sucursalRow?.id || "S001",
+        segmento_id: segmentoRow?.id || "SEG01",
+        created_at: now,
+        updated_at: now,
       });
+    } else {
+      // If existing client, we might want to update its status to ASIGNADO for the new lead context
+      // or just create a new lead entry if we had a separate leads table.
+      // Since current schema uses 'clientes' table as leads, we might be creating a "new lead" 
+      // which in this schema is actually just another entry in 'clientes' or updating the existing one.
+      // The user said "create a new lead that creates a new client or choose from the existing pool".
+      // If choosing from existing pool, it implies the client already exists.
+      // In this schema, 'clientes' IS the lead. So if we choose an existing client, 
+      // are we creating a NEW lead for that same client? 
+      // If 'clientes' table represents both the entity and the lead, then a client can have multiple leads?
+      // Usually, one row in 'clientes' = one lead/opportunity in this specific app's current state.
+      
+      // Let's assume for now that if it's an existing client, we just update its status and value for a new opportunity,
+      // OR we create a new row with the same client info but a new ID.
+      // Given the requirement "choose from existing pool", let's create a NEW lead row but linked to that client info.
+      // Wait, the schema doesn't have a separate 'leads' table. It uses 'clientes'.
+      // If I create a new row in 'clientes', it's a new lead.
+      
+      targetClientId = Math.random().toString(36).substr(2, 9);
+      
+      const { data: existingClient } = await supabase
+        .from("clientes")
+        .select("*")
+        .eq("id", clientId)
+        .maybeSingle();
+
+      if (existingClient) {
+        await supabase.from("clientes").insert({
+          id: targetClientId,
+          contacto: existingClient.contacto,
+          email: existingClient.email,
+          razon_social: existingClient.razon_social,
+          status,
+          vendedor_id: userId || existingClient.vendedor_id || null,
+          valor: leadData.value,
+          sucursal_id: existingClient.sucursal_id,
+          segmento_id: existingClient.segmento_id,
+          created_at: now,
+          updated_at: now,
+        });
+      }
     }
 
+    await supabase.from("lead_history").insert({
+      id: Math.random().toString(36).substr(2, 9),
+      lead_id: targetClientId,
+      status: "ASIGNADO",
+      comment: userId ? "Lead created and self-assigned" : "Lead created in ASIGNADO stage",
+      updated_by: userId || "System",
+      timestamp: now,
+    });
+
     const leads = await getLeadsWithHistory();
-    res.status(201).json(leads.find((l) => l.id === id));
+    res.status(201).json(leads.find((l) => l.id === targetClientId));
   });
 
   return app;
