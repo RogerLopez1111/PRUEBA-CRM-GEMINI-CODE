@@ -20,7 +20,7 @@ type LeadStatus =
 // ---------------------------------------------------------------------------
 
 async function getUsersWithPerformance() {
-  const { data: vendedores } = await supabase.from("vendedores").select("*");
+  const { data: vendedores } = await supabase.from("vendedores").select("*").eq("Es_Cve_Estado", "AC");
   if (!vendedores) return [];
 
   const now = new Date();
