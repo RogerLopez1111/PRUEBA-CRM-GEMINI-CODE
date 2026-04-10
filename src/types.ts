@@ -1,8 +1,11 @@
+// ERP source: ECO_2020
+// Column names in comments map to the ERP table columns they originate from.
+
 export type LeadStatus = 'ASIGNADO' | 'CONTACTADO' | 'NEGOCIACION' | 'COTIZADO' | 'FACTURADO' | 'ENTREGADO' | 'RECHAZADO';
 
 export interface LeadHistory {
   id: string;
-  leadId: string;
+  leadId: string;       // lead_history.lead_id
   status: LeadStatus;
   comment: string;
   evidenceUrl?: string;
@@ -12,54 +15,57 @@ export interface LeadHistory {
   timestamp: string;
 }
 
+// Maps to Supabase `clientes` table, which mirrors ERP [dbo].[Cliente]
 export interface Client {
-  id: string;
-  name: string;
-  email: string;
-  company: string;
-  phone?: string;
-  rfc?: string;
-  city?: string;
-  state?: string;
-  sucursalId?: string; // from most recent lead, used for pre-fill in new lead dialog
-  createdAt: string;
+  id: string;           // Cl_Cve_Cliente
+  name: string;         // Cl_Contacto_1
+  email: string;        // Cl_email_contacto_1
+  company: string;      // Cl_Razon_Social
+  rfc?: string;         // Cl_R_F_C
+  phone?: string;       // Cl_Telefono_1
+  city?: string;        // Cl_Ciudad
+  state?: string;       // Cl_Estado
+  sucursalId?: string;  // Sc_Cve_Sucursal (from client record or most recent lead)
+  createdAt: string;    // Fecha_Alta
 }
 
+// Maps to Supabase `leads` table (CRM-only, no ERP counterpart)
 export interface Lead {
   id: string;
-  clientId: string;
-  name: string;       // denormalized from clientes.contacto
-  email: string;      // denormalized from clientes.email
-  company: string;    // denormalized from clientes.razon_social
-  status: LeadStatus;
-  assignedTo?: string;
-  value: number;
-  sucursal: string;
-  segmento: string;
-  quotedAmount?: number;
-  invoicedAmount?: number;
-  createdAt: string;
-  updatedAt: string;
+  clientId: string;     // Cl_Cve_Cliente → FK to clientes
+  name: string;         // denormalized from clientes.Cl_Contacto_1
+  email: string;        // denormalized from clientes.Cl_email_contacto_1
+  company: string;      // denormalized from clientes.Cl_Razon_Social
+  status: LeadStatus;   // Cl_Status_CRM
+  assignedTo?: string;  // Vn_Cve_Vendedor → FK to vendedores
+  value: number;        // Cl_Valor_CRM
+  sucursal: string;     // Sc_Cve_Sucursal → resolved name from sucursales.Sc_Descripcion
+  segmento: string;     // Sg_Cve_Segmento → resolved name from segmentos.Sg_Descripcion
+  quotedAmount?: number;   // Cl_QuotedAmount_CRM
+  invoicedAmount?: number; // Cl_InvoicedAmount_CRM
+  createdAt: string;    // Cl_CreatedAt_CRM
+  updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];
 }
 
+// Maps to Supabase `vendedores` table, which mirrors ERP [dbo].[Vendedor]
+// CRM-only additions: Vn_Rol_CRM, Vn_Meta_Ventas_CRM
 export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Admin' | 'Seller';
-  sucursalId: string;
+  id: string;           // Vn_Cve_Vendedor
+  name: string;         // Vn_Descripcion
+  email: string;        // Vn_Email
+  role: 'Admin' | 'Seller'; // Vn_Rol_CRM
+  sucursalId: string;   // Vn_Sucursal
   performance: {
     totalClosed: number;
     totalValue: number;
     conversionRate: number;
-    salesGoal: number;
+    salesGoal: number;  // Vn_Meta_Ventas_CRM
   };
   workload?: {
     activeLeads: number;
     pipelineValue: number;
   };
-  Vn_Sucursal?: string;
 }
 
 export interface PerformanceMetric {

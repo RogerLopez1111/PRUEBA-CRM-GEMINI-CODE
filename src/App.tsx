@@ -918,7 +918,7 @@ export default function App() {
                             <SelectItem value="all">Todos los Vendedores</SelectItem>
                             <SelectItem value="unassigned">Sin asignar</SelectItem>
                             {users
-                              .filter(u => adminFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === adminFilterSucursal)?.id)
+                              .filter(u => adminFilterSucursal === "all" || u.sucursalId === sucursales.find(s => s.name === adminFilterSucursal)?.id)
                               .map(u => (
                                 <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                               ))
@@ -1230,7 +1230,7 @@ export default function App() {
                         <SelectItem value="all">Todos los Vendedores</SelectItem>
                         <SelectItem value="unassigned">Sin asignar</SelectItem>
                         {users
-                          .filter(u => kanbanFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === kanbanFilterSucursal)?.id)
+                          .filter(u => kanbanFilterSucursal === "all" || u.sucursalId === sucursales.find(s => s.name === kanbanFilterSucursal)?.id)
                           .map(u => (
                             <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                           ))
@@ -1813,7 +1813,7 @@ export default function App() {
                               <SelectItem value="all">Todos los Vendedores</SelectItem>
                               <SelectItem value="unassigned">Sin asignar</SelectItem>
                               {users
-                                .filter(u => adminFilterSucursal === "all" || u.Vn_Sucursal === sucursales.find(s => s.name === adminFilterSucursal)?.id)
+                                .filter(u => adminFilterSucursal === "all" || u.sucursalId === sucursales.find(s => s.name === adminFilterSucursal)?.id)
                                 .map(u => (
                                   <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                                 ))
