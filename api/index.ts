@@ -190,10 +190,15 @@ app.get("/api/leads", async (_req, res) => {
 });
 
 app.get("/api/clients", async (_req, res) => {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("clientes")
-    .select("id, contacto, email, razon_social, vendedor_id, sucursal_id, created_at, rfc, telefono_1, ciudad, estado")
+    .select("id, contacto, email, razon_social, vendedor_id, sucursal_id, created_at")
     .order("created_at", { ascending: false });
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
 
   res.json(
     (data || []).map((c) => ({
@@ -201,10 +206,6 @@ app.get("/api/clients", async (_req, res) => {
       name: c.contacto || "",
       email: c.email || "",
       company: c.razon_social || "",
-      phone: c.telefono_1 ?? undefined,
-      rfc: c.rfc ?? undefined,
-      city: c.ciudad ?? undefined,
-      state: c.estado ?? undefined,
       assignedSellerId: c.vendedor_id || "",
       sucursalId: c.sucursal_id || "",
       createdAt: c.created_at,

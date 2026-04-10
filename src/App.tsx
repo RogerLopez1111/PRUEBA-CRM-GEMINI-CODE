@@ -272,25 +272,31 @@ export default function App() {
         fetch("/api/lookups/sucursales"),
         fetch("/api/lookups/segmentos")
       ]);
-      const leadsData = await leadsRes.json();
-      const usersData = await usersRes.json();
-      const clientsData = await clientsRes.json();
-      const sucursalesData = await sucursalesRes.json();
-      const segmentosData = await segmentosRes.json();
-      
+
+      const safeJson = async (res: Response, fallback: any) => {
+        try { return res.ok ? await res.json() : fallback; }
+        catch { return fallback; }
+      };
+
+      const leadsData = await safeJson(leadsRes, []);
+      const usersData = await safeJson(usersRes, []);
+      const clientsData = await safeJson(clientsRes, []);
+      const sucursalesData = await safeJson(sucursalesRes, []);
+      const segmentosData = await safeJson(segmentosRes, []);
+
       setLeads(leadsData);
       setUsers(usersData);
       setClients(clientsData);
       setSucursales(sucursalesData);
       setSegmentos(segmentosData);
-      
+
       // Set defaults for new lead if not already set
       setNewLead(prev => ({
         ...prev,
         sucursal: prev.sucursal || (currentUser?.role === "Seller" ? sucursalesData.find((s: any) => s.id === currentUser.sucursalId)?.name : "") || (sucursalesData.length > 0 ? sucursalesData[0].name : ""),
         segmento: prev.segmento || (segmentosData.length > 0 ? segmentosData[0].name : "")
       }));
-      
+
       setLoading(false);
     } catch (error) {
       console.error("Error fetching data:", error);
