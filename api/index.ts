@@ -335,9 +335,9 @@ app.post("/api/leads", async (req, res) => {
       Cl_Razon_Social: leadData.company,
       Cl_Contacto_1: leadData.name,
       Cl_email_contacto_1: leadData.email,
-      Sc_Cve_Sucursal: sucursalId || null,
-      Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
-      Vn_Cve_Vendedor: userId || null,
+      Sc_Cve_Sucursal: sucursalId || '',
+      Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || '',
+      Vn_Cve_Vendedor: userId || '',
       Fecha_Alta: now,
     });
     if (clientError) {
