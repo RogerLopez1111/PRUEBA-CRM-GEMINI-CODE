@@ -21,47 +21,39 @@ export interface Client {
   rfc?: string;
   city?: string;
   state?: string;
-  assignedSellerId: string; // Vn_Cve_Vendedor
-  sucursalId: string; // Sc_Cve_Sucursal
+  sucursalId?: string; // from most recent lead, used for pre-fill in new lead dialog
   createdAt: string;
 }
 
 export interface Lead {
-  id: string; // Cl_Cve_Cliente
-  clientId: string; // Link to Client
-  name: string; // Cl_Contacto_1 (Denormalized for convenience)
-  email: string; // Cl_email_contacto_1
-  company: string; // Cl_Razon_Social
-  status: LeadStatus; // Cl_Status_CRM
-  assignedTo?: string; // Vn_Cve_Vendedor
-  value: number; // Cl_Valor_CRM
-  sucursal: string; // Sc_Cve_Sucursal
-  segmento: string; // Sg_Cve_Segmento
-  quotedAmount?: number; // Cl_QuotedAmount_CRM
-  invoicedAmount?: number; // Cl_InvoicedAmount_CRM
-  createdAt: string; // Cl_CreatedAt_CRM
-  updatedAt: string; // Cl_UpdatedAt_CRM
+  id: string;
+  clientId: string;
+  name: string;       // denormalized from clientes.contacto
+  email: string;      // denormalized from clientes.email
+  company: string;    // denormalized from clientes.razon_social
+  status: LeadStatus;
+  assignedTo?: string;
+  value: number;
+  sucursal: string;
+  segmento: string;
+  quotedAmount?: number;
+  invoicedAmount?: number;
+  createdAt: string;
+  updatedAt: string;
   history: LeadHistory[];
-  
-  // New fields from script (partial list of most relevant ones)
-  Cl_Razon_Social?: string;
-  Cl_R_F_C?: string;
-  Cl_Telefono_1?: string;
-  Cl_Ciudad?: string;
-  Cl_Estado?: string;
 }
 
 export interface User {
-  id: string; // Vn_Cve_Vendedor
-  name: string; // Vn_Descripcion
-  email: string; // Vn_Email
-  role: 'Admin' | 'Seller'; // Vn_Rol_CRM
-  sucursalId: string; // Sc_Cve_Sucursal
+  id: string;
+  name: string;
+  email: string;
+  role: 'Admin' | 'Seller';
+  sucursalId: string;
   performance: {
     totalClosed: number;
     totalValue: number;
     conversionRate: number;
-    salesGoal: number; // Vn_Meta_Ventas_CRM
+    salesGoal: number;
   };
   workload?: {
     activeLeads: number;

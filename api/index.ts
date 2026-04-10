@@ -15,6 +15,10 @@ type LeadStatus =
   | "ENTREGADO"
   | "RECHAZADO";
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 async function getUsersWithPerformance() {
   const { data: vendedores } = await supabase.from("vendedores").select("*");
   if (!vendedores) return [];
@@ -22,18 +26,18 @@ async function getUsersWithPerformance() {
   return Promise.all(
     vendedores.map(async (v) => {
       const { data: closedLeads } = await supabase
-        .from("clientes")
+        .from("leads")
         .select("valor")
         .eq("vendedor_id", v.id)
         .in("status", ["FACTURADO", "ENTREGADO"]);
 
       const { count: totalAssigned } = await supabase
-        .from("clientes")
+        .from("leads")
         .select("*", { count: "exact", head: true })
         .eq("vendedor_id", v.id);
 
       const { data: activeLeads } = await supabase
-        .from("clientes")
+        .from("leads")
         .select("valor")
         .eq("vendedor_id", v.id)
         .neq("status", "FACTURADO")
@@ -66,28 +70,29 @@ async function getUsersWithPerformance() {
 }
 
 async function getLeadsWithHistory() {
-  const { data: clientes } = await supabase
-    .from("clientes")
-    .select(`*, sucursales(nombre), segmentos(descripcion), lead_history(*)`)
+  const { data: leadsData } = await supabase
+    .from("leads")
+    .select(`*, clientes(contacto, email, razon_social), sucursales(nombre), segmentos(descripcion), lead_history(*)`)
     .order("created_at", { ascending: false });
 
-  if (!clientes) return [];
+  if (!leadsData) return [];
 
-  return clientes.map((c) => ({
-    id: c.id,
-    name: c.contacto || "",
-    email: c.email || "",
-    company: c.razon_social,
-    status: c.status as LeadStatus,
-    assignedTo: c.vendedor_id,
-    value: c.valor || 0,
-    sucursal: (c.sucursales as any)?.nombre || "",
-    segmento: (c.segmentos as any)?.descripcion || "",
-    quotedAmount: c.monto_cotizado ?? undefined,
-    invoicedAmount: c.monto_facturado ?? undefined,
-    createdAt: c.created_at,
-    updatedAt: c.updated_at,
-    history: ((c.lead_history as any[]) || [])
+  return leadsData.map((l) => ({
+    id: l.id,
+    clientId: l.client_id,
+    name: (l.clientes as any)?.contacto || "",
+    email: (l.clientes as any)?.email || "",
+    company: (l.clientes as any)?.razon_social || "",
+    status: l.status as LeadStatus,
+    assignedTo: l.vendedor_id,
+    value: l.valor || 0,
+    sucursal: (l.sucursales as any)?.nombre || "",
+    segmento: (l.segmentos as any)?.descripcion || "",
+    quotedAmount: l.monto_cotizado ?? undefined,
+    invoicedAmount: l.monto_facturado ?? undefined,
+    createdAt: l.created_at,
+    updatedAt: l.updated_at,
+    history: ((l.lead_history as any[]) || [])
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       .map((h) => ({
         id: h.id,
@@ -103,8 +108,16 @@ async function getLeadsWithHistory() {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
+
 const app = express();
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
 
 app.post("/api/login", async (req, res) => {
   const { email } = req.body;
@@ -121,6 +134,10 @@ app.post("/api/login", async (req, res) => {
     res.status(401).json({ error: "User not found" });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
 
 app.get("/api/users", async (_req, res) => {
   res.json(await getUsersWithPerformance());
@@ -185,127 +202,27 @@ app.post("/api/users/:id/goal", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Leads
+// ---------------------------------------------------------------------------
+
 app.get("/api/leads", async (_req, res) => {
   res.json(await getLeadsWithHistory());
 });
 
-app.get("/api/clients", async (_req, res) => {
-  const { data, error } = await supabase
-    .from("clientes")
-    .select("id, contacto, email, razon_social, vendedor_id, sucursal_id, created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    res.status(500).json({ error: error.message });
-    return;
-  }
-
-  res.json(
-    (data || []).map((c) => ({
-      id: c.id,
-      name: c.contacto || "",
-      email: c.email || "",
-      company: c.razon_social || "",
-      assignedSellerId: c.vendedor_id || "",
-      sucursalId: c.sucursal_id || "",
-      createdAt: c.created_at,
-    }))
-  );
-});
-
-app.get("/api/lookups/sucursales", async (_req, res) => {
-  const { data } = await supabase.from("sucursales").select("id, nombre");
-  res.json((data || []).map((s) => ({ id: s.id, name: s.nombre })));
-});
-
-app.get("/api/lookups/segmentos", async (_req, res) => {
-  const { data } = await supabase.from("segmentos").select("id, descripcion");
-  res.json((data || []).map((s) => ({ id: s.id, name: s.descripcion })));
-});
-
-app.post("/api/leads/:id/assign", async (req, res) => {
-  const { id } = req.params;
-  const { userId } = req.body;
-  const now = new Date().toISOString();
-
-  // Look up the seller's branch so the lead is automatically placed in it
-  const { data: seller } = await supabase
-    .from("vendedores")
-    .select("sucursal_id")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const updates: Record<string, any> = { vendedor_id: userId, status: "ASIGNADO", updated_at: now };
-  if (seller?.sucursal_id) {
-    updates.sucursal_id = seller.sucursal_id;
-  }
-
-  const { error } = await supabase
-    .from("clientes")
-    .update(updates)
-    .eq("id", id);
-
-  if (!error) {
-    const leads = await getLeadsWithHistory();
-    res.json(leads.find((l) => l.id === id));
-  } else {
-    res.status(404).json({ error: "Lead not found" });
-  }
-});
-
-app.post("/api/leads/:id/status", async (req, res) => {
-  const { id } = req.params;
-  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount } = req.body;
-  const now = new Date().toISOString();
-
-  const { data: lead } = await supabase
-    .from("clientes")
-    .select("valor, monto_cotizado, monto_facturado")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!lead) return res.status(404).json({ error: "Lead not found" });
-
-  const updates: Record<string, any> = { status, updated_at: now };
-  if (status === "COTIZADO" && quotedAmount !== undefined) {
-    updates.monto_cotizado = quotedAmount;
-  }
-  if (status === "FACTURADO" && invoicedAmount !== undefined) {
-    updates.monto_facturado = invoicedAmount;
-    updates.valor = invoicedAmount;
-  }
-
-  await supabase.from("clientes").update(updates).eq("id", id);
-
-  await supabase.from("lead_history").insert({
-    id: Math.random().toString(36).substr(2, 9),
-    lead_id: id,
-    status,
-    comment: comment || `Status updated to ${status}`,
-    evidence_url: evidenceUrl || null,
-    quoted_amount: status === "COTIZADO" ? quotedAmount : null,
-    invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
-    updated_by: userId || "System",
-    timestamp: now,
-  });
-
-  const leads = await getLeadsWithHistory();
-  res.json(leads.find((l) => l.id === id));
-});
-
 app.post("/api/leads", async (req, res) => {
-  const { userId, ...leadData } = req.body;
-  const id = Math.random().toString(36).substr(2, 9);
+  const { userId, isExistingClient, clientId: existingClientId, ...leadData } = req.body;
   const now = new Date().toISOString();
   const status = "ASIGNADO";
 
+  // Resolve segment
   const { data: segmentoRow } = await supabase
     .from("segmentos")
     .select("id")
     .or(`descripcion.eq.${leadData.segmento},id.eq.${leadData.segmento}`)
     .maybeSingle();
 
-  // If a seller is assigned, use their branch; otherwise fall back to the provided sucursal
+  // Resolve branch: prefer seller's branch, then provided sucursal
   let sucursalId = "S001";
   if (userId) {
     const { data: seller } = await supabase
@@ -323,11 +240,30 @@ app.post("/api/leads", async (req, res) => {
     sucursalId = sucursalRow?.id || "S001";
   }
 
-  await supabase.from("clientes").insert({
-    id,
-    contacto: leadData.name,
-    email: leadData.email,
-    razon_social: leadData.company,
+  // Resolve client: use existing client or create a new one
+  let clientId: string;
+  if (isExistingClient && existingClientId) {
+    clientId = existingClientId;
+  } else {
+    clientId = Math.random().toString(36).substr(2, 9);
+    const { error: clientError } = await supabase.from("clientes").insert({
+      id: clientId,
+      contacto: leadData.name,
+      email: leadData.email,
+      razon_social: leadData.company,
+      created_at: now,
+    });
+    if (clientError) {
+      res.status(400).json({ error: "Error creating client record" });
+      return;
+    }
+  }
+
+  // Create lead
+  const leadId = Math.random().toString(36).substr(2, 9);
+  const { error: leadError } = await supabase.from("leads").insert({
+    id: leadId,
+    client_id: clientId,
     status,
     vendedor_id: userId || null,
     valor: leadData.value,
@@ -337,17 +273,144 @@ app.post("/api/leads", async (req, res) => {
     updated_at: now,
   });
 
+  if (leadError) {
+    res.status(400).json({ error: "Error creating lead" });
+    return;
+  }
+
   await supabase.from("lead_history").insert({
     id: Math.random().toString(36).substr(2, 9),
-    lead_id: id,
-    status: "ASIGNADO",
+    lead_id: leadId,
+    status,
     comment: userId ? "Lead created and self-assigned" : "Lead created in ASIGNADO stage",
     updated_by: userId || "System",
     timestamp: now,
   });
 
   const leads = await getLeadsWithHistory();
-  res.status(201).json(leads.find((l) => l.id === id));
+  res.status(201).json(leads.find((l) => l.id === leadId));
+});
+
+app.post("/api/leads/:id/assign", async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.body;
+  const now = new Date().toISOString();
+
+  const { data: seller } = await supabase
+    .from("vendedores")
+    .select("sucursal_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const updates: Record<string, any> = { vendedor_id: userId, status: "ASIGNADO", updated_at: now };
+  if (seller?.sucursal_id) {
+    updates.sucursal_id = seller.sucursal_id;
+  }
+
+  const { error } = await supabase
+    .from("leads")
+    .update(updates)
+    .eq("id", id);
+
+  if (!error) {
+    const leads = await getLeadsWithHistory();
+    res.json(leads.find((l) => l.id === id));
+  } else {
+    res.status(404).json({ error: "Lead not found" });
+  }
+});
+
+app.post("/api/leads/:id/status", async (req, res) => {
+  const { id } = req.params;
+  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount } = req.body;
+  const now = new Date().toISOString();
+
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("valor, monto_cotizado, monto_facturado")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  const updates: Record<string, any> = { status, updated_at: now };
+  if (status === "COTIZADO" && quotedAmount !== undefined) {
+    updates.monto_cotizado = quotedAmount;
+  }
+  if (status === "FACTURADO" && invoicedAmount !== undefined) {
+    updates.monto_facturado = invoicedAmount;
+    updates.valor = invoicedAmount;
+  }
+
+  await supabase.from("leads").update(updates).eq("id", id);
+
+  await supabase.from("lead_history").insert({
+    id: Math.random().toString(36).substr(2, 9),
+    lead_id: id,
+    status,
+    comment: comment || `Status updated to ${status}`,
+    evidence_url: evidenceUrl || null,
+    quoted_amount: status === "COTIZADO" ? quotedAmount : null,
+    invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
+    updated_by: userId || "System",
+    timestamp: now,
+  });
+
+  const leads = await getLeadsWithHistory();
+  res.json(leads.find((l) => l.id === id));
+});
+
+// ---------------------------------------------------------------------------
+// Clients catalogue
+// ---------------------------------------------------------------------------
+
+app.get("/api/clients", async (_req, res) => {
+  const { data, error } = await supabase
+    .from("clientes")
+    .select(`
+      id,
+      contacto,
+      email,
+      razon_social,
+      created_at,
+      leads(sucursal_id, created_at)
+    `)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json(
+    (data || []).map((c) => {
+      const sortedLeads = ((c.leads as any[]) || []).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      return {
+        id: c.id,
+        name: c.contacto || "",
+        email: c.email || "",
+        company: c.razon_social || "",
+        sucursalId: sortedLeads[0]?.sucursal_id || undefined,
+        createdAt: c.created_at,
+      };
+    })
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Lookups
+// ---------------------------------------------------------------------------
+
+app.get("/api/lookups/sucursales", async (_req, res) => {
+  const { data } = await supabase.from("sucursales").select("id, nombre");
+  res.json((data || []).map((s) => ({ id: s.id, name: s.nombre })));
+});
+
+app.get("/api/lookups/segmentos", async (_req, res) => {
+  const { data } = await supabase.from("segmentos").select("id, descripcion");
+  res.json((data || []).map((s) => ({ id: s.id, name: s.descripcion })));
 });
 
 export default app;
