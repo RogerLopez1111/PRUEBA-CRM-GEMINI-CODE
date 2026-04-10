@@ -1701,6 +1701,36 @@ export default function App() {
                         </Dialog>
                       </div>
                     </CardHeader>
+                    <div className="px-6 py-3 border-b flex flex-wrap gap-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Sucursal</p>
+                        <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
+                          <SelectTrigger className="w-[160px] h-8">
+                            <SelectValue placeholder="Todas las Sucursales" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todas las Sucursales</SelectItem>
+                            {sucursales.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Segmento</p>
+                        <Select value={adminFilterSegmento} onValueChange={setAdminFilterSegmento}>
+                          <SelectTrigger className="w-[160px] h-8">
+                            <SelectValue placeholder="Todos los Segmentos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos los Segmentos</SelectItem>
+                            {segmentos.map(s => (
+                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     <CardContent className="p-0">
                       <Table>
                         <TableHeader>
@@ -1714,7 +1744,13 @@ export default function App() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {users.map((user) => (
+                          {users
+                            .filter(user => {
+                              if (adminFilterSucursal !== "all" && user.sucursalId !== sucursales.find(s => s.name === adminFilterSucursal)?.id) return false;
+                              if (adminFilterSegmento !== "all" && !leads.some(l => l.assignedTo === user.id && l.segmento === adminFilterSegmento)) return false;
+                              return true;
+                            })
+                            .map((user) => (
                             <TableRow key={user.id}>
                               <TableCell>
                                 <div className="flex flex-col">
