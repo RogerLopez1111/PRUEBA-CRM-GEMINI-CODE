@@ -766,7 +766,8 @@ export default function App() {
                                           name: client.name,
                                           company: client.company,
                                           email: client.email,
-                                          sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal
+                                          sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal,
+                                          segmento: client.segmento || newLead.segmento,
                                         });
                                         setIsClientSearchOpen(false);
                                       }}
@@ -774,6 +775,9 @@ export default function App() {
                                       <div className="flex flex-col">
                                         <span className="font-medium">{client.company}</span>
                                         <span className="text-xs text-slate-500">{client.name}</span>
+                                        {client.segmento && (
+                                          <span className="text-[10px] text-slate-400">{client.segmento}</span>
+                                        )}
                                       </div>
                                     </CommandItem>
                                   ))}

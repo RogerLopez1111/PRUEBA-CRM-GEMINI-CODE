@@ -26,6 +26,8 @@ export interface Client {
   city?: string;        // Cl_Ciudad
   state?: string;       // Cl_Estado
   sucursalId?: string;  // Sc_Cve_Sucursal (from client record or most recent lead)
+  segmentoId?: string;  // Sg_Cve_Segmento → FK to segmentos
+  segmento?: string;    // resolved from segmentos.Sg_Descripcion
   createdAt: string;    // Fecha_Alta
 }
 

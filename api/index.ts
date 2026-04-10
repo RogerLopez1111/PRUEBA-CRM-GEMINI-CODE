@@ -465,7 +465,9 @@ app.get("/api/clients", async (_req, res) => {
       Cl_Ciudad,
       Cl_Estado,
       Sc_Cve_Sucursal,
+      Sg_Cve_Segmento,
       Fecha_Alta,
+      segmentos(Sg_Descripcion),
       leads(Sc_Cve_Sucursal, Cl_CreatedAt_CRM)
     `)
     .order("Fecha_Alta", { ascending: false });
@@ -490,6 +492,8 @@ app.get("/api/clients", async (_req, res) => {
         city: c.Cl_Ciudad || undefined,
         state: c.Cl_Estado || undefined,
         sucursalId: sortedLeads[0]?.Sc_Cve_Sucursal || c.Sc_Cve_Sucursal || undefined,
+        segmentoId: c.Sg_Cve_Segmento || undefined,
+        segmento: (c.segmentos as any)?.Sg_Descripcion || undefined,
         createdAt: c.Fecha_Alta,
       };
     })
