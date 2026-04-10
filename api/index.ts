@@ -53,7 +53,7 @@ async function getUsersWithPerformance() {
         name: v.Vn_Descripcion,
         email: v.Vn_Email,
         role: v.Vn_Perfil as "Admin" | "Seller",
-        sucursalId: v.Vn_Sucursal || "",
+        sucursalId: v.Sc_Cve_Sucursal || "",
         performance: {
           totalClosed,
           totalValue,
@@ -165,7 +165,7 @@ app.post("/api/users", async (req, res) => {
     Vn_Email: email,
     Vn_Perfil: role,
     Vn_Meta_Ventas_CRM: salesGoal || 0,
-    Vn_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
+    Sc_Cve_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
   });
 
   if (error) {
@@ -233,10 +233,10 @@ app.post("/api/leads", async (req, res) => {
   if (userId) {
     const { data: seller } = await supabase
       .from("vendedores")
-      .select("Vn_Sucursal")
+      .select("Sc_Cve_Sucursal")
       .eq("Vn_Cve_Vendedor", userId)
       .maybeSingle();
-    sucursalId = seller?.Vn_Sucursal || "";
+    sucursalId = seller?.Sc_Cve_Sucursal || "";
   }
   if (!sucursalId && leadData.sucursal) {
     const { data: sucursalRow } = await supabase
@@ -308,7 +308,7 @@ app.post("/api/leads/:id/assign", async (req, res) => {
 
   const { data: seller } = await supabase
     .from("vendedores")
-    .select("Vn_Sucursal")
+    .select("Sc_Cve_Sucursal")
     .eq("Vn_Cve_Vendedor", userId)
     .maybeSingle();
 
@@ -317,8 +317,8 @@ app.post("/api/leads/:id/assign", async (req, res) => {
     Cl_Status_CRM: "ASIGNADO",
     Cl_UpdatedAt_CRM: now,
   };
-  if (seller?.Vn_Sucursal) {
-    updates.Sc_Cve_Sucursal = seller.Vn_Sucursal;
+  if (seller?.Sc_Cve_Sucursal) {
+    updates.Sc_Cve_Sucursal = seller.Sc_Cve_Sucursal;
   }
 
   const { error } = await supabase.from("leads").update(updates).eq("id", id);
