@@ -49,12 +49,12 @@ export interface Lead {
 }
 
 // Maps to Supabase `vendedores` table, which mirrors ERP [dbo].[Vendedor]
-// CRM-only additions: Vn_Rol_CRM, Vn_Meta_Ventas_CRM
+// CRM-only additions: Vn_Meta_Ventas_CRM (Vn_Perfil reused from ERP for role)
 export interface User {
   id: string;           // Vn_Cve_Vendedor
   name: string;         // Vn_Descripcion
   email: string;        // Vn_Email
-  role: 'Admin' | 'Seller'; // Vn_Rol_CRM
+  role: 'Admin' | 'Seller'; // Vn_Perfil
   sucursalId: string;   // Vn_Sucursal
   performance: {
     totalClosed: number;

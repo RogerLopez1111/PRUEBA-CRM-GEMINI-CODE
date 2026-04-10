@@ -52,7 +52,7 @@ async function getUsersWithPerformance() {
         id: v.Vn_Cve_Vendedor,
         name: v.Vn_Descripcion,
         email: v.Vn_Email,
-        role: v.Vn_Rol_CRM as "Admin" | "Seller",
+        role: v.Vn_Perfil as "Admin" | "Seller",
         sucursalId: v.Vn_Sucursal || "",
         performance: {
           totalClosed,
@@ -163,7 +163,7 @@ app.post("/api/users", async (req, res) => {
     Vn_Cve_Vendedor: id,
     Vn_Descripcion: name,
     Vn_Email: email,
-    Vn_Rol_CRM: role,
+    Vn_Perfil: role,
     Vn_Meta_Ventas_CRM: salesGoal || 0,
     Vn_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
   });
@@ -181,7 +181,7 @@ app.post("/api/users/:id/role", async (req, res) => {
   const { role } = req.body;
   const { error } = await supabase
     .from("vendedores")
-    .update({ Vn_Rol_CRM: role })
+    .update({ Vn_Perfil: role })
     .eq("Vn_Cve_Vendedor", id);
 
   if (!error) {
