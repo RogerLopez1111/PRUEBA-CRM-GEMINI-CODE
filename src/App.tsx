@@ -1055,9 +1055,11 @@ export default function App() {
                                       <SelectValue placeholder="Asignar a..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {users.map(user => (
-                                        <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
-                                      ))}
+                                      {users
+                                        .filter(u => u.sucursalId === sucursales.find(s => s.name === lead.sucursal)?.id)
+                                        .map(user => (
+                                          <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                   </Select>
                                 )}
