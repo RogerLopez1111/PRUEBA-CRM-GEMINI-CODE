@@ -23,26 +23,42 @@ async function getUsersWithPerformance() {
   const { data: vendedores } = await supabase.from("vendedores").select("*");
   if (!vendedores) return [];
 
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
   return Promise.all(
     vendedores.map(async (v) => {
-      const { data: closedLeads } = await supabase
-        .from("leads")
-        .select("Cl_Valor_CRM")
-        .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
-        .in("Cl_Status_CRM", ["FACTURADO", "ENTREGADO"]);
+      const [closedLeadsResult, totalAssignedResult, activeLeadsResult, metaResult] =
+        await Promise.all([
+          supabase
+            .from("leads")
+            .select("Cl_Valor_CRM")
+            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
+            .in("Cl_Status_CRM", ["FACTURADO", "ENTREGADO"]),
+          supabase
+            .from("leads")
+            .select("*", { count: "exact", head: true })
+            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor),
+          supabase
+            .from("leads")
+            .select("Cl_Valor_CRM")
+            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
+            .neq("Cl_Status_CRM", "FACTURADO")
+            .neq("Cl_Status_CRM", "ENTREGADO")
+            .neq("Cl_Status_CRM", "RECHAZADO"),
+          supabase
+            .from("vendedor_metas")
+            .select("meta")
+            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
+            .eq("year", currentYear)
+            .eq("month", currentMonth)
+            .maybeSingle(),
+        ]);
 
-      const { count: totalAssigned } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor);
-
-      const { data: activeLeads } = await supabase
-        .from("leads")
-        .select("Cl_Valor_CRM")
-        .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
-        .neq("Cl_Status_CRM", "FACTURADO")
-        .neq("Cl_Status_CRM", "ENTREGADO")
-        .neq("Cl_Status_CRM", "RECHAZADO");
+      const closedLeads = closedLeadsResult.data;
+      const activeLeads = activeLeadsResult.data;
+      const totalAssigned = totalAssignedResult.count;
 
       const totalClosed = closedLeads?.length || 0;
       const totalValue = closedLeads?.reduce((s, l) => s + (l.Cl_Valor_CRM || 0), 0) || 0;
@@ -58,7 +74,7 @@ async function getUsersWithPerformance() {
           totalClosed,
           totalValue,
           conversionRate: totalAssigned ? totalClosed / totalAssigned : 0,
-          salesGoal: v.Vn_Meta_Ventas_CRM || 0,
+          salesGoal: metaResult.data?.meta || 0,
         },
         workload: {
           activeLeads: activeLeads?.length || 0,
@@ -164,16 +180,27 @@ app.post("/api/users", async (req, res) => {
     Vn_Descripcion: name,
     Vn_Email: email,
     Vn_Perfil: role,
-    Vn_Meta_Ventas_CRM: salesGoal || 0,
     Sc_Cve_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
   });
 
   if (error) {
     res.status(400).json({ error: "Email already exists" });
-  } else {
-    const users = await getUsersWithPerformance();
-    res.status(201).json(users.find((u) => u.id === id));
+    return;
   }
+
+  if (salesGoal) {
+    const now = new Date();
+    await supabase.from("vendedor_metas").insert({
+      id: Math.random().toString(36).substr(2, 9),
+      Vn_Cve_Vendedor: id,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      meta: salesGoal,
+    });
+  }
+
+  const users = await getUsersWithPerformance();
+  res.status(201).json(users.find((u) => u.id === id));
 });
 
 app.post("/api/users/:id/role", async (req, res) => {
@@ -194,18 +221,68 @@ app.post("/api/users/:id/role", async (req, res) => {
 
 app.post("/api/users/:id/goal", async (req, res) => {
   const { id } = req.params;
-  const { goal } = req.body;
-  const { error } = await supabase
-    .from("vendedores")
-    .update({ Vn_Meta_Ventas_CRM: goal })
-    .eq("Vn_Cve_Vendedor", id);
+  const { goal, year, month } = req.body;
+  const now = new Date();
+  const targetYear: number = year ?? now.getFullYear();
+  const targetMonth: number = month ?? now.getMonth() + 1;
 
-  if (!error) {
-    const users = await getUsersWithPerformance();
-    res.json(users.find((u) => u.id === id));
-  } else {
+  // Check vendedor exists
+  const { data: vendedor } = await supabase
+    .from("vendedores")
+    .select("Vn_Cve_Vendedor")
+    .eq("Vn_Cve_Vendedor", id)
+    .maybeSingle();
+
+  if (!vendedor) {
     res.status(404).json({ error: "User not found" });
+    return;
   }
+
+  // Upsert goal for the given month/year
+  const { error } = await supabase.from("vendedor_metas").upsert(
+    {
+      id: Math.random().toString(36).substr(2, 9),
+      Vn_Cve_Vendedor: id,
+      year: targetYear,
+      month: targetMonth,
+      meta: goal,
+    },
+    { onConflict: "Vn_Cve_Vendedor,year,month" }
+  );
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  const users = await getUsersWithPerformance();
+  res.json(users.find((u) => u.id === id));
+});
+
+app.get("/api/users/:id/goals", async (req, res) => {
+  const { id } = req.params;
+  const { data, error } = await supabase
+    .from("vendedor_metas")
+    .select("id, Vn_Cve_Vendedor, year, month, meta, created_at")
+    .eq("Vn_Cve_Vendedor", id)
+    .order("year", { ascending: false })
+    .order("month", { ascending: false });
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json(
+    (data || []).map((r) => ({
+      id: r.id,
+      vendedorId: r.Vn_Cve_Vendedor,
+      year: r.year,
+      month: r.month,
+      meta: r.meta,
+      createdAt: r.created_at,
+    }))
+  );
 });
 
 // ---------------------------------------------------------------------------

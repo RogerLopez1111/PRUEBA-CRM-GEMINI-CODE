@@ -48,19 +48,29 @@ export interface Lead {
   history: LeadHistory[];
 }
 
+// Maps to Supabase `vendedor_metas` table (CRM-only, no ERP counterpart)
+export interface SalesGoal {
+  id: string;
+  vendedorId: string;   // Vn_Cve_Vendedor → FK to vendedores
+  year: number;
+  month: number;        // 1–12
+  meta: number;
+  createdAt: string;
+}
+
 // Maps to Supabase `vendedores` table, which mirrors ERP [dbo].[Vendedor]
-// CRM-only additions: Vn_Meta_Ventas_CRM (Vn_Perfil reused from ERP for role)
+// Vn_Perfil is reused from ERP to store the CRM role (Admin / Seller)
 export interface User {
   id: string;           // Vn_Cve_Vendedor
   name: string;         // Vn_Descripcion
   email: string;        // Vn_Email
   role: 'Admin' | 'Seller'; // Vn_Perfil
-  sucursalId: string;   // Vn_Sucursal
+  sucursalId: string;   // Sc_Cve_Sucursal
   performance: {
     totalClosed: number;
     totalValue: number;
     conversionRate: number;
-    salesGoal: number;  // Vn_Meta_Ventas_CRM
+    salesGoal: number;  // from vendedor_metas (current month)
   };
   workload?: {
     activeLeads: number;
