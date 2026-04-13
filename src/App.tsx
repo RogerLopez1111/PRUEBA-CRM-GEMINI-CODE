@@ -197,6 +197,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
+  const [isSellerSearchOpen, setIsSellerSearchOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [newLead, setNewLead] = useState({
     name: "",
@@ -919,19 +920,52 @@ export default function App() {
                     {currentUser?.role === "Admin" && (
                       <div className="grid gap-2">
                         <label className="text-sm font-medium">Asignar a (opcional)</label>
-                        <Select value={newLead.assignedTo} onValueChange={(val) => setNewLead({...newLead, assignedTo: val})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sin asignar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="">Sin asignar</SelectItem>
-                            {users
-                              .filter(u => u.role === "Seller" && (!newLead.sucursal || u.sucursalId === sucursales.find(s => s.name === newLead.sucursal)?.id))
-                              .map(u => (
-                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover open={isSellerSearchOpen} onOpenChange={setIsSellerSearchOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full justify-between font-normal">
+                              {newLead.assignedTo
+                                ? users.find(u => u.id === newLead.assignedTo)?.name || "Sin asignar"
+                                : "Sin asignar"}
+                              <Search className="w-4 h-4 ml-2 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[300px]" align="start">
+                            <Command>
+                              <CommandInput placeholder="Buscar vendedor..." />
+                              <CommandList>
+                                <CommandEmpty>No se encontraron vendedores.</CommandEmpty>
+                                <CommandGroup heading="Vendedores">
+                                  <CommandItem
+                                    value="sin-asignar"
+                                    onSelect={() => {
+                                      setNewLead({...newLead, assignedTo: ""});
+                                      setIsSellerSearchOpen(false);
+                                    }}
+                                  >
+                                    <span className="text-slate-500">Sin asignar</span>
+                                  </CommandItem>
+                                  {users
+                                    .filter(u => u.role === "Seller" && (!newLead.sucursal || u.sucursalId === sucursales.find(s => s.name === newLead.sucursal)?.id))
+                                    .map(u => (
+                                      <CommandItem
+                                        key={u.id}
+                                        value={`${u.name} ${sucursales.find(s => s.id === u.sucursalId)?.name || ""}`}
+                                        onSelect={() => {
+                                          setNewLead({...newLead, assignedTo: u.id});
+                                          setIsSellerSearchOpen(false);
+                                        }}
+                                      >
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">{u.name}</span>
+                                          <span className="text-xs text-slate-500">{sucursales.find(s => s.id === u.sucursalId)?.name || ""}</span>
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     )}
                   </div>
