@@ -198,15 +198,16 @@ export default function App() {
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
-  const [newLead, setNewLead] = useState({ 
-    name: "", 
-    email: "", 
-    company: "", 
-    value: 0, 
-    sucursal: "", 
+  const [newLead, setNewLead] = useState({
+    name: "",
+    email: "",
+    company: "",
+    value: 0,
+    sucursal: "",
     segmento: "",
     isExistingClient: false,
-    clientId: ""
+    clientId: "",
+    assignedTo: ""
   });
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
@@ -441,23 +442,24 @@ export default function App() {
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          ...newLead, 
-          userId: currentUser?.role === "Seller" ? currentUser.id : undefined 
+        body: JSON.stringify({
+          ...newLead,
+          userId: currentUser?.role === "Seller" ? currentUser.id : (newLead.assignedTo || undefined)
         })
       });
       if (res.ok) {
         toast.success(currentUser?.role === "Seller" ? "Lead creado y asignado a ti" : "Nuevo lead creado");
         setIsNewLeadOpen(false);
-        setNewLead({ 
-          name: "", 
-          email: "", 
-          company: "", 
-          value: 0, 
-          sucursal: (currentUser?.role === "Seller" ? sucursales.find(s => s.id === currentUser.sucursalId)?.name : "") || (sucursales.length > 0 ? sucursales[0].name : ""), 
+        setNewLead({
+          name: "",
+          email: "",
+          company: "",
+          value: 0,
+          sucursal: (currentUser?.role === "Seller" ? sucursales.find(s => s.id === currentUser.sucursalId)?.name : "") || (sucursales.length > 0 ? sucursales[0].name : ""),
           segmento: segmentos.length > 0 ? segmentos[0].name : "",
           isExistingClient: false,
-          clientId: ""
+          clientId: "",
+          assignedTo: ""
         });
         fetchData();
       }
@@ -827,6 +829,25 @@ export default function App() {
                         </Select>
                       </div>
                     </div>
+
+                    {currentUser?.role === "Admin" && (
+                      <div className="grid gap-2">
+                        <label className="text-sm font-medium">Asignar a (opcional)</label>
+                        <Select value={newLead.assignedTo} onValueChange={(val) => setNewLead({...newLead, assignedTo: val})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sin asignar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Sin asignar</SelectItem>
+                            {users
+                              .filter(u => u.role === "Seller" && (!newLead.sucursal || u.sucursalId === sucursales.find(s => s.name === newLead.sucursal)?.id))
+                              .map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsNewLeadOpen(false)}>Cancelar</Button>
