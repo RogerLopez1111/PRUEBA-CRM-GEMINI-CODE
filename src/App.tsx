@@ -881,9 +881,9 @@ export default function App() {
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Valor Potencial ($)</label>
                       <Input 
-                        type="number" 
-                        placeholder="5000" 
-                        value={newLead.value}
+                        type="number"
+                        placeholder="5000"
+                        value={newLead.value || ""}
                         onChange={(e) => setNewLead({...newLead, value: Number(e.target.value)})}
                       />
                     </div>
@@ -1878,7 +1878,7 @@ export default function App() {
                                 <label className="text-sm font-medium">Meta de Ventas ($)</label>
                                 <Input 
                                   type="number"
-                                  value={newUser.salesGoal}
+                                  value={newUser.salesGoal || ""}
                                   onChange={(e) => setNewUser({...newUser, salesGoal: Number(e.target.value)})}
                                 />
                               </div>
@@ -2529,8 +2529,8 @@ export default function App() {
                       </label>
                       <Input 
                         type="number"
-                        placeholder="0.00" 
-                        value={statusUpdate.quotedAmount}
+                        placeholder="0.00"
+                        value={statusUpdate.quotedAmount || ""}
                         onChange={(e) => setStatusUpdate({...statusUpdate, quotedAmount: Number(e.target.value)})}
                         className="bg-white border-orange-200 focus-visible:ring-orange-500 h-8 text-sm"
                       />
@@ -2545,8 +2545,8 @@ export default function App() {
                       </label>
                       <Input 
                         type="number"
-                        placeholder="0.00" 
-                        value={statusUpdate.invoicedAmount}
+                        placeholder="0.00"
+                        value={statusUpdate.invoicedAmount || ""}
                         onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
                         className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
                       />
