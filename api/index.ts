@@ -172,7 +172,7 @@ app.post("/api/users", async (req, res) => {
   const { data: sucursalRow } = await supabase
     .from("sucursales")
     .select("Sc_Cve_Sucursal")
-    .or(`Sc_Descripcion.eq.${sucursal},Sc_Cve_Sucursal.eq.${sucursal}`)
+    .eq("Sc_Descripcion", sucursal)
     .maybeSingle();
 
   const { error } = await supabase.from("vendedores").insert({
@@ -302,7 +302,7 @@ app.post("/api/leads", async (req, res) => {
   const { data: segmentoRow } = await supabase
     .from("segmentos")
     .select("Sg_Cve_Segmento")
-    .or(`Sg_Descripcion.eq.${leadData.segmento},Sg_Cve_Segmento.eq.${leadData.segmento}`)
+    .eq("Sg_Descripcion", leadData.segmento)
     .maybeSingle();
 
   // Resolve branch: prefer seller's branch, then provided sucursal
@@ -319,7 +319,7 @@ app.post("/api/leads", async (req, res) => {
     const { data: sucursalRow } = await supabase
       .from("sucursales")
       .select("Sc_Cve_Sucursal")
-      .or(`Sc_Descripcion.eq.${leadData.sucursal},Sc_Cve_Sucursal.eq.${leadData.sucursal}`)
+      .eq("Sc_Descripcion", leadData.sucursal)
       .maybeSingle();
     sucursalId = sucursalRow?.Sc_Cve_Sucursal || "";
   }
@@ -335,13 +335,13 @@ app.post("/api/leads", async (req, res) => {
       Cl_Razon_Social: leadData.company,
       Cl_Contacto_1: leadData.name,
       Cl_email_contacto_1: leadData.email,
-      Sc_Cve_Sucursal: sucursalId || '',
-      Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || '',
-      Vn_Cve_Vendedor: userId || '',
+      Sc_Cve_Sucursal: sucursalId || null,
+      Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
+      Vn_Cve_Vendedor: userId || null,
       Fecha_Alta: now,
     });
     if (clientError) {
-      res.status(400).json({ error: "Error creating client record" });
+      res.status(400).json({ error: clientError.message });
       return;
     }
   }
@@ -361,7 +361,7 @@ app.post("/api/leads", async (req, res) => {
   });
 
   if (leadError) {
-    res.status(400).json({ error: "Error creating lead" });
+    res.status(400).json({ error: leadError.message });
     return;
   }
 
