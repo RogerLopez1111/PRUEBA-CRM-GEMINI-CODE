@@ -973,7 +973,7 @@ export default function App() {
                                     <span className="text-slate-500">Sin asignar</span>
                                   </CommandItem>
                                   {users
-                                    .filter(u => u.role === "Seller")
+                                    .filter(u => u.role === "Seller" && (!newLead.sucursal || u.sucursalId === sucursales.find(s => s.name === newLead.sucursal)?.id))
                                     .map(u => (
                                       <CommandItem
                                         key={u.id}
