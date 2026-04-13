@@ -241,6 +241,12 @@ export default function App() {
   // Admin Sub-tabs
   const [adminSubTab, setAdminSubTab] = useState<string>("users");
 
+  // User Detail Dialog
+  const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
+  const [userDetailEmail, setUserDetailEmail] = useState("");
+  const [userDetailPassword, setUserDetailPassword] = useState("");
+  const [userDetailSucursal, setUserDetailSucursal] = useState("");
+
   // DND State
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
@@ -465,6 +471,54 @@ export default function App() {
       }
     } catch (error) {
       toast.error("Error al crear lead");
+    }
+  };
+
+  const handleOpenUserDetail = (user: User) => {
+    setSelectedUserDetail(user);
+    setUserDetailEmail(user.email);
+    setUserDetailPassword("");
+    setUserDetailSucursal(user.sucursalId);
+  };
+
+  const handleUpdateUserEmail = async () => {
+    if (!selectedUserDetail) return;
+    try {
+      const res = await fetch(`/api/users/${selectedUserDetail.id}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userDetailEmail })
+      });
+      if (res.ok) {
+        toast.success("Correo actualizado");
+        fetchData();
+        setSelectedUserDetail(prev => prev ? { ...prev, email: userDetailEmail } : null);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Error al actualizar correo");
+      }
+    } catch {
+      toast.error("Error al actualizar correo");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUserDetail || !userDetailPassword) return;
+    try {
+      const res = await fetch(`/api/users/${selectedUserDetail.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: userDetailPassword })
+      });
+      if (res.ok) {
+        toast.success("Contraseña actualizada");
+        setUserDetailPassword("");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Error al actualizar contraseña");
+      }
+    } catch {
+      toast.error("Error al actualizar contraseña");
     }
   };
 
@@ -1835,7 +1889,7 @@ export default function App() {
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button variant="ghost" size="sm" className="h-8">Ver Detalles</Button>
+                                <Button variant="ghost" size="sm" className="h-8" onClick={() => handleOpenUserDetail(user)}>Ver Detalles</Button>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1844,6 +1898,92 @@ export default function App() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* User Detail Dialog */}
+                <Dialog open={!!selectedUserDetail} onOpenChange={(open) => { if (!open) setSelectedUserDetail(null); }}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Users className="w-5 h-5 text-slate-400" />
+                        {selectedUserDetail?.name}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {selectedUserDetail?.role === "Admin" ? "Administrador" : "Vendedor"} · ID: {selectedUserDetail?.id}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-5 py-2">
+                      {/* Key stats */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded-lg bg-slate-50 p-3 text-center">
+                          <p className="text-xs text-slate-400">Leads activos</p>
+                          <p className="text-xl font-bold">{selectedUserDetail?.workload?.activeLeads ?? 0}</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-3 text-center">
+                          <p className="text-xs text-slate-400">Cerrados</p>
+                          <p className="text-xl font-bold">{selectedUserDetail?.performance.totalClosed ?? 0}</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-3 text-center">
+                          <p className="text-xs text-slate-400">Pipeline</p>
+                          <p className="text-xl font-bold">${((selectedUserDetail?.workload?.pipelineValue ?? 0) / 1000).toFixed(0)}k</p>
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Sucursal</p>
+                          <p>{sucursales.find(s => s.id === selectedUserDetail?.sucursalId)?.name || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Meta del mes</p>
+                          <p>${(selectedUserDetail?.performance.salesGoal ?? 0).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Valor cerrado</p>
+                          <p>${(selectedUserDetail?.performance.totalValue ?? 0).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Conversión</p>
+                          <p>{((selectedUserDetail?.performance.conversionRate ?? 0) * 100).toFixed(0)}%</p>
+                        </div>
+                      </div>
+
+                      {/* Update email */}
+                      <div className="space-y-2 border-t pt-4">
+                        <p className="text-sm font-semibold">Actualizar correo</p>
+                        <div className="flex gap-2">
+                          <Input
+                            type="email"
+                            value={userDetailEmail}
+                            onChange={(e) => setUserDetailEmail(e.target.value)}
+                            className="h-8"
+                          />
+                          <Button size="sm" onClick={handleUpdateUserEmail} disabled={!userDetailEmail || userDetailEmail === selectedUserDetail?.email}>
+                            Guardar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Reset password */}
+                      <div className="space-y-2 border-t pt-4">
+                        <p className="text-sm font-semibold">Restablecer contraseña</p>
+                        <div className="flex gap-2">
+                          <Input
+                            type="password"
+                            placeholder="Nueva contraseña"
+                            value={userDetailPassword}
+                            onChange={(e) => setUserDetailPassword(e.target.value)}
+                            className="h-8"
+                          />
+                          <Button size="sm" onClick={handleResetPassword} disabled={!userDetailPassword}>
+                            Guardar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 {adminSubTab === "workload" && (
                   <div className="space-y-4">

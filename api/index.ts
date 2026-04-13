@@ -219,6 +219,45 @@ app.post("/api/users/:id/role", async (req, res) => {
   }
 });
 
+app.post("/api/users/:id/email", async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.body;
+  if (!email) {
+    res.status(400).json({ error: "Email is required" });
+    return;
+  }
+  const { error } = await supabase
+    .from("vendedores")
+    .update({ Vn_Email: email })
+    .eq("Vn_Cve_Vendedor", id);
+
+  if (error) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+  const users = await getUsersWithPerformance();
+  res.json(users.find((u) => u.id === id));
+});
+
+app.post("/api/users/:id/reset-password", async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+  if (!password) {
+    res.status(400).json({ error: "Password is required" });
+    return;
+  }
+  const { error } = await supabase
+    .from("vendedores")
+    .update({ Vn_Password: password })
+    .eq("Vn_Cve_Vendedor", id);
+
+  if (error) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+  res.json({ success: true });
+});
+
 app.post("/api/users/:id/goal", async (req, res) => {
   const { id } = req.params;
   const { goal, year, month } = req.body;
