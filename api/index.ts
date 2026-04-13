@@ -411,6 +411,7 @@ app.post("/api/leads", async (req, res) => {
       Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
       Vn_Cve_Vendedor: userId || null,
       Fecha_Alta: now,
+      Fecha_Ult_Modif: now,
     });
     if (clientError) {
       res.status(400).json({ error: clientError.message });
