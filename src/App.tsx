@@ -478,6 +478,9 @@ export default function App() {
           assignedTo: ""
         });
         fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al crear lead");
       }
     } catch (error) {
       toast.error("Error al crear lead");
