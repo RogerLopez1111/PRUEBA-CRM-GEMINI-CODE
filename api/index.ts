@@ -305,6 +305,43 @@ app.post("/api/users/:id/goal", async (req, res) => {
   res.json(users.find((u) => u.id === id));
 });
 
+app.post("/api/sucursales/:id/goal", async (req, res) => {
+  const { id } = req.params;
+  const { goal, year, month } = req.body;
+  const now = new Date();
+  const targetYear: number = year ?? now.getFullYear();
+  const targetMonth: number = month ?? now.getMonth() + 1;
+
+  const { data: sellers } = await supabase
+    .from("vendedores")
+    .select("Vn_Cve_Vendedor")
+    .eq("Sc_Cve_Sucursal", id)
+    .eq("Es_Cve_Estado", "AC");
+
+  if (!sellers || sellers.length === 0) {
+    res.status(404).json({ error: "No hay vendedores activos en esta sucursal" });
+    return;
+  }
+
+  const { error } = await supabase.from("vendedor_metas").upsert(
+    sellers.map((s) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      Vn_Cve_Vendedor: s.Vn_Cve_Vendedor,
+      year: targetYear,
+      month: targetMonth,
+      meta: goal,
+    })),
+    { onConflict: "Vn_Cve_Vendedor,year,month" }
+  );
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json({ success: true, updated: sellers.length });
+});
+
 app.get("/api/users/:id/goals", async (req, res) => {
   const { id } = req.params;
   const { data, error } = await supabase

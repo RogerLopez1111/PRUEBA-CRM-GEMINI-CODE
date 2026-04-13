@@ -29,7 +29,9 @@ import {
   ExternalLink,
   MessageSquare,
   Paperclip,
-  ChevronRight
+  ChevronRight,
+  Target,
+  Building2
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -187,6 +189,8 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
   );
 }
 
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
 export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -252,6 +256,9 @@ export default function App() {
   const [goalsLoading, setGoalsLoading] = useState(false);
   // For seller's own timeline view
   const [myGoalsTimeline, setMyGoalsTimeline] = useState<SalesGoal[]>([]);
+
+  // Branch Goal
+  const [branchGoal, setBranchGoal] = useState({ sucursalId: "", month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0 });
 
   // DND State
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -576,6 +583,27 @@ export default function App() {
       }
     } catch (error) {
       toast.error("Error al actualizar meta");
+    }
+  };
+
+  const handleSetBranchGoal = async () => {
+    if (!branchGoal.sucursalId || !branchGoal.amount) return;
+    try {
+      const res = await fetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: branchGoal.amount, year: branchGoal.year, month: branchGoal.month })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(`Meta aplicada a ${data.updated} vendedor(es)`);
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al establecer meta");
+      }
+    } catch {
+      toast.error("Error al establecer meta");
     }
   };
 
@@ -1797,6 +1825,7 @@ export default function App() {
                     <TabsTrigger value="users" className="text-xs px-4">Usuarios</TabsTrigger>
                     <TabsTrigger value="workload" className="text-xs px-4">Carga de Trabajo</TabsTrigger>
                     <TabsTrigger value="activity" className="text-xs px-4">Actividad Global</TabsTrigger>
+                    <TabsTrigger value="goals" className="text-xs px-4">Metas por Sucursal</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -2405,6 +2434,126 @@ export default function App() {
                       </Table>
                     </CardContent>
                   </Card>
+                )}
+
+                {adminSubTab === "goals" && (
+                  <div className="space-y-6">
+                    <Card className="border-none shadow-sm bg-white">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Target className="w-5 h-5 text-slate-400" />
+                          Establecer Meta por Sucursal
+                        </CardTitle>
+                        <CardDescription>Aplica una meta de ventas a todos los vendedores activos de una sucursal para el período seleccionado.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                          <div className="grid gap-2">
+                            <label className="text-sm font-medium">Sucursal</label>
+                            <Select value={branchGoal.sucursalId} onValueChange={(val) => setBranchGoal({...branchGoal, sucursalId: val})}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar sucursal" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sucursales.map(s => (
+                                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-sm font-medium">Mes</label>
+                            <Select value={String(branchGoal.month)} onValueChange={(val) => setBranchGoal({...branchGoal, month: Number(val)})}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MESES.map((name, i) => (
+                                  <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-sm font-medium">Año</label>
+                            <Select value={String(branchGoal.year)} onValueChange={(val) => setBranchGoal({...branchGoal, year: Number(val)})}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+                                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-sm font-medium">Meta ($)</label>
+                            <Input
+                              type="number"
+                              placeholder="50000"
+                              value={branchGoal.amount || ""}
+                              onChange={(e) => setBranchGoal({...branchGoal, amount: Number(e.target.value)})}
+                            />
+                          </div>
+                        </div>
+                        {branchGoal.sucursalId && (
+                          <p className="text-xs text-slate-400 mt-3">
+                            Afectará a {users.filter(u => u.role === "Seller" && u.sucursalId === branchGoal.sucursalId).length} vendedor(es) activo(s) en {sucursales.find(s => s.id === branchGoal.sucursalId)?.name}.
+                          </p>
+                        )}
+                        <div className="mt-4">
+                          <Button onClick={handleSetBranchGoal} disabled={!branchGoal.sucursalId || !branchGoal.amount} className="gap-2">
+                            <Target className="w-4 h-4" />
+                            Aplicar Meta
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-none shadow-sm bg-white">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-slate-400" />
+                          Metas Actuales por Sucursal
+                        </CardTitle>
+                        <CardDescription>Meta del mes en curso para cada vendedor activo.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-50/50">
+                              <TableHead className="font-semibold">Sucursal</TableHead>
+                              <TableHead className="font-semibold">Vendedor</TableHead>
+                              <TableHead className="font-semibold text-right">Meta Actual ($)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sucursales.flatMap(s =>
+                              users
+                                .filter(u => u.role === "Seller" && u.sucursalId === s.id)
+                                .map((u, idx) => (
+                                  <TableRow key={u.id}>
+                                    <TableCell className="font-medium text-slate-600">
+                                      {idx === 0 ? s.name : ""}
+                                    </TableCell>
+                                    <TableCell>{u.name}</TableCell>
+                                    <TableCell className="text-right font-mono">
+                                      {u.performance.salesGoal ? `$${u.performance.salesGoal.toLocaleString()}` : <span className="text-slate-400 text-xs">Sin meta</span>}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                            )}
+                            {users.filter(u => u.role === "Seller").length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={3} className="h-24 text-center text-slate-400">No hay vendedores activos.</TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </div>
                 )}
               </div>
             </TabsContent>
