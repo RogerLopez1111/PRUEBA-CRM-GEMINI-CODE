@@ -43,7 +43,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { Lead, User, LeadStatus, Client } from "./types";
+import { Lead, User, LeadStatus, Client, SalesGoal } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -211,6 +211,7 @@ export default function App() {
   });
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [statusUpdate, setStatusUpdate] = useState({ 
@@ -246,6 +247,10 @@ export default function App() {
   const [userDetailEmail, setUserDetailEmail] = useState("");
   const [userDetailPassword, setUserDetailPassword] = useState("");
   const [userDetailSucursal, setUserDetailSucursal] = useState("");
+  const [userGoalsTimeline, setUserGoalsTimeline] = useState<SalesGoal[]>([]);
+  const [goalsLoading, setGoalsLoading] = useState(false);
+  // For seller's own timeline view
+  const [myGoalsTimeline, setMyGoalsTimeline] = useState<SalesGoal[]>([]);
 
   // DND State
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -265,7 +270,10 @@ export default function App() {
     if (savedUser) {
       const user = JSON.parse(savedUser);
       setCurrentUser(user);
-      if (user.role === "Seller") setPerfUserFilter(user.id);
+      if (user.role === "Seller") {
+        setPerfUserFilter(user.id);
+        fetchGoalsTimeline(user.id, setMyGoalsTimeline);
+      }
     }
     fetchData();
   }, []);
@@ -318,7 +326,7 @@ export default function App() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail })
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
       });
       if (res.ok) {
         const user = await res.json();
@@ -327,9 +335,11 @@ export default function App() {
         else setPerfUserFilter("all");
         localStorage.setItem("leadflow_user", JSON.stringify(user));
         toast.success(`Bienvenido de nuevo, ${user.name}`);
+        if (user.role === "Seller") fetchGoalsTimeline(user.id, setMyGoalsTimeline);
         fetchData();
       } else {
-        toast.error("Correo electrónico inválido");
+        const data = await res.json();
+        toast.error(data.error || "Correo o contraseña incorrectos");
       }
     } catch (error) {
       toast.error("Error al iniciar sesión");
@@ -474,11 +484,22 @@ export default function App() {
     }
   };
 
+  const fetchGoalsTimeline = async (userId: string, setter: (g: SalesGoal[]) => void) => {
+    setGoalsLoading(true);
+    try {
+      const res = await fetch(`/api/users/${userId}/goals`);
+      if (res.ok) setter(await res.json());
+    } finally {
+      setGoalsLoading(false);
+    }
+  };
+
   const handleOpenUserDetail = (user: User) => {
     setSelectedUserDetail(user);
     setUserDetailEmail(user.email);
     setUserDetailPassword("");
     setUserDetailSucursal(user.sucursalId);
+    fetchGoalsTimeline(user.id, setUserGoalsTimeline);
   };
 
   const handleUpdateUserEmail = async () => {
@@ -630,25 +651,33 @@ export default function App() {
                 </div>
               </div>
               <CardTitle className="text-2xl font-bold tracking-tight">LeadFlow CRM</CardTitle>
-              <CardDescription>Ingresa tu correo para acceder a tu panel de ventas</CardDescription>
+              <CardDescription>Ingresa tus credenciales para acceder a tu panel de ventas</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 ml-1">Correo Electrónico</label>
-                    <Input 
-                      type="email" 
-                      placeholder="nombre@leadflow.com" 
+                    <Input
+                      type="email"
+                      placeholder="nombre@empresa.com"
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
                       required
                       className="h-12"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400 text-center">
-                    Prueba con: admin@leadflow.com o alice@leadflow.com
-                  </p>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 ml-1">Contraseña</label>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      required
+                      className="h-12"
+                    />
+                  </div>
                 </div>
                 <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold">
                   <LogIn className="w-5 h-5" />
@@ -1662,6 +1691,55 @@ export default function App() {
                         )}
                       </CardContent>
                     </Card>
+
+                    {/* Goals Timeline */}
+                    <Card className="border-none shadow-sm bg-white lg:col-span-3">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Historial de Metas Mensuales</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const timeline = currentUser.role === "Admin"
+                            ? userGoalsTimeline.filter(g => g.vendedorId === user.id)
+                            : myGoalsTimeline;
+                          const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+                          if (timeline.length === 0) return (
+                            <p className="text-xs text-slate-400 italic py-4 text-center">Sin metas registradas para este vendedor.</p>
+                          );
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {timeline.map((g) => {
+                                const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
+                                const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
+                                  : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
+                                  : g.status === "current" ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : "bg-slate-50 text-slate-500 border-slate-200";
+                                const badgeLabel = g.status === "achieved" ? "Cumplida" : g.status === "missed" ? "No cumplida" : g.status === "current" ? "En curso" : "Próxima";
+                                return (
+                                  <div key={g.id} className="rounded-lg border p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-semibold">{MONTHS[g.month - 1]} {g.year}</span>
+                                      <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>{badgeLabel}</Badge>
+                                    </div>
+                                    <div className="flex justify-between text-[11px] text-slate-500">
+                                      <span>Meta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
+                                      <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-end text-[10px] font-bold">{pct}%</div>
+                                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+
                   </div>
                 </div>
               );
@@ -1912,7 +1990,7 @@ export default function App() {
                       </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-5 py-2">
+                    <div className="space-y-5 py-2 max-h-[75vh] overflow-y-auto pr-1">
                       {/* Key stats */}
                       <div className="grid grid-cols-3 gap-3">
                         <div className="rounded-lg bg-slate-50 p-3 text-center">
@@ -1947,6 +2025,45 @@ export default function App() {
                           <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Conversión</p>
                           <p>{((selectedUserDetail?.performance.conversionRate ?? 0) * 100).toFixed(0)}%</p>
                         </div>
+                      </div>
+
+                      {/* Goals timeline */}
+                      <div className="space-y-2 border-t pt-4">
+                        <p className="text-sm font-semibold">Historial de Metas</p>
+                        {goalsLoading ? (
+                          <p className="text-xs text-slate-400">Cargando...</p>
+                        ) : userGoalsTimeline.length === 0 ? (
+                          <p className="text-xs text-slate-400">Sin metas registradas.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {userGoalsTimeline.map((g) => {
+                              const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+                              const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
+                              const label = `${MONTHS[g.month - 1]} ${g.year}`;
+                              const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
+                                : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
+                                : g.status === "current" ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-slate-50 text-slate-500 border-slate-200";
+                              const badgeLabel = g.status === "achieved" ? "Cumplida" : g.status === "missed" ? "No cumplida" : g.status === "current" ? "En curso" : "Próxima";
+                              return (
+                                <div key={g.id} className="rounded-lg border p-3 space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold">{label}</span>
+                                    <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>{badgeLabel}</Badge>
+                                  </div>
+                                  <div className="flex justify-between text-[11px] text-slate-500">
+                                    <span>Meta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
+                                    <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
+                                    <span className="font-bold">{pct}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
 
                       {/* Update email */}

@@ -57,6 +57,8 @@ export interface SalesGoal {
   year: number;
   month: number;        // 1–12
   meta: number;
+  invoiced: number;     // actual invoiced amount for that month
+  status: "current" | "achieved" | "missed" | "future";
   createdAt: string;
 }
 

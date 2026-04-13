@@ -142,19 +142,26 @@ app.use(express.json());
 // ---------------------------------------------------------------------------
 
 app.post("/api/login", async (req, res) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
   const { data: vendor } = await supabase
     .from("vendedores")
-    .select("Vn_Cve_Vendedor")
+    .select("Vn_Cve_Vendedor, Vn_Password")
     .eq("Vn_Email", email)
+    .eq("Es_Cve_Estado", "AC")
     .maybeSingle();
 
-  if (vendor) {
-    const users = await getUsersWithPerformance();
-    res.json(users.find((u) => u.id === vendor.Vn_Cve_Vendedor));
-  } else {
-    res.status(401).json({ error: "User not found" });
+  if (!vendor) {
+    res.status(401).json({ error: "Correo o contraseña incorrectos" });
+    return;
   }
+
+  if (vendor.Vn_Password && vendor.Vn_Password !== password) {
+    res.status(401).json({ error: "Correo o contraseña incorrectos" });
+    return;
+  }
+
+  const users = await getUsersWithPerformance();
+  res.json(users.find((u) => u.id === vendor.Vn_Cve_Vendedor));
 });
 
 // ---------------------------------------------------------------------------
@@ -312,15 +319,41 @@ app.get("/api/users/:id/goals", async (req, res) => {
     return;
   }
 
+  // For each month with a goal, calculate actual invoiced amount from leads
+  const { data: closedLeads } = await supabase
+    .from("leads")
+    .select("Cl_InvoicedAmount_CRM, Cl_Valor_CRM, Cl_UpdatedAt_CRM")
+    .eq("Vn_Cve_Vendedor", id)
+    .in("Cl_Status_CRM", ["FACTURADO", "ENTREGADO"]);
+
+  const invoicedByMonth: Record<string, number> = {};
+  for (const lead of closedLeads || []) {
+    const d = new Date(lead.Cl_UpdatedAt_CRM);
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+    invoicedByMonth[key] = (invoicedByMonth[key] || 0) + (lead.Cl_InvoicedAmount_CRM ?? lead.Cl_Valor_CRM ?? 0);
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
   res.json(
-    (data || []).map((r) => ({
-      id: r.id,
-      vendedorId: r.Vn_Cve_Vendedor,
-      year: r.year,
-      month: r.month,
-      meta: r.meta,
-      createdAt: r.created_at,
-    }))
+    (data || []).map((r) => {
+      const key = `${r.year}-${r.month}`;
+      const invoiced = invoicedByMonth[key] || 0;
+      const isPast = r.year < currentYear || (r.year === currentYear && r.month < currentMonth);
+      const isCurrent = r.year === currentYear && r.month === currentMonth;
+      return {
+        id: r.id,
+        vendedorId: r.Vn_Cve_Vendedor,
+        year: r.year,
+        month: r.month,
+        meta: r.meta,
+        invoiced,
+        status: isCurrent ? "current" : isPast ? (invoiced >= r.meta ? "achieved" : "missed") : "future",
+        createdAt: r.created_at,
+      };
+    })
   );
 });
 
