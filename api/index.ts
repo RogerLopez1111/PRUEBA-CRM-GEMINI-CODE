@@ -69,7 +69,7 @@ async function getUsersWithPerformance() {
         name: v.Vn_Descripcion,
         email: v.Vn_Email,
         role: v.Vn_Perfil as "Admin" | "Seller",
-        sucursalId: v.Sc_Cve_Sucursal || "",
+        sucursalId: v.Sc_Cve_Sucursal != null ? String(v.Sc_Cve_Sucursal) : "",
         performance: {
           totalClosed,
           totalValue,
@@ -601,7 +601,7 @@ app.get("/api/clients", async (_req, res) => {
         phone: c.Cl_Telefono_1 || undefined,
         city: c.Cl_Ciudad || undefined,
         state: c.Cl_Estado || undefined,
-        sucursalId: sortedLeads[0]?.Sc_Cve_Sucursal || c.Sc_Cve_Sucursal || undefined,
+        sucursalId: (sortedLeads[0]?.Sc_Cve_Sucursal ?? c.Sc_Cve_Sucursal) != null ? String(sortedLeads[0]?.Sc_Cve_Sucursal ?? c.Sc_Cve_Sucursal) : undefined,
         segmentoId: c.Sg_Cve_Segmento || undefined,
         segmento: (c.segmentos as any)?.Sg_Descripcion || undefined,
         createdAt: c.Fecha_Alta,
@@ -616,7 +616,7 @@ app.get("/api/clients", async (_req, res) => {
 
 app.get("/api/lookups/sucursales", async (_req, res) => {
   const { data } = await supabase.from("sucursales").select("Sc_Cve_Sucursal, Sc_Descripcion");
-  res.json((data || []).map((s) => ({ id: s.Sc_Cve_Sucursal, name: s.Sc_Descripcion })));
+  res.json((data || []).map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion })));
 });
 
 app.get("/api/lookups/segmentos", async (_req, res) => {
