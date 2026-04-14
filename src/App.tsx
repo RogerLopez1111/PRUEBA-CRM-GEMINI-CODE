@@ -1815,11 +1815,11 @@ export default function App() {
                   <p className="text-slate-500">Gestiona roles de usuario, metas y supervisa la carga de trabajo del equipo.</p>
                 </div>
                 <Tabs value={adminSubTab} onValueChange={setAdminSubTab} className="w-full md:w-auto">
-                  <TabsList className="p-1" style={{backgroundColor: "#141456"}}>
-                    <TabsTrigger value="users" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Usuarios</TabsTrigger>
-                    <TabsTrigger value="workload" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Carga de Trabajo</TabsTrigger>
-                    <TabsTrigger value="activity" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Actividad Global</TabsTrigger>
-                    <TabsTrigger value="goals" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Metas por Sucursal</TabsTrigger>
+                  <TabsList className="p-1 bg-transparent border-2 rounded-lg" style={{borderColor: "#141456"}}>
+                    <TabsTrigger value="users" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Usuarios</TabsTrigger>
+                    <TabsTrigger value="workload" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Carga de Trabajo</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Actividad Global</TabsTrigger>
+                    <TabsTrigger value="goals" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Metas por Sucursal</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
