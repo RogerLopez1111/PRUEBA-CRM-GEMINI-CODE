@@ -45,7 +45,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Lead, User, LeadStatus, Client, SalesGoal } from "./types";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
   DndContext,
@@ -359,21 +359,6 @@ export default function App() {
     toast.info("Sesión cerrada exitosamente");
   };
 
-  const handleAssign = async (leadId: string, userId: string) => {
-    try {
-      const res = await fetch(`/api/leads/${leadId}/assign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId })
-      });
-      if (res.ok) {
-        toast.success("Lead asignado exitosamente");
-        fetchData();
-      }
-    } catch (error) {
-      toast.error("Error al asignar lead");
-    }
-  };
 
   const handleStatusChange = async (
     leadId: string, 
@@ -1977,181 +1962,6 @@ export default function App() {
                         </CardContent>
                       </Card>
                     </div>
-
-                    {/* Leads Table */}
-                    <Card className="border-none shadow-sm overflow-hidden">
-                      <CardHeader className="bg-white border-b py-4">
-                        <div className="flex flex-col gap-4">
-                          <CardTitle className="text-lg font-semibold">Todos los Leads</CardTitle>
-                          <div className="flex flex-wrap items-center gap-4">
-                            <div className="flex-1 min-w-[200px] space-y-1">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar</p>
-                              <Input
-                                placeholder="Buscar por nombre o empresa..."
-                                value={adminSearch}
-                                onChange={(e) => setAdminSearch(e.target.value)}
-                                className="h-9"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
-                              <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
-                                <SelectTrigger className="w-[150px] h-9">
-                                  <SelectValue placeholder="Todos los Vendedores" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Todos los Vendedores</SelectItem>
-                                  <SelectItem value="unassigned">Sin asignar</SelectItem>
-                                  {users
-                                    .filter(u => adminFilterSucursal === "all" || u.sucursalId === sucursales.find(s => s.name === adminFilterSucursal)?.id)
-                                    .map(u => (
-                                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
-                              <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
-                                <SelectTrigger className="w-[150px] h-9">
-                                  <SelectValue placeholder="Todos los Estados" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Todos los Estados</SelectItem>
-                                  <SelectItem value="ASIGNADO">Asignado</SelectItem>
-                                  <SelectItem value="CONTACTADO">Contactado</SelectItem>
-                                  <SelectItem value="NEGOCIACION">Negociación</SelectItem>
-                                  <SelectItem value="COTIZADO">Cotizado</SelectItem>
-                                  <SelectItem value="FACTURADO">Facturado</SelectItem>
-                                  <SelectItem value="ENTREGADO">Entregado</SelectItem>
-                                  <SelectItem value="RECHAZADO">Rechazado</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
-                              <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
-                                <SelectTrigger className="w-[150px] h-9">
-                                  <SelectValue placeholder="Todas las Sucursales" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Todas las Sucursales</SelectItem>
-                                  {sucursales.map(s => (
-                                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Segmento</p>
-                              <Select value={adminFilterSegmento} onValueChange={setAdminFilterSegmento}>
-                                <SelectTrigger className="w-[150px] h-9">
-                                  <SelectValue placeholder="Todos los Segmentos" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Todos los Segmentos</SelectItem>
-                                  {segmentos.map(s => (
-                                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-0 bg-white">
-                        <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-slate-50/50">
-                              <TableHead className="font-semibold">Lead</TableHead>
-                              <TableHead className="font-semibold">Empresa</TableHead>
-                              <TableHead className="font-semibold">Sucursal</TableHead>
-                              <TableHead className="font-semibold">Segmento</TableHead>
-                              <TableHead className="font-semibold">Estado</TableHead>
-                              <TableHead className="font-semibold">Asignado a</TableHead>
-                              <TableHead className="font-semibold">Valor</TableHead>
-                              <TableHead className="text-right font-semibold">Acciones</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            <AnimatePresence mode="popLayout">
-                              {leads
-                                .filter(l => {
-                                  if (adminFilterSeller !== "all") {
-                                    if (adminFilterSeller === "unassigned") {
-                                      if (l.assignedTo) return false;
-                                    } else if (l.assignedTo !== adminFilterSeller) {
-                                      return false;
-                                    }
-                                  }
-                                  if (adminFilterStatus !== "all" && l.status !== adminFilterStatus) return false;
-                                  if (adminFilterSucursal !== "all" && l.sucursal !== adminFilterSucursal) return false;
-                                  if (adminFilterSegmento !== "all" && l.segmento !== adminFilterSegmento) return false;
-                                  if (adminSearch && !l.name.toLowerCase().includes(adminSearch.toLowerCase()) && !l.company.toLowerCase().includes(adminSearch.toLowerCase())) return false;
-                                  return true;
-                                })
-                                .map((lead) => (
-                                <motion.tr
-                                  key={lead.id}
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95 }}
-                                  className="group hover:bg-slate-50/50 transition-colors"
-                                >
-                                  <TableCell>
-                                    <div className="flex flex-col">
-                                      <span className="font-medium">{lead.name}</span>
-                                      <span className="text-xs text-slate-500">{lead.email}</span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>{lead.company}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-[10px] font-normal">{lead.sucursal}</Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-[10px] font-normal">{lead.segmento}</Badge>
-                                  </TableCell>
-                                  <TableCell>{getStatusBadge(lead.status)}</TableCell>
-                                  <TableCell>
-                                    {lead.assignedTo ? (
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                                          {users.find(u => u.id === lead.assignedTo)?.name.charAt(0)}
-                                        </div>
-                                        <span className="text-sm">{users.find(u => u.id === lead.assignedTo)?.name}</span>
-                                      </div>
-                                    ) : (
-                                      <span className="text-xs text-slate-400 italic">Sin asignar</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="font-mono text-sm font-medium">
-                                    ${lead.value.toLocaleString()}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    {!lead.assignedTo && (
-                                      <Select onValueChange={(val: string) => handleAssign(lead.id, val)}>
-                                        <SelectTrigger className="w-[140px] h-8">
-                                          <SelectValue placeholder="Asignar a..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {users
-                                            .filter(u => u.sucursalId === sucursales.find(s => s.name === lead.sucursal)?.id)
-                                            .map(user => (
-                                              <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                      </Select>
-                                    )}
-                                  </TableCell>
-                                </motion.tr>
-                              ))}
-                            </AnimatePresence>
-                          </TableBody>
-                        </Table>
-                        </div>
-                      </CardContent>
-                    </Card>
 
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <h3 className="text-lg font-bold flex items-center gap-2">
