@@ -94,7 +94,7 @@ function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?
     <div key={status} className="flex-shrink-0 w-80 flex flex-col gap-4">
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm uppercase tracking-wider text-slate-500">{status}</h3>
+          <h3 className="font-bold text-sm uppercase tracking-wider" style={{color: "#141456"}}>{status}</h3>
           <Badge variant="secondary" className="rounded-full h-5 w-5 p-0 flex items-center justify-center text-[10px]">
             {leads.filter(l => l.status === status).length}
           </Badge>
@@ -108,7 +108,7 @@ function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?
       >
         <div 
           ref={setNodeRef}
-          className="flex-1 bg-slate-100/50 rounded-xl p-2 space-y-3 border border-dashed border-slate-200 min-h-[200px]"
+          className="flex-1 rounded-xl p-2 space-y-3 border border-dashed border-[#141456]/20 min-h-[200px]" style={{backgroundColor: "rgba(20,20,86,0.06)"}}
         >
           {leads.filter(l => l.status === status).map((lead) => (
             <SortableLeadCard 
