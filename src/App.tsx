@@ -1813,11 +1813,11 @@ export default function App() {
                   <p className="text-slate-500">Gestiona roles de usuario, metas y supervisa la carga de trabajo del equipo.</p>
                 </div>
                 <Tabs value={adminSubTab} onValueChange={setAdminSubTab} className="w-full md:w-auto">
-                  <TabsList className="bg-slate-100/50 p-1">
-                    <TabsTrigger value="users" className="text-xs px-4">Usuarios</TabsTrigger>
-                    <TabsTrigger value="workload" className="text-xs px-4">Carga de Trabajo</TabsTrigger>
-                    <TabsTrigger value="activity" className="text-xs px-4">Actividad Global</TabsTrigger>
-                    <TabsTrigger value="goals" className="text-xs px-4">Metas por Sucursal</TabsTrigger>
+                  <TabsList className="p-1" style={{backgroundColor: "#141456"}}>
+                    <TabsTrigger value="users" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Usuarios</TabsTrigger>
+                    <TabsTrigger value="workload" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Carga de Trabajo</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Actividad Global</TabsTrigger>
+                    <TabsTrigger value="goals" className="text-xs px-4 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#141456]">Metas por Sucursal</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
