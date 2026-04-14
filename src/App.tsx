@@ -274,7 +274,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("leadflow_user");
+    const savedUser = localStorage.getItem("ecosistemas_crm_user");
     if (savedUser) {
       const user = JSON.parse(savedUser);
       setCurrentUser(user);
@@ -341,7 +341,7 @@ export default function App() {
         setCurrentUser(user);
         if (user.role === "Seller") setPerfUserFilter(user.id);
         else setPerfUserFilter("all");
-        localStorage.setItem("leadflow_user", JSON.stringify(user));
+        localStorage.setItem("ecosistemas_crm_user", JSON.stringify(user));
         toast.success(`Bienvenido de nuevo, ${user.name}`);
         if (user.role === "Seller") fetchGoalsTimeline(user.id, setMyGoalsTimeline);
         fetchData();
@@ -356,7 +356,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem("leadflow_user");
+    localStorage.removeItem("ecosistemas_crm_user");
     toast.info("Sesión cerrada exitosamente");
   };
 
@@ -677,12 +677,7 @@ export default function App() {
         >
           <Card className="border-none shadow-xl bg-white">
             <CardHeader className="text-center space-y-1">
-              <div className="flex justify-center mb-4">
-                <div className="bg-primary p-3 rounded-2xl shadow-lg shadow-primary/20">
-                  <TrendingUp className="w-8 h-8 text-white" />
-                </div>
-              </div>
-              <CardTitle className="text-2xl font-bold tracking-tight">LeadFlow CRM</CardTitle>
+              <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
               <CardDescription>Ingresa tus credenciales para acceder a tu panel de ventas</CardDescription>
             </CardHeader>
             <CardContent>
@@ -728,7 +723,7 @@ export default function App() {
       <div className="flex items-center justify-center h-screen bg-slate-50">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="w-12 h-12 bg-primary/20 rounded-full" />
-          <p className="text-slate-500 font-medium">Cargando LeadFlow...</p>
+          <p className="text-slate-500 font-medium">Cargando...</p>
         </div>
       </div>
     );
@@ -742,10 +737,7 @@ export default function App() {
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur-md">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight">LeadFlow <span className="text-primary">CRM</span></h1>
+            <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-8 object-contain" />
           </div>
           
           <div className="flex items-center gap-4">
@@ -1865,7 +1857,7 @@ export default function App() {
                                 <label className="text-sm font-medium">Correo Electrónico</label>
                                 <Input 
                                   type="email"
-                                  placeholder="juan@leadflow.com" 
+                                  placeholder="juan@ecosistemas.com.mx" 
                                   value={newUser.email}
                                   onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                                 />
