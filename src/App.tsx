@@ -91,7 +91,7 @@ function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?
   });
 
   return (
-    <div key={status} className="flex-shrink-0 w-80 flex flex-col gap-4">
+    <div key={status} className="flex-shrink-0 w-[260px] sm:w-72 md:w-80 flex flex-col gap-4">
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
           <h3 className="font-bold text-sm uppercase tracking-wider" style={{color: "#141456"}}>{status}</h3>
@@ -776,32 +776,32 @@ export default function App() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue={currentUser.role === "Admin" ? "leads" : "my-leads"} className="space-y-8">
+      <main className="container mx-auto px-2 md:px-4 py-4 md:py-8">
+        <Tabs defaultValue={currentUser.role === "Admin" ? "leads" : "my-leads"} className="space-y-6 md:space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <TabsList className="bg-white border shadow-sm p-1 h-12">
+            <TabsList className="bg-white border shadow-sm p-1 h-12 w-full md:w-auto overflow-x-auto">
               {currentUser.role === "Admin" && (
-                <TabsTrigger value="leads" className="gap-2 px-6">
+                <TabsTrigger value="leads" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                   <LayoutDashboard className="w-4 h-4" />
-                  Todos los Leads
+                  <span className="hidden sm:inline">Todos los Leads</span>
                 </TabsTrigger>
               )}
-              <TabsTrigger value="my-leads" className="gap-2 px-6">
+              <TabsTrigger value="my-leads" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <UserCheck className="w-4 h-4" />
-                Mis Leads
+                <span className="hidden sm:inline">Mis Leads</span>
               </TabsTrigger>
-              <TabsTrigger value="kanban" className="gap-2 px-6">
+              <TabsTrigger value="kanban" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <Kanban className="w-4 h-4" />
-                Pipeline
+                <span className="hidden sm:inline">Pipeline</span>
               </TabsTrigger>
-              <TabsTrigger value="performance" className="gap-2 px-6">
+              <TabsTrigger value="performance" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <BarChart3 className="w-4 h-4" />
-                Rendimiento
+                <span className="hidden sm:inline">Rendimiento</span>
               </TabsTrigger>
               {currentUser.role === "Admin" && (
-                <TabsTrigger value="admin" className="gap-2 px-6">
+                <TabsTrigger value="admin" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                   <ShieldCheck className="w-4 h-4" />
-                  Panel Admin
+                  <span className="hidden sm:inline">Panel Admin</span>
                 </TabsTrigger>
               )}
             </TabsList>
@@ -1409,7 +1409,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex gap-4 overflow-x-auto pb-4 min-h-[600px]">
+            <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 min-h-[600px] -mx-2 px-2 md:mx-0 md:px-0">
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCorners}
@@ -1509,6 +1509,7 @@ export default function App() {
                   <CardDescription>Resumen de todos los vendedores y su estado actual del pipeline.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-slate-50/50">
@@ -1555,6 +1556,7 @@ export default function App() {
                       })}
                     </TableBody>
                   </Table>
+                  </div>
                 </CardContent>
               </Card>
             ) : (
@@ -1943,6 +1945,7 @@ export default function App() {
                       </div>
                     </div>
                     <CardContent className="p-0">
+                      <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-slate-50/50">
@@ -2031,6 +2034,7 @@ export default function App() {
                           ))}
                         </TableBody>
                       </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -2352,6 +2356,7 @@ export default function App() {
                       </div>
                     </CardHeader>
                     <CardContent className="p-0">
+                      <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-slate-50/50">
@@ -2424,6 +2429,7 @@ export default function App() {
                           )}
                         </TableBody>
                       </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -2512,6 +2518,7 @@ export default function App() {
                         <CardDescription>Meta del mes en curso para cada vendedor activo.</CardDescription>
                       </CardHeader>
                       <CardContent className="p-0">
+                        <div className="overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-slate-50/50">
@@ -2543,6 +2550,7 @@ export default function App() {
                             )}
                           </TableBody>
                         </Table>
+                        </div>
                       </CardContent>
                     </Card>
                   </div>
