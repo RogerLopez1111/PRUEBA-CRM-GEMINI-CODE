@@ -4,7 +4,7 @@
  */
 
 import * as React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Users, 
   UserPlus, 
@@ -30,7 +30,8 @@ import {
   Paperclip,
   ChevronRight,
   Target,
-  Building2
+  Building2,
+  Bell
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -271,6 +272,27 @@ export default function App() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const notifications = useMemo(() => {
+    if (!currentUser) return [] as Array<{ id: string; leadId: string; kind: "stale-assignment" | "stale-quote"; lead: Lead; days: number; sellerName: string }>;
+    const now = Date.now();
+    const DAY = 1000 * 60 * 60 * 24;
+    const visible = currentUser.role === "Admin"
+      ? leads
+      : leads.filter(l => l.assignedTo === currentUser.id);
+    const out: Array<{ id: string; leadId: string; kind: "stale-assignment" | "stale-quote"; lead: Lead; days: number; sellerName: string }> = [];
+    for (const lead of visible) {
+      if (!lead.assignedTo) continue;
+      const days = Math.floor((now - new Date(lead.updatedAt).getTime()) / DAY);
+      const sellerName = users.find(u => u.id === lead.assignedTo)?.name || "Sin asignar";
+      if (lead.status === "ASIGNADO" && days >= 3) {
+        out.push({ id: `assign-${lead.id}`, leadId: lead.id, kind: "stale-assignment", lead, days, sellerName });
+      } else if (lead.status === "COTIZADO" && days >= 5) {
+        out.push({ id: `quote-${lead.id}`, leadId: lead.id, kind: "stale-quote", lead, days, sellerName });
+      }
+    }
+    return out.sort((a, b) => b.days - a.days);
+  }, [leads, users, currentUser]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("ecosistemas_crm_user");
@@ -729,6 +751,55 @@ export default function App() {
               <span className="text-sm font-semibold">{currentUser.name}</span>
               <span className="text-xs text-slate-500">{currentUser.role}</span>
             </div>
+            <Popover>
+              <PopoverTrigger nativeButton={false} render={
+                <div className="relative w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border-2 border-white shadow-sm cursor-pointer hover:bg-slate-300 transition-colors">
+                  <Bell className="w-5 h-5 text-slate-600" />
+                  {notifications.length > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
+                      {notifications.length}
+                    </span>
+                  )}
+                </div>
+              } />
+              <PopoverContent align="end" className="w-80 p-0">
+                <div className="px-4 py-3 border-b flex items-center justify-between">
+                  <span className="font-semibold text-sm">Alertas</span>
+                  <Badge variant="secondary" className="text-xs">{notifications.length}</Badge>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-slate-500">
+                      Sin alertas pendientes
+                    </div>
+                  ) : (
+                    notifications.map(n => (
+                      <button
+                        key={n.id}
+                        onClick={() => openStatusUpdate(n.lead)}
+                        className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className={cn("w-4 h-4 mt-0.5 flex-shrink-0", n.kind === "stale-quote" ? "text-red-500" : "text-amber-500")} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{n.lead.name}</p>
+                            <p className="text-xs text-slate-500 truncate">{n.lead.company}</p>
+                            <p className="text-xs mt-1" style={{color: "#141456"}}>
+                              {n.kind === "stale-quote"
+                                ? `Cotización sin actualizar hace ${n.days} días`
+                                : `Lead asignado sin actualizar hace ${n.days} días`}
+                            </p>
+                            {currentUser.role === "Admin" && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">Vendedor: {n.sellerName}</p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
             <Dialog>
               <DialogTrigger nativeButton={false} render={
                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border-2 border-white shadow-sm cursor-pointer hover:bg-slate-300 transition-colors">
