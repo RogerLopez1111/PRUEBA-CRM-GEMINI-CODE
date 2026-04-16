@@ -100,7 +100,7 @@ export async function getErpClients(): Promise<ReturnType<typeof mapErpClient>[]
   try {
     const p = await getPool();
     const r = await p.request().query(`
-      SELECT TOP 500
+      SELECT
         Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
