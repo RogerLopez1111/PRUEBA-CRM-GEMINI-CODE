@@ -29,6 +29,7 @@ export interface Client {
   segmentoId?: string;  // Sg_Cve_Segmento → FK to segmentos
   segmento?: string;    // resolved from segmentos.Sg_Descripcion
   createdAt: string;    // Fecha_Alta
+  source?: 'erp' | 'crm'; // 'erp' = exists in SQL Server ECO_2020, 'crm' = CRM prospect only
 }
 
 // Maps to Supabase `leads` table (CRM-only, no ERP counterpart)
