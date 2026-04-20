@@ -50,32 +50,38 @@ function mapErpClient(c: Record<string, any>) {
 // Lookups
 // ---------------------------------------------------------------------------
 
-export async function getSucursales(): Promise<{ id: string; name: string }[]> {
+export async function getSucursales(): Promise<{ id: string; name: string; estado: string }[]> {
   try {
     const p = await getPool();
     const r = await p.request().query(`
-      SELECT Sc_Cve_Sucursal, Sc_Descripcion
+      SELECT Sc_Cve_Sucursal, Sc_Descripcion, Es_Cve_Estado
       FROM Sucursal
-      WHERE Es_Cve_Estado = 'AC'
       ORDER BY Sc_Descripcion
     `);
-    return r.recordset.map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion }));
+    return r.recordset.map((s) => ({
+      id: String(s.Sc_Cve_Sucursal),
+      name: s.Sc_Descripcion,
+      estado: String(s.Es_Cve_Estado ?? 'AC'),
+    }));
   } catch (err) {
     console.error('[MSSQL] getSucursales:', err);
     return [];
   }
 }
 
-export async function getSegmentos(): Promise<{ id: string; name: string }[]> {
+export async function getSegmentos(): Promise<{ id: string; name: string; estado: string }[]> {
   try {
     const p = await getPool();
     const r = await p.request().query(`
-      SELECT Sg_Cve_Segmento, Sg_Descripcion
+      SELECT Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado
       FROM Segmento
-      WHERE Es_Cve_Estado = 'AC'
       ORDER BY Sg_Descripcion
     `);
-    return r.recordset.map((s) => ({ id: s.Sg_Cve_Segmento, name: s.Sg_Descripcion }));
+    return r.recordset.map((s) => ({
+      id: s.Sg_Cve_Segmento,
+      name: s.Sg_Descripcion,
+      estado: String(s.Es_Cve_Estado ?? 'AC'),
+    }));
   } catch (err) {
     console.error('[MSSQL] getSegmentos:', err);
     return [];

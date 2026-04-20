@@ -666,12 +666,18 @@ app.get("/api/clients", async (_req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/lookups/sucursales", async (_req, res) => {
-  const { data } = await supabase.from("sucursales").select("Sc_Cve_Sucursal, Sc_Descripcion");
+  const { data } = await supabase
+    .from("sucursales")
+    .select("Sc_Cve_Sucursal, Sc_Descripcion, Es_Cve_Estado")
+    .eq("Es_Cve_Estado", "AC");
   res.json((data || []).map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion })));
 });
 
 app.get("/api/lookups/segmentos", async (_req, res) => {
-  const { data } = await supabase.from("segmentos").select("Sg_Cve_Segmento, Sg_Descripcion");
+  const { data } = await supabase
+    .from("segmentos")
+    .select("Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado")
+    .eq("Es_Cve_Estado", "AC");
   res.json((data || []).map((s) => ({ id: String(s.Sg_Cve_Segmento), name: s.Sg_Descripcion })));
 });
 

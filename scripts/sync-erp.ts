@@ -36,23 +36,15 @@ async function syncSucursales() {
   if (!rows.length) { console.warn('⚠  No sucursales returned from SQL Server'); return; }
 
   const { error } = await supabase.from('sucursales').upsert(
-    rows.map((s) => ({ Sc_Cve_Sucursal: s.id, Sc_Descripcion: s.name })),
+    rows.map((s) => ({
+      Sc_Cve_Sucursal: s.id,
+      Sc_Descripcion: s.name,
+      Es_Cve_Estado: s.estado,
+    })),
     { onConflict: 'Sc_Cve_Sucursal' }
   );
   if (error) { console.error('✗ sucursales:', error.message); return; }
   console.log(`✓ sucursales upserted: ${rows.length}`);
-
-  // Delete orphans (sucursales in Supabase that are no longer active in ERP)
-  const activeIds = new Set(rows.map((r) => r.id));
-  const { data: existing } = await supabase.from('sucursales').select('Sc_Cve_Sucursal');
-  const orphans = (existing || [])
-    .map((r) => String(r.Sc_Cve_Sucursal))
-    .filter((id) => !activeIds.has(id));
-  if (orphans.length) {
-    const { error: delErr } = await supabase.from('sucursales').delete().in('Sc_Cve_Sucursal', orphans);
-    if (delErr) console.error('✗ sucursales delete:', delErr.message);
-    else console.log(`✓ sucursales deleted: ${orphans.length} inactive`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,23 +55,15 @@ async function syncSegmentos() {
   if (!rows.length) { console.warn('⚠  No segmentos returned from SQL Server'); return; }
 
   const { error } = await supabase.from('segmentos').upsert(
-    rows.map((s) => ({ Sg_Cve_Segmento: s.id, Sg_Descripcion: s.name })),
+    rows.map((s) => ({
+      Sg_Cve_Segmento: s.id,
+      Sg_Descripcion: s.name,
+      Es_Cve_Estado: s.estado,
+    })),
     { onConflict: 'Sg_Cve_Segmento' }
   );
   if (error) { console.error('✗ segmentos:', error.message); return; }
   console.log(`✓ segmentos upserted: ${rows.length}`);
-
-  // Delete orphans (segmentos in Supabase that are no longer active in ERP)
-  const activeIds = new Set(rows.map((r) => r.id));
-  const { data: existing } = await supabase.from('segmentos').select('Sg_Cve_Segmento');
-  const orphans = (existing || [])
-    .map((r) => String(r.Sg_Cve_Segmento))
-    .filter((id) => !activeIds.has(id));
-  if (orphans.length) {
-    const { error: delErr } = await supabase.from('segmentos').delete().in('Sg_Cve_Segmento', orphans);
-    if (delErr) console.error('✗ segmentos delete:', delErr.message);
-    else console.log(`✓ segmentos deleted: ${orphans.length} inactive`);
-  }
 }
 
 // ---------------------------------------------------------------------------
