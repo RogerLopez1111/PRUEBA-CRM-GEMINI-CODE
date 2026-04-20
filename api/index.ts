@@ -619,8 +619,12 @@ app.post("/api/leads/:id/status", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/clients", async (_req, res) => {
-  const [supabaseResult, segmentosMap] = await Promise.all([
-    supabase
+  // Paginate: PostgREST caps responses (often 1000 rows), so we fetch in pages until exhausted
+  const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
       .from("clientes")
       .select(`
         Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
@@ -628,11 +632,17 @@ app.get("/api/clients", async (_req, res) => {
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       `)
       .order("Cl_Razon_Social", { ascending: true })
-      .range(0, 9999),
-    getSegmentosMap(),
-  ]);
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error("[clients] page error:", error.message); break; }
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
 
-  const clients = (supabaseResult.data || []).map((c) => ({
+  const segmentosMap = await getSegmentosMap();
+
+  const clients = allRows.map((c) => ({
     id: c.Cl_Cve_Cliente,
     name: c.Cl_Contacto_1 || "",
     email: c.Cl_email_contacto_1 || "",
