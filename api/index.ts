@@ -661,7 +661,10 @@ app.get("/api/clients", async (_req, res) => {
     getSegmentosMap(),
   ]);
 
-  // ERP client IDs take precedence — exclude from CRM list if already in ERP
+  // ERP IDs are zero-padded 10-digit numbers (e.g. 0000000180).
+  // CRM prospect IDs are random 9-char alphanumeric — they never match this pattern.
+  const isErpId = (id: string) => /^\d{10}$/.test(id);
+
   const erpIds = new Set(erpClients.map((c) => c.id));
 
   const crmClients = (supabaseResult.data || [])
@@ -679,7 +682,7 @@ app.get("/api/clients", async (_req, res) => {
       segmentoId: c.Sg_Cve_Segmento || undefined,
       segmento: segmentosMap[c.Sg_Cve_Segmento] || undefined,
       createdAt: c.Fecha_Alta,
-      source: 'crm' as const,
+      source: isErpId(c.Cl_Cve_Cliente) ? 'erp' as const : 'crm' as const,
     }));
 
   // ERP clients enriched with segmento name
