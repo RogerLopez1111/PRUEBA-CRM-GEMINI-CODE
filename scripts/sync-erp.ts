@@ -1,16 +1,15 @@
 /**
  * sync-erp.ts
- * Pulls sucursales, segmentos, and ERP clients from SQL Server (ECO_2020)
- * and upserts them into Supabase so Vercel always has fresh data.
+ * Mirrors ERP (SQL Server ECO_2020) into Supabase so Vercel always has fresh data.
  *
  * Run manually:  npx tsx scripts/sync-erp.ts
  * Or scheduled:  add a Windows Task Scheduler job to run it periodically
  *
- * Rules:
- *  - sucursales / segmentos: full upsert (ERP is the single source of truth)
- *  - clientes: upsert ERP clients by Cl_Cve_Cliente.
- *    CRM prospects have random IDs that never match ERP business keys,
- *    so a plain upsert is safe — prospects are never overwritten.
+ * What it does:
+ *  - sucursales / segmentos: upsert all ERP rows
+ *  - clientes: upsert all ERP rows, then delete ERP-style IDs in Supabase
+ *    that no longer exist in ERP (skipping any that still have leads)
+ *  - CRM prospects (alphanumeric IDs) are never touched
  */
 
 import 'dotenv/config';
@@ -26,6 +25,9 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY!
 );
 
+// ERP IDs are all-numeric (e.g. "0000000180"); CRM prospect IDs are random alphanumeric
+const isErpId = (id: string) => /^\d+$/.test(id);
+
 // ---------------------------------------------------------------------------
 // Sucursales
 // ---------------------------------------------------------------------------
@@ -37,9 +39,20 @@ async function syncSucursales() {
     rows.map((s) => ({ Sc_Cve_Sucursal: s.id, Sc_Descripcion: s.name })),
     { onConflict: 'Sc_Cve_Sucursal' }
   );
+  if (error) { console.error('✗ sucursales:', error.message); return; }
+  console.log(`✓ sucursales upserted: ${rows.length}`);
 
-  if (error) console.error('✗ sucursales:', error.message);
-  else console.log(`✓ sucursales: ${rows.length} synced`);
+  // Delete orphans (sucursales in Supabase that are no longer active in ERP)
+  const activeIds = new Set(rows.map((r) => r.id));
+  const { data: existing } = await supabase.from('sucursales').select('Sc_Cve_Sucursal');
+  const orphans = (existing || [])
+    .map((r) => String(r.Sc_Cve_Sucursal))
+    .filter((id) => !activeIds.has(id));
+  if (orphans.length) {
+    const { error: delErr } = await supabase.from('sucursales').delete().in('Sc_Cve_Sucursal', orphans);
+    if (delErr) console.error('✗ sucursales delete:', delErr.message);
+    else console.log(`✓ sucursales deleted: ${orphans.length} inactive`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -53,21 +66,32 @@ async function syncSegmentos() {
     rows.map((s) => ({ Sg_Cve_Segmento: s.id, Sg_Descripcion: s.name })),
     { onConflict: 'Sg_Cve_Segmento' }
   );
+  if (error) { console.error('✗ segmentos:', error.message); return; }
+  console.log(`✓ segmentos upserted: ${rows.length}`);
 
-  if (error) console.error('✗ segmentos:', error.message);
-  else console.log(`✓ segmentos: ${rows.length} synced`);
+  // Delete orphans (segmentos in Supabase that are no longer active in ERP)
+  const activeIds = new Set(rows.map((r) => r.id));
+  const { data: existing } = await supabase.from('segmentos').select('Sg_Cve_Segmento');
+  const orphans = (existing || [])
+    .map((r) => String(r.Sg_Cve_Segmento))
+    .filter((id) => !activeIds.has(id));
+  if (orphans.length) {
+    const { error: delErr } = await supabase.from('segmentos').delete().in('Sg_Cve_Segmento', orphans);
+    if (delErr) console.error('✗ segmentos delete:', delErr.message);
+    else console.log(`✓ segmentos deleted: ${orphans.length} inactive`);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Clients
+// Clients — upsert all ERP rows, then delete orphaned ERP-style IDs
 // ---------------------------------------------------------------------------
 async function syncClients() {
   const erpClients = await getErpClients();
   if (!erpClients.length) { console.warn('⚠  No clients returned from SQL Server'); return; }
 
-  // Batch upsert in chunks of 200 to avoid payload limits
+  // 1) Upsert in chunks
   const CHUNK = 200;
-  let synced = 0;
+  let upserted = 0;
   for (let i = 0; i < erpClients.length; i += CHUNK) {
     const chunk = erpClients.slice(i, i + CHUNK);
     const { error } = await supabase.from('clientes').upsert(
@@ -88,9 +112,57 @@ async function syncClients() {
       { onConflict: 'Cl_Cve_Cliente' }
     );
     if (error) { console.error(`✗ clients chunk ${i}–${i + chunk.length}:`, error.message); }
-    else synced += chunk.length;
+    else upserted += chunk.length;
   }
-  console.log(`✓ clients: ${synced} / ${erpClients.length} synced`);
+  console.log(`✓ clients upserted: ${upserted} / ${erpClients.length}`);
+
+  // 2) Collect all ERP-style IDs currently in Supabase (paginate to bypass max-rows cap)
+  const supabaseErpIds = new Set<string>();
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('Cl_Cve_Cliente')
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('✗ clients fetch for diff:', error.message); return; }
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      if (isErpId(row.Cl_Cve_Cliente)) supabaseErpIds.add(row.Cl_Cve_Cliente);
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  // 3) Find IDs in Supabase that no longer exist in ERP
+  const erpIdSet = new Set(erpClients.map((c) => c.id));
+  const orphanIds = [...supabaseErpIds].filter((id) => !erpIdSet.has(id));
+  if (orphanIds.length === 0) {
+    console.log('✓ clients: no orphans to delete');
+    return;
+  }
+
+  // 4) Check which orphans still have leads — we can't delete those (FK)
+  const { data: refs } = await supabase
+    .from('leads')
+    .select('Cl_Cve_Cliente')
+    .in('Cl_Cve_Cliente', orphanIds);
+  const referenced = new Set((refs || []).map((r) => r.Cl_Cve_Cliente));
+  const safeToDelete = orphanIds.filter((id) => !referenced.has(id));
+  const skipped = orphanIds.filter((id) => referenced.has(id));
+
+  // 5) Delete the safe ones in chunks
+  let deleted = 0;
+  for (let i = 0; i < safeToDelete.length; i += CHUNK) {
+    const ids = safeToDelete.slice(i, i + CHUNK);
+    const { error } = await supabase.from('clientes').delete().in('Cl_Cve_Cliente', ids);
+    if (error) console.error(`✗ clients delete chunk ${i}:`, error.message);
+    else deleted += ids.length;
+  }
+  console.log(`✓ clients deleted: ${deleted} orphaned ERP ids`);
+  if (skipped.length) {
+    console.warn(`⚠  ${skipped.length} orphaned ERP clients kept because leads still reference them: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
