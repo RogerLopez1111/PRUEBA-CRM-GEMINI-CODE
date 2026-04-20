@@ -914,40 +914,73 @@ export default function App() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="p-0 w-[300px]" align="end">
-                            <Command>
+                            <Command filter={(value: string, search: string) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
                               <CommandInput placeholder="Buscar cliente existente..." />
                               <CommandList>
                                 <CommandEmpty>No se encontraron clientes.</CommandEmpty>
-                                <CommandGroup heading="Clientes ERP">
-                                  {clients.filter(c => c.source === 'erp').map((client) => (
-                                    <CommandItem
-                                      key={client.id}
-                                      value={`${client.company} ${client.name} ${client.rfc || ''}`}
-                                      onSelect={() => {
-                                        setNewLead({
-                                          ...newLead,
-                                          isExistingClient: true,
-                                          clientId: client.id,
-                                          name: client.name,
-                                          company: client.company,
-                                          email: client.email,
-                                          sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal,
-                                          segmento: client.segmento || newLead.segmento,
-                                        });
-                                        setIsClientSearchOpen(false);
-                                      }}
-                                    >
-                                      <div className="flex flex-col gap-0.5">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="font-medium">{client.company}</span>
-                                          <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1 py-0.5 rounded">ERP</span>
+                                {clients.filter(c => c.source === 'erp').length > 0 && (
+                                  <CommandGroup heading="Clientes ERP">
+                                    {clients.filter(c => c.source === 'erp').map((client) => (
+                                      <CommandItem
+                                        key={client.id}
+                                        value={`${client.name} ${client.company} ${client.rfc || ''} ${client.id} ${client.id.replace(/^0+/, '')}`}
+                                        onSelect={() => {
+                                          setNewLead({
+                                            ...newLead,
+                                            isExistingClient: true,
+                                            clientId: client.id,
+                                            name: client.name,
+                                            company: client.company,
+                                            email: client.email,
+                                            sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal,
+                                            segmento: client.segmento || newLead.segmento,
+                                          });
+                                          setIsClientSearchOpen(false);
+                                        }}
+                                      >
+                                        <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-medium">{client.company}</span>
+                                            <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1 py-0.5 rounded">ERP</span>
+                                          </div>
+                                          <span className="text-xs text-slate-500">{client.name}</span>
+                                          {client.rfc && <span className="text-[10px] text-slate-400">{client.rfc}</span>}
                                         </div>
-                                        <span className="text-xs text-slate-500">{client.name}</span>
-                                        {client.rfc && <span className="text-[10px] text-slate-400">{client.rfc}</span>}
-                                      </div>
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                )}
+                                {clients.filter(c => c.source !== 'erp').length > 0 && (
+                                  <CommandGroup heading="Prospectos CRM">
+                                    {clients.filter(c => c.source !== 'erp').map((client) => (
+                                      <CommandItem
+                                        key={client.id}
+                                        value={`${client.name} ${client.company} ${client.id}`}
+                                        onSelect={() => {
+                                          setNewLead({
+                                            ...newLead,
+                                            isExistingClient: true,
+                                            clientId: client.id,
+                                            name: client.name,
+                                            company: client.company,
+                                            email: client.email,
+                                            sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal,
+                                            segmento: client.segmento || newLead.segmento,
+                                          });
+                                          setIsClientSearchOpen(false);
+                                        }}
+                                      >
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">{client.company}</span>
+                                          <span className="text-xs text-slate-500">{client.name}</span>
+                                          {client.segmento && (
+                                            <span className="text-[10px] text-slate-400">{client.segmento}</span>
+                                          )}
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                )}
                               </CommandList>
                             </Command>
                           </PopoverContent>
