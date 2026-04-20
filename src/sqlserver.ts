@@ -105,7 +105,6 @@ export async function getErpClients(): Promise<ReturnType<typeof mapErpClient>[]
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       FROM Cliente
-      WHERE Es_Cve_Estado = 'AC'
       ORDER BY Cl_Razon_Social
     `);
     return r.recordset.map(mapErpClient);
