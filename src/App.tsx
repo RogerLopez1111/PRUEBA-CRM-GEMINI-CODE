@@ -201,6 +201,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
   const [isSellerSearchOpen, setIsSellerSearchOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [newLead, setNewLead] = useState({
@@ -404,11 +405,18 @@ export default function App() {
         })
       });
       if (res.ok) {
-        toast.success(`Lead marcado como ${status}`);
+        const data = await res.json();
+        if (data?.erpMigrationWarning) {
+          toast.warning(data.erpMigrationWarning, { duration: 8000 });
+        } else if (status === "FACTURADO") {
+          toast.success("Lead facturado y vinculado al cliente ERP");
+        } else {
+          toast.success(`Lead marcado como ${status}`);
+        }
         setIsStatusUpdateOpen(false);
-        setStatusUpdate({ 
-          status: "" as LeadStatus, 
-          comment: "", 
+        setStatusUpdate({
+          status: "" as LeadStatus,
+          comment: "",
           evidenceUrl: "",
           quotedAmount: 0,
           invoicedAmount: 0
@@ -907,15 +915,44 @@ export default function App() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="p-0 w-[300px]" align="end">
-                            <Command>
-                              <CommandInput placeholder="Buscar cliente existente..." />
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar por nombre, empresa, RFC o ID..."
+                                value={clientSearch}
+                                onValueChange={setClientSearch}
+                              />
                               <CommandList>
-                                <CommandEmpty>No se encontraron clientes.</CommandEmpty>
-                                <CommandGroup heading="Clientes Registrados">
-                                  {clients.map((client) => (
+                                {(() => {
+                                  const q = clientSearch.trim().toLowerCase();
+                                  if (!q) {
+                                    return (
+                                      <div className="py-6 text-center text-xs text-slate-500">
+                                        Escribe para buscar entre {clients.length.toLocaleString()} clientes
+                                      </div>
+                                    );
+                                  }
+                                  const MAX = 50;
+                                  const matches: Client[] = [];
+                                  for (const c of clients) {
+                                    const stripped = c.id.replace(/^0+/, '');
+                                    if (
+                                      c.company.toLowerCase().includes(q) ||
+                                      c.name.toLowerCase().includes(q) ||
+                                      (c.rfc || '').toLowerCase().includes(q) ||
+                                      c.id.includes(q) ||
+                                      stripped.includes(q)
+                                    ) {
+                                      matches.push(c);
+                                      if (matches.length >= MAX) break;
+                                    }
+                                  }
+                                  if (matches.length === 0) {
+                                    return <CommandEmpty>No se encontraron clientes.</CommandEmpty>;
+                                  }
+                                  return matches.map((client: Client) => (
                                     <CommandItem
                                       key={client.id}
-                                      value={`${client.name} ${client.company}`}
+                                      value={client.id}
                                       onSelect={() => {
                                         setNewLead({
                                           ...newLead,
@@ -927,19 +964,18 @@ export default function App() {
                                           sucursal: sucursales.find(s => s.id === client.sucursalId)?.name || newLead.sucursal,
                                           segmento: client.segmento || newLead.segmento,
                                         });
+                                        setClientSearch("");
                                         setIsClientSearchOpen(false);
                                       }}
                                     >
-                                      <div className="flex flex-col">
+                                      <div className="flex flex-col gap-0.5">
                                         <span className="font-medium">{client.company}</span>
-                                        <span className="text-xs text-slate-500">{client.name}</span>
-                                        {client.segmento && (
-                                          <span className="text-[10px] text-slate-400">{client.segmento}</span>
-                                        )}
+                                        {client.name && <span className="text-xs text-slate-500">{client.name}</span>}
+                                        {client.rfc && <span className="text-[10px] text-slate-400">{client.rfc}</span>}
                                       </div>
                                     </CommandItem>
-                                  ))}
-                                </CommandGroup>
+                                  ));
+                                })()}
                               </CommandList>
                             </Command>
                           </PopoverContent>

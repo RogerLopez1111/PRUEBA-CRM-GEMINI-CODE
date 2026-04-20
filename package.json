@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "sync-erp": "tsx scripts/sync-erp.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:vite --external:express --external:path --external:url",
     "start": "NODE_ENV=production node dist/server.js",
     "preview": "vite preview",
@@ -29,6 +30,7 @@
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "mssql": "^12.3.0",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 
@@ -5,6 +6,23 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_ANON_KEY!
 );
+
+// ERP clients have all-numeric IDs (e.g. "0000000180"); CRM prospects have random alphanumeric IDs
+const isErpId = (id: string) => /^\d+$/.test(id);
+
+async function getSucursalesMap(): Promise<Record<string, string>> {
+  const { data } = await supabase.from("sucursales").select("Sc_Cve_Sucursal, Sc_Descripcion");
+  const map: Record<string, string> = {};
+  for (const s of data || []) map[String(s.Sc_Cve_Sucursal)] = s.Sc_Descripcion;
+  return map;
+}
+
+async function getSegmentosMap(): Promise<Record<string, string>> {
+  const { data } = await supabase.from("segmentos").select("Sg_Cve_Segmento, Sg_Descripcion");
+  const map: Record<string, string> = {};
+  for (const s of data || []) map[String(s.Sg_Cve_Segmento)] = s.Sg_Descripcion;
+  return map;
+}
 
 type LeadStatus =
   | "CONTACTADO"
@@ -86,17 +104,20 @@ async function getUsersWithPerformance() {
 }
 
 async function getLeadsWithHistory() {
-  const { data: leadsData } = await supabase
-    .from("leads")
-    .select(`
-      *,
-      clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-      sucursales(Sc_Descripcion),
-      segmentos(Sg_Descripcion),
-      lead_history(*)
-    `)
-    .order("Cl_CreatedAt_CRM", { ascending: false });
+  const [leadsResult, sucursalesMap, segmentosMap] = await Promise.all([
+    supabase
+      .from("leads")
+      .select(`
+        *,
+        clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
+        lead_history(*)
+      `)
+      .order("Cl_CreatedAt_CRM", { ascending: false }),
+    getSucursalesMap(),
+    getSegmentosMap(),
+  ]);
 
+  const leadsData = leadsResult.data;
   if (!leadsData) return [];
 
   return leadsData.map((l) => ({
@@ -108,8 +129,8 @@ async function getLeadsWithHistory() {
     status: l.Cl_Status_CRM as LeadStatus,
     assignedTo: l.Vn_Cve_Vendedor,
     value: l.Cl_Valor_CRM || 0,
-    sucursal: (l.sucursales as any)?.Sc_Descripcion || "",
-    segmento: (l.segmentos as any)?.Sg_Descripcion || "",
+    sucursal: sucursalesMap[String(l.Sc_Cve_Sucursal)] || String(l.Sc_Cve_Sucursal || ""),
+    segmento: segmentosMap[String(l.Sg_Cve_Segmento)] || String(l.Sg_Cve_Segmento || ""),
     quotedAmount: l.Cl_QuotedAmount_CRM ?? undefined,
     invoicedAmount: l.Cl_InvoicedAmount_CRM ?? undefined,
     createdAt: l.Cl_CreatedAt_CRM,
@@ -525,7 +546,7 @@ app.post("/api/leads/:id/status", async (req, res) => {
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("Cl_Valor_CRM, Cl_QuotedAmount_CRM, Cl_InvoicedAmount_CRM")
+    .select("Cl_Cve_Cliente, Cl_Valor_CRM, Cl_QuotedAmount_CRM, Cl_InvoicedAmount_CRM, clientes(Cl_Razon_Social)")
     .eq("id", id)
     .maybeSingle();
 
@@ -538,6 +559,40 @@ app.post("/api/leads/:id/status", async (req, res) => {
   if (status === "FACTURADO" && invoicedAmount !== undefined) {
     updates.Cl_InvoicedAmount_CRM = invoicedAmount;
     updates.Cl_Valor_CRM = invoicedAmount;
+  }
+
+  // When a sale is closed, migrate the CRM prospect to the real ERP client
+  // Bridge: match by Cl_Razon_Social (exact, case-insensitive)
+  let erpMigrationWarning: string | null = null;
+  if (status === "FACTURADO") {
+    const razonSocial = (lead.clientes as any)?.Cl_Razon_Social;
+    const oldClientId = lead.Cl_Cve_Cliente;
+
+    if (razonSocial && !isErpId(oldClientId)) {
+      // Search Supabase for an ERP client with the same Razon Social (synced by sync-erp script)
+      const { data: matches } = await supabase
+        .from("clientes")
+        .select("Cl_Cve_Cliente, Cl_Razon_Social")
+        .ilike("Cl_Razon_Social", razonSocial);
+
+      const erpMatches = (matches || []).filter((c) => isErpId(c.Cl_Cve_Cliente));
+
+      if (erpMatches.length === 1) {
+        const erpId = erpMatches[0].Cl_Cve_Cliente;
+
+        // Re-point ALL leads that referenced the CRM prospect to the ERP client
+        await supabase.from("leads")
+          .update({ Cl_Cve_Cliente: erpId })
+          .eq("Cl_Cve_Cliente", oldClientId);
+
+        // Delete the CRM prospect (leads no longer reference it)
+        await supabase.from("clientes").delete().eq("Cl_Cve_Cliente", oldClientId);
+      } else if (erpMatches.length === 0) {
+        erpMigrationWarning = `Cliente "${razonSocial}" no encontrado en el ERP. Asegúrate de correr la sincronización primero.`;
+      } else {
+        erpMigrationWarning = `Se encontraron ${erpMatches.length} clientes con el nombre "${razonSocial}" en el ERP. Verifica cuál es el correcto.`;
+      }
+    }
   }
 
   await supabase.from("leads").update(updates).eq("id", id);
@@ -555,7 +610,8 @@ app.post("/api/leads/:id/status", async (req, res) => {
   });
 
   const leads = await getLeadsWithHistory();
-  res.json(leads.find((l) => l.id === id));
+  const updatedLead = leads.find((l) => l.id === id);
+  res.json(erpMigrationWarning ? { ...updatedLead, erpMigrationWarning } : updatedLead);
 });
 
 // ---------------------------------------------------------------------------
@@ -563,51 +619,46 @@ app.post("/api/leads/:id/status", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/clients", async (_req, res) => {
-  const { data, error } = await supabase
-    .from("clientes")
-    .select(`
-      Cl_Cve_Cliente,
-      Cl_Razon_Social,
-      Cl_Contacto_1,
-      Cl_email_contacto_1,
-      Cl_R_F_C,
-      Cl_Telefono_1,
-      Cl_Ciudad,
-      Cl_Estado,
-      Sc_Cve_Sucursal,
-      Sg_Cve_Segmento,
-      Fecha_Alta,
-      segmentos(Sg_Descripcion),
-      leads(Sc_Cve_Sucursal, Cl_CreatedAt_CRM)
-    `)
-    .order("Fecha_Alta", { ascending: false });
-
-  if (error) {
-    res.status(500).json({ error: error.message });
-    return;
+  // Paginate: PostgREST caps responses (often 1000 rows), so we fetch in pages until exhausted
+  const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select(`
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
+        Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
+      `)
+      .order("Cl_Razon_Social", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error("[clients] page error:", error.message); break; }
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
   }
 
-  res.json(
-    (data || []).map((c) => {
-      const sortedLeads = ((c.leads as any[]) || []).sort(
-        (a, b) => new Date(b.Cl_CreatedAt_CRM).getTime() - new Date(a.Cl_CreatedAt_CRM).getTime()
-      );
-      return {
-        id: c.Cl_Cve_Cliente,
-        name: c.Cl_Contacto_1 || "",
-        email: c.Cl_email_contacto_1 || "",
-        company: c.Cl_Razon_Social || "",
-        rfc: c.Cl_R_F_C || undefined,
-        phone: c.Cl_Telefono_1 || undefined,
-        city: c.Cl_Ciudad || undefined,
-        state: c.Cl_Estado || undefined,
-        sucursalId: (sortedLeads[0]?.Sc_Cve_Sucursal ?? c.Sc_Cve_Sucursal) != null ? String(sortedLeads[0]?.Sc_Cve_Sucursal ?? c.Sc_Cve_Sucursal) : undefined,
-        segmentoId: c.Sg_Cve_Segmento || undefined,
-        segmento: (c.segmentos as any)?.Sg_Descripcion || undefined,
-        createdAt: c.Fecha_Alta,
-      };
-    })
-  );
+  const segmentosMap = await getSegmentosMap();
+
+  const clients = allRows.map((c) => ({
+    id: c.Cl_Cve_Cliente,
+    name: c.Cl_Contacto_1 || "",
+    email: c.Cl_email_contacto_1 || "",
+    company: c.Cl_Razon_Social || "",
+    rfc: c.Cl_R_F_C || undefined,
+    phone: c.Cl_Telefono_1 || undefined,
+    city: c.Cl_Ciudad || undefined,
+    state: c.Cl_Estado || undefined,
+    sucursalId: c.Sc_Cve_Sucursal ? String(c.Sc_Cve_Sucursal) : undefined,
+    segmentoId: c.Sg_Cve_Segmento ? String(c.Sg_Cve_Segmento) : undefined,
+    segmento: c.Sg_Cve_Segmento ? segmentosMap[String(c.Sg_Cve_Segmento)] : undefined,
+    createdAt: c.Fecha_Alta,
+    source: isErpId(c.Cl_Cve_Cliente) ? 'erp' as const : 'crm' as const,
+  }));
+
+  res.json(clients);
 });
 
 // ---------------------------------------------------------------------------
@@ -621,7 +672,7 @@ app.get("/api/lookups/sucursales", async (_req, res) => {
 
 app.get("/api/lookups/segmentos", async (_req, res) => {
   const { data } = await supabase.from("segmentos").select("Sg_Cve_Segmento, Sg_Descripcion");
-  res.json((data || []).map((s) => ({ id: s.Sg_Cve_Segmento, name: s.Sg_Descripcion })));
+  res.json((data || []).map((s) => ({ id: String(s.Sg_Cve_Segmento), name: s.Sg_Descripcion })));
 });
 
 export default app;
