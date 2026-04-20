@@ -627,7 +627,8 @@ app.get("/api/clients", async (_req, res) => {
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       `)
-      .order("Cl_Razon_Social", { ascending: true }),
+      .order("Cl_Razon_Social", { ascending: true })
+      .range(0, 9999),
     getSegmentosMap(),
   ]);
 
