@@ -476,13 +476,21 @@ export default function App() {
   };
 
   const handleCreateLead = async () => {
+    if (!newLead.company.trim()) {
+      toast.error("Selecciona o escribe una empresa");
+      return;
+    }
+    if (currentUser?.role === "Admin" && !newLead.assignedTo) {
+      toast.error("Asigna el lead a un vendedor");
+      return;
+    }
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newLead,
-          userId: currentUser?.role === "Seller" ? currentUser.id : (newLead.assignedTo || undefined)
+          userId: currentUser?.role === "Seller" ? currentUser.id : newLead.assignedTo
         })
       });
       if (res.ok) {
@@ -878,23 +886,6 @@ export default function App() {
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <label className="text-sm font-medium">Nombre del Contacto</label>
-                      <Input 
-                        placeholder="Juan Pérez" 
-                        value={newLead.name}
-                        onChange={(e) => setNewLead({...newLead, name: e.target.value})}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Correo Electrónico</label>
-                      <Input 
-                        type="email" 
-                        placeholder="juan@ejemplo.com" 
-                        value={newLead.email}
-                        onChange={(e) => setNewLead({...newLead, email: e.target.value})}
-                      />
-                    </div>
-                    <div className="grid gap-2">
                       <label className="text-sm font-medium">Empresa</label>
                       <div className="flex gap-2">
                         <Input 
@@ -993,44 +984,29 @@ export default function App() {
                       />
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Sucursal</label>
-                        <Select value={newLead.sucursal} onValueChange={(val) => setNewLead({...newLead, sucursal: val})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar Sucursal" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sucursales.map(s => (
-                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Segmento</label>
-                        <Select value={newLead.segmento} onValueChange={(val) => setNewLead({...newLead, segmento: val})}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar Segmento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {segmentos.map(s => (
-                              <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Segmento</label>
+                      <Select value={newLead.segmento} onValueChange={(val) => setNewLead({...newLead, segmento: val})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar Segmento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {segmentos.map(s => (
+                            <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {currentUser?.role === "Admin" && (
                       <div className="grid gap-2">
-                        <label className="text-sm font-medium">Asignar a (opcional)</label>
+                        <label className="text-sm font-medium">Asignar a</label>
                         <Popover open={isSellerSearchOpen} onOpenChange={setIsSellerSearchOpen}>
                           <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-between font-normal">
                               {newLead.assignedTo
-                                ? users.find(u => u.id === newLead.assignedTo)?.name || "Sin asignar"
-                                : "Sin asignar"}
+                                ? users.find(u => u.id === newLead.assignedTo)?.name || "Seleccionar vendedor"
+                                : "Seleccionar vendedor"}
                               <Search className="w-4 h-4 ml-2 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
@@ -1040,17 +1016,8 @@ export default function App() {
                               <CommandList>
                                 <CommandEmpty>No se encontraron vendedores.</CommandEmpty>
                                 <CommandGroup heading="Vendedores">
-                                  <CommandItem
-                                    value="sin-asignar"
-                                    onSelect={() => {
-                                      setNewLead({...newLead, assignedTo: ""});
-                                      setIsSellerSearchOpen(false);
-                                    }}
-                                  >
-                                    <span className="text-slate-500">Sin asignar</span>
-                                  </CommandItem>
                                   {users
-                                    .filter(u => u.role === "Seller" && (!newLead.sucursal || u.sucursalId === sucursales.find(s => s.name === newLead.sucursal)?.id))
+                                    .filter(u => u.role === "Seller")
                                     .map(u => (
                                       <CommandItem
                                         key={u.id}
