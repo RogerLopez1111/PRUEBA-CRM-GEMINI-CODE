@@ -922,20 +922,34 @@ export default function App() {
                                 onValueChange={setClientSearch}
                               />
                               <CommandList>
-                                <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                                 {(() => {
-                                  const q = clientSearch.toLowerCase();
-                                  const filtered = !q ? clients : clients.filter((c: Client) => {
-                                    const stripped = c.id.replace(/^0+/, '');
+                                  const q = clientSearch.trim().toLowerCase();
+                                  if (!q) {
                                     return (
+                                      <div className="py-6 text-center text-xs text-slate-500">
+                                        Escribe para buscar entre {clients.length.toLocaleString()} clientes
+                                      </div>
+                                    );
+                                  }
+                                  const MAX = 50;
+                                  const matches: Client[] = [];
+                                  for (const c of clients) {
+                                    const stripped = c.id.replace(/^0+/, '');
+                                    if (
                                       c.company.toLowerCase().includes(q) ||
                                       c.name.toLowerCase().includes(q) ||
                                       (c.rfc || '').toLowerCase().includes(q) ||
                                       c.id.includes(q) ||
                                       stripped.includes(q)
-                                    );
-                                  });
-                                  return filtered.map((client: Client) => (
+                                    ) {
+                                      matches.push(c);
+                                      if (matches.length >= MAX) break;
+                                    }
+                                  }
+                                  if (matches.length === 0) {
+                                    return <CommandEmpty>No se encontraron clientes.</CommandEmpty>;
+                                  }
+                                  return matches.map((client: Client) => (
                                     <CommandItem
                                       key={client.id}
                                       value={client.id}
