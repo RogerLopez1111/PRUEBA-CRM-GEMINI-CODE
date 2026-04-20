@@ -6,6 +6,8 @@ import {
   getSegmentos,
   getSucursalesMap,
   getSegmentosMap,
+  getErpClients,
+  getErpClientById,
   findErpClientByRazonSocial,
 } from "../src/sqlserver.js";
 
@@ -444,10 +446,52 @@ app.post("/api/leads", async (req, res) => {
     sucursalId = sucursalRow?.Sc_Cve_Sucursal || "";
   }
 
-  // Resolve client ID — existing clients come from Supabase (synced ERP or CRM prospect)
-  const clientId: string = (isExistingClient && existingClientId)
-    ? existingClientId
-    : Math.random().toString(36).substr(2, 9);
+  // Resolve client: use existing or create new
+  let clientId: string;
+  if (isExistingClient && existingClientId) {
+    clientId = existingClientId;
+    // If this is an ERP client it may not exist in Supabase yet — upsert basic info
+    // so the lead FK always resolves.
+    const { data: existing } = await supabase
+      .from("clientes")
+      .select("Cl_Cve_Cliente")
+      .eq("Cl_Cve_Cliente", clientId)
+      .maybeSingle();
+    if (!existing) {
+      const erpClient = await getErpClientById(clientId);
+      if (erpClient) {
+        await supabase.from("clientes").insert({
+          Cl_Cve_Cliente: erpClient.id,
+          Cl_Razon_Social: erpClient.company,
+          Cl_Contacto_1: erpClient.name,
+          Cl_email_contacto_1: erpClient.email,
+          Cl_R_F_C: erpClient.rfc || null,
+          Cl_Telefono_1: erpClient.phone || null,
+          Sc_Cve_Sucursal: erpClient.sucursalId || null,
+          Sg_Cve_Segmento: erpClient.segmentoId || null,
+          Fecha_Alta: erpClient.createdAt,
+          Fecha_Ult_Modif: now,
+        });
+      }
+    }
+  } else {
+    clientId = Math.random().toString(36).substr(2, 9);
+    const { error: clientError } = await supabase.from("clientes").insert({
+      Cl_Cve_Cliente: clientId,
+      Cl_Razon_Social: leadData.company,
+      Cl_Contacto_1: leadData.name,
+      Cl_email_contacto_1: leadData.email,
+      Sc_Cve_Sucursal: sucursalId || null,
+      Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
+      Vn_Cve_Vendedor: userId || null,
+      Fecha_Alta: now,
+      Fecha_Ult_Modif: now,
+    });
+    if (clientError) {
+      res.status(400).json({ error: clientError.message });
+      return;
+    }
+  }
 
   // Create lead
   const leadId = Math.random().toString(36).substr(2, 9);
@@ -604,7 +648,8 @@ app.post("/api/leads/:id/status", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/clients", async (_req, res) => {
-  const [supabaseResult, segmentosMap] = await Promise.all([
+  const [erpClients, supabaseResult, segmentosMap] = await Promise.all([
+    getErpClients(),
     supabase
       .from("clientes")
       .select(`
@@ -612,31 +657,38 @@ app.get("/api/clients", async (_req, res) => {
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       `)
-      .order("Cl_Razon_Social", { ascending: true }),
+      .order("Fecha_Alta", { ascending: false }),
     getSegmentosMap(),
   ]);
 
-  // ERP IDs are zero-padded 10-digit numbers (e.g. 0000000180).
-  // CRM prospect IDs are random 9-char alphanumeric — they never match this pattern.
-  const isErpId = (id: string) => /^\d{10}$/.test(id);
+  // ERP client IDs take precedence — exclude from CRM list if already in ERP
+  const erpIds = new Set(erpClients.map((c) => c.id));
 
-  const clients = (supabaseResult.data || []).map((c) => ({
-    id: c.Cl_Cve_Cliente,
-    name: c.Cl_Contacto_1 || "",
-    email: c.Cl_email_contacto_1 || "",
-    company: c.Cl_Razon_Social || "",
-    rfc: c.Cl_R_F_C || undefined,
-    phone: c.Cl_Telefono_1 || undefined,
-    city: c.Cl_Ciudad || undefined,
-    state: c.Cl_Estado || undefined,
-    sucursalId: c.Sc_Cve_Sucursal ? String(c.Sc_Cve_Sucursal) : undefined,
-    segmentoId: c.Sg_Cve_Segmento || undefined,
-    segmento: segmentosMap[c.Sg_Cve_Segmento] || undefined,
-    createdAt: c.Fecha_Alta,
-    source: isErpId(c.Cl_Cve_Cliente) ? 'erp' as const : 'crm' as const,
+  const crmClients = (supabaseResult.data || [])
+    .filter((c) => !erpIds.has(c.Cl_Cve_Cliente))
+    .map((c) => ({
+      id: c.Cl_Cve_Cliente,
+      name: c.Cl_Contacto_1 || "",
+      email: c.Cl_email_contacto_1 || "",
+      company: c.Cl_Razon_Social || "",
+      rfc: c.Cl_R_F_C || undefined,
+      phone: c.Cl_Telefono_1 || undefined,
+      city: c.Cl_Ciudad || undefined,
+      state: c.Cl_Estado || undefined,
+      sucursalId: c.Sc_Cve_Sucursal ? String(c.Sc_Cve_Sucursal) : undefined,
+      segmentoId: c.Sg_Cve_Segmento || undefined,
+      segmento: segmentosMap[c.Sg_Cve_Segmento] || undefined,
+      createdAt: c.Fecha_Alta,
+      source: 'crm' as const,
+    }));
+
+  // ERP clients enriched with segmento name
+  const enrichedErp = erpClients.map((c) => ({
+    ...c,
+    segmento: c.segmentoId ? segmentosMap[c.segmentoId] : undefined,
   }));
 
-  res.json(clients);
+  res.json([...enrichedErp, ...crmClients]);
 });
 
 // ---------------------------------------------------------------------------
