@@ -50,32 +50,38 @@ function mapErpClient(c: Record<string, any>) {
 // Lookups
 // ---------------------------------------------------------------------------
 
-export async function getSucursales(): Promise<{ id: string; name: string }[]> {
+export async function getSucursales(): Promise<{ id: string; name: string; estado: string }[]> {
   try {
     const p = await getPool();
     const r = await p.request().query(`
-      SELECT Sc_Cve_Sucursal, Sc_Descripcion
+      SELECT Sc_Cve_Sucursal, Sc_Descripcion, Es_Cve_Estado
       FROM Sucursal
-      WHERE Es_Cve_Estado = 'AC'
       ORDER BY Sc_Descripcion
     `);
-    return r.recordset.map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion }));
+    return r.recordset.map((s) => ({
+      id: String(s.Sc_Cve_Sucursal),
+      name: s.Sc_Descripcion,
+      estado: String(s.Es_Cve_Estado ?? 'AC'),
+    }));
   } catch (err) {
     console.error('[MSSQL] getSucursales:', err);
     return [];
   }
 }
 
-export async function getSegmentos(): Promise<{ id: string; name: string }[]> {
+export async function getSegmentos(): Promise<{ id: string; name: string; estado: string }[]> {
   try {
     const p = await getPool();
     const r = await p.request().query(`
-      SELECT Sg_Cve_Segmento, Sg_Descripcion
+      SELECT Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado
       FROM Segmento
-      WHERE Es_Cve_Estado = 'AC'
       ORDER BY Sg_Descripcion
     `);
-    return r.recordset.map((s) => ({ id: s.Sg_Cve_Segmento, name: s.Sg_Descripcion }));
+    return r.recordset.map((s) => ({
+      id: s.Sg_Cve_Segmento,
+      name: s.Sg_Descripcion,
+      estado: String(s.Es_Cve_Estado ?? 'AC'),
+    }));
   } catch (err) {
     console.error('[MSSQL] getSegmentos:', err);
     return [];
@@ -90,6 +96,34 @@ export async function getSucursalesMap(): Promise<Record<string, string>> {
 export async function getSegmentosMap(): Promise<Record<string, string>> {
   const list = await getSegmentos();
   return Object.fromEntries(list.map((s) => [s.id, s.name]));
+}
+
+// ---------------------------------------------------------------------------
+// Vendedores (read-only from ERP)
+// ---------------------------------------------------------------------------
+
+export async function getVendedores(): Promise<
+  { id: string; name: string; email: string | null; sucursalId: string | null; estado: string }[]
+> {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT Vn_Cve_Vendedor, Vn_Descripcion, Vn_Email, Vn_Sucursal, Es_Cve_Estado
+      FROM Vendedor
+      WHERE Es_Cve_Estado = 'AC'
+      ORDER BY Vn_Descripcion
+    `);
+    return r.recordset.map((v) => ({
+      id: String(v.Vn_Cve_Vendedor),
+      name: String(v.Vn_Descripcion ?? ''),
+      email: v.Vn_Email ? String(v.Vn_Email) : null,
+      sucursalId: v.Vn_Sucursal != null ? String(v.Vn_Sucursal) : null,
+      estado: String(v.Es_Cve_Estado ?? 'AC'),
+    }));
+  } catch (err) {
+    console.error('[MSSQL] getVendedores:', err);
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------

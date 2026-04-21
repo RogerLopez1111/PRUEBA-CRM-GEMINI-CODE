@@ -130,7 +130,17 @@ function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?
   );
 }
 
-function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: string, lead: Lead, users: User[], onUpdate: () => void, getStatusBadge: (status: LeadStatus) => React.ReactNode }) {
+const STATUS_ACCENT: Record<LeadStatus, { bar: string; valueBg: string; valueText: string }> = {
+  ASIGNADO:    { bar: "bg-slate-400",   valueBg: "bg-slate-50",   valueText: "text-slate-700"  },
+  CONTACTADO:  { bar: "bg-blue-500",    valueBg: "bg-blue-50",    valueText: "text-blue-700"   },
+  NEGOCIACION: { bar: "bg-purple-500",  valueBg: "bg-purple-50",  valueText: "text-purple-700" },
+  COTIZADO:    { bar: "bg-orange-500",  valueBg: "bg-orange-50",  valueText: "text-orange-700" },
+  FACTURADO:   { bar: "bg-indigo-500",  valueBg: "bg-indigo-50",  valueText: "text-indigo-700" },
+  ENTREGADO:   { bar: "bg-emerald-500", valueBg: "bg-emerald-50", valueText: "text-emerald-700"},
+  RECHAZADO:   { bar: "bg-red-500",     valueBg: "bg-red-50",     valueText: "text-red-700"    },
+};
+
+function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBadge }: { key?: string, lead: Lead, users: User[], onUpdate: () => void, getStatusBadge: (status: LeadStatus) => React.ReactNode }) {
   const {
     attributes,
     listeners,
@@ -146,42 +156,68 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge }: { key?: str
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const seller = lead.assignedTo ? users.find(u => u.id === lead.assignedTo) : null;
+  const accent = STATUS_ACCENT[lead.status] || STATUS_ACCENT.ASIGNADO;
+
+  const daysSince = Math.floor((Date.now() - new Date(lead.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
+  const isStale = (lead.status === "ASIGNADO" && daysSince >= 3) || (lead.status === "COTIZADO" && daysSince >= 5);
+  const timeLabel = daysSince === 0 ? "Hoy" : daysSince === 1 ? "Ayer" : `${daysSince}d`;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
-      onClick={(e) => {
-        // Only trigger if we're not dragging
-        if (!isDragging) {
-          onUpdate();
-        }
-      }}
-      className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:border-primary/50 transition-all group relative"
+      onClick={() => { if (!isDragging) onUpdate(); }}
+      className="relative bg-white rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all group overflow-hidden"
     >
-      <div className="flex justify-between items-start mb-2">
-        <h4 className="font-bold text-sm group-hover:text-primary transition-colors">{lead.name}</h4>
-        <span className="text-[10px] font-mono font-bold text-slate-400">${lead.value.toLocaleString()}</span>
-      </div>
-      <p className="text-xs text-slate-500 mb-3">{lead.company}</p>
-      
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-50">
-        <div className="flex items-center gap-2">
-          {lead.assignedTo ? (
-            <div className="w-6 h-6 rounded-full bg-primary/10 border-2 border-white flex items-center justify-center text-[8px] font-bold text-primary" title={users.find(u => u.id === lead.assignedTo)?.name}>
-              {users.find(u => u.id === lead.assignedTo)?.name.charAt(0)}
-            </div>
-          ) : (
-            <div className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] text-slate-400">
-              ?
-            </div>
-          )}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${accent.bar}`} />
+
+      <div className="pl-4 pr-3 py-3">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <h4 className="font-semibold text-sm text-slate-900 leading-tight line-clamp-2 group-hover:text-[#141456] transition-colors">
+            {lead.company || lead.name}
+          </h4>
+          <span className={`shrink-0 text-[11px] font-semibold font-mono px-2 py-0.5 rounded-md ${accent.valueBg} ${accent.valueText}`}>
+            ${lead.value.toLocaleString()}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400">
+
+        {(lead.segmento || lead.sucursal) && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {lead.segmento && (
+              <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                {lead.segmento}
+              </span>
+            )}
+            {lead.sucursal && (
+              <span className="text-[10px] font-medium text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">
+                {lead.sucursal}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {seller ? (
+              <>
+                <div
+                  className="w-5 h-5 rounded-full bg-[#141456]/10 flex items-center justify-center text-[9px] font-bold text-[#141456] shrink-0"
+                  title={seller.name}
+                >
+                  {seller.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-[11px] text-slate-600 truncate">{seller.name}</span>
+              </>
+            ) : (
+              <span className="text-[10px] italic text-slate-400">Sin asignar</span>
+            )}
+          </div>
+          <div className={`flex items-center gap-1 text-[10px] font-medium shrink-0 ${isStale ? "text-red-500" : "text-slate-400"}`}>
             <Clock className="w-3 h-3" />
-            <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
+            <span>{timeLabel}</span>
           </div>
         </div>
       </div>
@@ -1018,6 +1054,12 @@ export default function App() {
                                 <CommandGroup heading="Vendedores">
                                   {users
                                     .filter(u => u.role === "Seller")
+                                    .filter(u => {
+                                      const clientSucursalId = newLead.isExistingClient
+                                        ? clients.find(c => c.id === newLead.clientId)?.sucursalId
+                                        : null;
+                                      return clientSucursalId ? u.sucursalId === clientSucursalId : true;
+                                    })
                                     .map(u => (
                                       <CommandItem
                                         key={u.id}
