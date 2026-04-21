@@ -1054,6 +1054,12 @@ export default function App() {
                                 <CommandGroup heading="Vendedores">
                                   {users
                                     .filter(u => u.role === "Seller")
+                                    .filter(u => {
+                                      const clientSucursalId = newLead.isExistingClient
+                                        ? clients.find(c => c.id === newLead.clientId)?.sucursalId
+                                        : null;
+                                      return clientSucursalId ? u.sucursalId === clientSucursalId : true;
+                                    })
                                     .map(u => (
                                       <CommandItem
                                         key={u.id}
