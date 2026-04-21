@@ -666,10 +666,12 @@ app.get("/api/clients", async (_req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/lookups/sucursales", async (_req, res) => {
+  // neq alone excludes NULL rows (PostgREST inherits SQL 3-valued logic),
+  // so explicitly allow NULL to mean "active by default"
   const { data } = await supabase
     .from("sucursales")
     .select("Sc_Cve_Sucursal, Sc_Descripcion, Es_Cve_Estado")
-    .eq("Es_Cve_Estado", "AC");
+    .or("Es_Cve_Estado.is.null,Es_Cve_Estado.neq.BA");
   res.json((data || []).map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion })));
 });
 

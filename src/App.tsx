@@ -1058,7 +1058,10 @@ export default function App() {
                                       const clientSucursalId = newLead.isExistingClient
                                         ? clients.find(c => c.id === newLead.clientId)?.sucursalId
                                         : null;
-                                      return clientSucursalId ? u.sucursalId === clientSucursalId : true;
+                                      if (!clientSucursalId) return true;
+                                      // Normalize to ignore zero-padding mismatches ("0020" vs "20")
+                                      const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
+                                      return norm(u.sucursalId) === norm(clientSucursalId);
                                     })
                                     .map(u => (
                                       <CommandItem
@@ -2367,7 +2370,7 @@ export default function App() {
                               </SelectTrigger>
                               <SelectContent>
                                 {sucursales.map(s => (
-                                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.id})</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
