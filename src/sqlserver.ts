@@ -99,6 +99,34 @@ export async function getSegmentosMap(): Promise<Record<string, string>> {
 }
 
 // ---------------------------------------------------------------------------
+// Vendedores (read-only from ERP)
+// ---------------------------------------------------------------------------
+
+export async function getVendedores(): Promise<
+  { id: string; name: string; email: string | null; sucursalId: string | null; estado: string }[]
+> {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT Vn_Cve_Vendedor, Vn_Descripcion, Vn_Email, Vn_Sucursal, Es_Cve_Estado
+      FROM Vendedor
+      WHERE Es_Cve_Estado = 'AC'
+      ORDER BY Vn_Descripcion
+    `);
+    return r.recordset.map((v) => ({
+      id: String(v.Vn_Cve_Vendedor),
+      name: String(v.Vn_Descripcion ?? ''),
+      email: v.Vn_Email ? String(v.Vn_Email) : null,
+      sucursalId: v.Vn_Sucursal != null ? String(v.Vn_Sucursal) : null,
+      estado: String(v.Es_Cve_Estado ?? 'AC'),
+    }));
+  } catch (err) {
+    console.error('[MSSQL] getVendedores:', err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Clients (read-only from ERP)
 // ---------------------------------------------------------------------------
 

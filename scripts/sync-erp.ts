@@ -17,6 +17,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   getSucursales,
   getSegmentos,
+  getVendedores,
   getErpClients,
 } from '../src/sqlserver.js';
 
@@ -64,6 +65,56 @@ async function syncSegmentos() {
   );
   if (error) { console.error('✗ segmentos:', error.message); return; }
   console.log(`✓ segmentos upserted: ${rows.length}`);
+}
+
+// ---------------------------------------------------------------------------
+// Vendedores — upsert ERP identity fields only (CRM owns Vn_Perfil / Vn_Password)
+// ---------------------------------------------------------------------------
+async function syncVendedores() {
+  const rows = await getVendedores();
+  if (!rows.length) { console.warn('⚠  No vendedores returned from SQL Server'); return; }
+
+  const { error } = await supabase.from('vendedores').upsert(
+    rows.map((v) => ({
+      Vn_Cve_Vendedor: v.id,
+      Vn_Descripcion: v.name,
+      Vn_Email: v.email,
+      Sc_Cve_Sucursal: v.sucursalId,
+      Es_Cve_Estado: v.estado,
+    })),
+    { onConflict: 'Vn_Cve_Vendedor' }
+  );
+  if (error) { console.error('✗ vendedores:', error.message); return; }
+  console.log(`✓ vendedores upserted: ${rows.length}`);
+
+  // Remove vendedores in Supabase that are no longer active in ERP,
+  // skipping any still referenced by leads or goals (FK constraints).
+  const activeIds = new Set(rows.map((r) => r.id));
+  const { data: existing } = await supabase.from('vendedores').select('Vn_Cve_Vendedor');
+  const orphans = (existing || [])
+    .map((r) => String(r.Vn_Cve_Vendedor))
+    .filter((id) => !activeIds.has(id));
+  if (!orphans.length) return;
+
+  const [{ data: leadRefs }, { data: goalRefs }] = await Promise.all([
+    supabase.from('leads').select('Vn_Cve_Vendedor').in('Vn_Cve_Vendedor', orphans),
+    supabase.from('vendedor_metas').select('Vn_Cve_Vendedor').in('Vn_Cve_Vendedor', orphans),
+  ]);
+  const referenced = new Set([
+    ...(leadRefs || []).map((r) => String(r.Vn_Cve_Vendedor)),
+    ...(goalRefs || []).map((r) => String(r.Vn_Cve_Vendedor)),
+  ]);
+  const safeToDelete = orphans.filter((id) => !referenced.has(id));
+  const skipped = orphans.filter((id) => referenced.has(id));
+
+  if (safeToDelete.length) {
+    const { error: delErr } = await supabase.from('vendedores').delete().in('Vn_Cve_Vendedor', safeToDelete);
+    if (delErr) console.error('✗ vendedores delete:', delErr.message);
+    else console.log(`✓ vendedores deleted: ${safeToDelete.length} inactive`);
+  }
+  if (skipped.length) {
+    console.warn(`⚠  ${skipped.length} inactive vendedores kept because leads/metas still reference them: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +207,7 @@ async function main() {
   console.log(`\n── ERP → Supabase sync  ${new Date().toLocaleString()} ──`);
   await syncSucursales();
   await syncSegmentos();
+  await syncVendedores();
   await syncClients();
   console.log('── done ──\n');
   process.exit(0);
