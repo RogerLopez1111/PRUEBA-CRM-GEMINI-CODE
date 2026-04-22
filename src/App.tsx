@@ -280,6 +280,10 @@ export default function App() {
   const [kanbanFilterSucursal, setKanbanFilterSucursal] = useState<string>("all");
   const [kanbanFilterSegmento, setKanbanFilterSegmento] = useState<string>("all");
   const [kanbanSearch, setKanbanSearch] = useState("");
+  const [kanbanFilterMonth, setKanbanFilterMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   // Performance Filters
   const [perfUserFilter, setPerfUserFilter] = useState<string>("all");
@@ -312,6 +316,19 @@ export default function App() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const kanbanMonthOptions = useMemo(() => {
+    const set = new Set<string>();
+    const now = new Date();
+    set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    for (const l of leads) {
+      const d = new Date(l.updatedAt);
+      if (!isNaN(d.getTime())) {
+        set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+    }
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [leads]);
 
   const notifications = useMemo(() => {
     if (!currentUser) return [] as Array<{ id: string; leadId: string; kind: "stale-assignment" | "stale-quote"; lead: Lead; days: number; sellerName: string }>;
@@ -1268,6 +1285,21 @@ export default function App() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mes</p>
+                  <Select value={kanbanFilterMonth} onValueChange={setKanbanFilterMonth}>
+                    <SelectTrigger className="w-[160px] h-9">
+                      <SelectValue placeholder="Mes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los meses</SelectItem>
+                      {kanbanMonthOptions.map(ym => {
+                        const [y, m] = ym.split("-").map(Number);
+                        return <SelectItem key={ym} value={ym}>{`${MESES[m - 1]} ${y}`}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {currentUser.role === "Admin" && (
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
@@ -1331,6 +1363,15 @@ export default function App() {
                       // Segmento filter
                       if (kanbanFilterSegmento !== "all" && l.segmento !== kanbanFilterSegmento) {
                         return false;
+                      }
+
+                      // Month filter — only applies to closed leads (ENTREGADO / RECHAZADO).
+                      // Active leads always show so sellers keep them in sight until closed.
+                      if (kanbanFilterMonth !== "all" && (l.status === "ENTREGADO" || l.status === "RECHAZADO")) {
+                        const d = new Date(l.updatedAt);
+                        if (isNaN(d.getTime())) return false;
+                        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                        if (ym !== kanbanFilterMonth) return false;
                       }
 
                       return true;
