@@ -693,11 +693,11 @@ app.get("/api/lookups/segmentos", async (_req, res) => {
 });
 
 app.get("/api/lookups/rechazo-motivos", async (_req, res) => {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("rechazo_motivos")
     .select("id, descripcion")
-    .eq("activo", true)
     .order("id");
+  if (error) console.error("[rechazo-motivos]", error.message);
   res.json((data || []).map((m) => ({ id: m.id, descripcion: m.descripcion })));
 });
 
