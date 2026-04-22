@@ -960,7 +960,11 @@ export default function App() {
                                   }
                                   const MAX = 50;
                                   const matches: Client[] = [];
+                                  // Sellers can only pick existing clients from their own sucursal
+                                  const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
+                                  const sellerSucursalId = currentUser?.role === "Seller" ? norm(currentUser.sucursalId) : null;
                                   for (const c of clients) {
+                                    if (sellerSucursalId && norm(c.sucursalId) !== sellerSucursalId) continue;
                                     const stripped = c.id.replace(/^0+/, '');
                                     if (
                                       c.company.toLowerCase().includes(q) ||
@@ -2500,7 +2504,11 @@ export default function App() {
                   {!selectedLead || selectedLead.history.length === 0 ? (
                     <p className="text-center text-slate-400 italic py-8">Aún no se ha registrado historial.</p>
                   ) : (
-                    [...selectedLead.history].reverse().map((item) => (
+                    [...selectedLead.history].reverse().map((item) => {
+                      const author = users.find(u => u.id === item.updatedBy);
+                      const authorName = author?.name || "Sistema";
+                      const authorInitial = authorName.charAt(0).toUpperCase();
+                      return (
                       <div key={item.id} className="relative pl-8">
                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-2 border-primary" />
                         <div className="flex flex-col gap-1">
@@ -2509,7 +2517,17 @@ export default function App() {
                               {getStatusBadge(item.status)}
                               <span className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
                             </div>
-                            <span className="text-[8px] font-bold text-slate-500 uppercase">por {users.find(u => u.id === item.updatedBy)?.name || "Sistema"}</span>
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                                {authorInitial}
+                              </div>
+                              <span className="text-[11px] font-semibold text-slate-700">{authorName}</span>
+                              {author?.role && (
+                                <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 border-slate-200 text-slate-500">
+                                  {author.role === "Admin" ? "Admin" : "Vendedor"}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           <p className="text-xs text-slate-700 mt-1">{item.comment}</p>
                           {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
@@ -2528,14 +2546,39 @@ export default function App() {
                           )}
                         </div>
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </div>
               {statusUpdate.status === selectedLead?.status && (
-                <DialogFooter className="p-4 bg-white border-t">
-                  <Button variant="outline" onClick={() => setIsStatusUpdateOpen(false)}>Cerrar</Button>
-                </DialogFooter>
+                <div className="p-4 bg-white border-t space-y-3">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <MessageSquare className="w-3 h-3" />
+                    Agregar Comentario
+                  </label>
+                  <Input
+                    placeholder="Escribe un comentario..."
+                    value={statusUpdate.comment}
+                    onChange={(e) => setStatusUpdate({ ...statusUpdate, comment: e.target.value })}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cerrar</Button>
+                    <Button
+                      size="sm"
+                      disabled={!statusUpdate.comment.trim()}
+                      onClick={() => handleStatusChange(
+                        selectedLead!.id,
+                        selectedLead!.status,
+                        statusUpdate.comment
+                      )}
+                      className="gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Agregar
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
 
