@@ -973,6 +973,8 @@ export default function App() {
                                   // Sellers can only pick existing clients from their own sucursal
                                   const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
                                   const sellerSucursalId = currentUser?.role === "Seller" ? norm(currentUser.sucursalId) : null;
+                                  const probe = clients.find(c => c.id === '0000004799');
+                                  console.log('[client-search] sellerSucursalId raw/norm:', currentUser?.sucursalId, '/', sellerSucursalId, '| 0000004799 in list?', !!probe, '| its sucursalId raw/norm:', probe?.sucursalId, '/', norm(probe?.sucursalId));
                                   for (const c of clients) {
                                     if (sellerSucursalId && norm(c.sucursalId) !== sellerSucursalId) continue;
                                     const stripped = c.id.replace(/^0+/, '');

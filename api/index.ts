@@ -555,8 +555,13 @@ app.post("/api/leads/:id/status", async (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const updates: Record<string, any> = { Cl_Status_CRM: status, Cl_UpdatedAt_CRM: now };
-  if (status === "COTIZADO" && quotedAmount !== undefined) {
-    updates.Cl_QuotedAmount_CRM = quotedAmount;
+  // If the user leaves the quoted amount blank when marking COTIZADO,
+  // assume they quoted the full Valor Potencial.
+  const effectiveQuotedAmount = status === "COTIZADO"
+    ? (quotedAmount && quotedAmount > 0 ? quotedAmount : (lead.Cl_Valor_CRM || 0))
+    : quotedAmount;
+  if (status === "COTIZADO") {
+    updates.Cl_QuotedAmount_CRM = effectiveQuotedAmount;
   }
   if (status === "FACTURADO" && invoicedAmount !== undefined) {
     updates.Cl_InvoicedAmount_CRM = invoicedAmount;
@@ -605,7 +610,7 @@ app.post("/api/leads/:id/status", async (req, res) => {
     status,
     comment: comment || `Status updated to ${status}`,
     evidence_url: evidenceUrl || null,
-    quoted_amount: status === "COTIZADO" ? quotedAmount : null,
+    quoted_amount: status === "COTIZADO" ? effectiveQuotedAmount : null,
     invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
     rechazo_motivo_id: status === "RECHAZADO" ? (rechazoMotivoId ?? null) : null,
     updated_by: userId || "System",
