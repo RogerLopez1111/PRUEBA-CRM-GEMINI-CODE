@@ -19,6 +19,7 @@ import {
   getSegmentos,
   getVendedores,
   getErpClients,
+  getErpClientsRaw,
 } from '../src/sqlserver.js';
 
 const supabase = createClient(
@@ -118,38 +119,52 @@ async function syncVendedores() {
 }
 
 // ---------------------------------------------------------------------------
-// Clients — upsert all ERP rows, then delete orphaned ERP-style IDs
+// Clients — full-column mirror of ERP Cliente → Supabase clientes
 // ---------------------------------------------------------------------------
-async function syncClients() {
-  const erpClients = await getErpClients();
-  if (!erpClients.length) { console.warn('⚠  No clients returned from SQL Server'); return; }
 
-  // 1) Upsert in chunks
+// Columns where the Supabase schema is NOT NULL but ERP allows NULL.
+// Coerce null → '' so the sync doesn't fail on those rows. Remove entries
+// once the Supabase column is altered to allow NULL (see README / migration).
+const NOT_NULL_TEXT_COLUMNS = new Set<string>([
+  'Cl_Razon_Social',
+  'Cl_Razon_Social_2',
+  'Cl_Cve_Maestro',
+]);
+
+// Normalize one ERP row for Supabase:
+//  - Date  → ISO string (Supabase timestamp columns accept ISO)
+//  - string → trimmed (SQL Server char/nchar columns are space-padded)
+//  - null on NOT_NULL_TEXT_COLUMNS → '' so NOT-NULL constraints are satisfied
+function normalizeErpRow(row: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (v instanceof Date) {
+      out[k] = v.toISOString();
+    } else if (typeof v === 'string') {
+      out[k] = v.trim();
+    } else if (v === null && NOT_NULL_TEXT_COLUMNS.has(k)) {
+      out[k] = '';
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+async function syncClients() {
+  const rawRows = await getErpClientsRaw();
+  if (!rawRows.length) { console.warn('⚠  No clients returned from SQL Server'); return; }
+
+  // 1) Upsert every column from ERP → Supabase (same schema, same data)
   const CHUNK = 200;
   let upserted = 0;
-  for (let i = 0; i < erpClients.length; i += CHUNK) {
-    const chunk = erpClients.slice(i, i + CHUNK);
-    const { error } = await supabase.from('clientes').upsert(
-      chunk.map((c) => ({
-        Cl_Cve_Cliente:         c.id,
-        Cl_Razon_Social:        c.company        || '',
-        Cl_Contacto_1:          c.name           || '',
-        Cl_email_contacto_1:    c.email          || '',
-        Cl_R_F_C:               c.rfc            ?? null,
-        Cl_Telefono_1:          c.phone          ?? null,
-        Cl_Ciudad:              c.city           ?? null,
-        Cl_Estado:              c.state          ?? null,
-        Sc_Cve_Sucursal:        c.sucursalId     ?? null,
-        Sg_Cve_Segmento:        c.segmentoId     ?? null,
-        Fecha_Alta:             c.createdAt,
-        Fecha_Ult_Modif:        new Date().toISOString(),
-      })),
-      { onConflict: 'Cl_Cve_Cliente' }
-    );
+  for (let i = 0; i < rawRows.length; i += CHUNK) {
+    const chunk = rawRows.slice(i, i + CHUNK).map(normalizeErpRow);
+    const { error } = await supabase.from('clientes').upsert(chunk, { onConflict: 'Cl_Cve_Cliente' });
     if (error) { console.error(`✗ clients chunk ${i}–${i + chunk.length}:`, error.message); }
     else upserted += chunk.length;
   }
-  console.log(`✓ clients upserted: ${upserted} / ${erpClients.length}`);
+  console.log(`✓ clients upserted: ${upserted} / ${rawRows.length}`);
 
   // 2) Collect all ERP-style IDs currently in Supabase (paginate to bypass max-rows cap)
   const supabaseErpIds = new Set<string>();
@@ -170,7 +185,7 @@ async function syncClients() {
   }
 
   // 3) Find IDs in Supabase that no longer exist in ERP
-  const erpIdSet = new Set(erpClients.map((c) => c.id));
+  const erpIdSet = new Set(rawRows.map((c) => String(c.Cl_Cve_Cliente)));
   const orphanIds = [...supabaseErpIds].filter((id) => !erpIdSet.has(id));
   if (orphanIds.length === 0) {
     console.log('✓ clients: no orphans to delete');

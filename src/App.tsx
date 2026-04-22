@@ -954,36 +954,39 @@ export default function App() {
                           <PopoverContent className="p-0 w-[300px]" align="end">
                             <Command shouldFilter={false}>
                               <CommandInput
-                                placeholder="Buscar por nombre, empresa, RFC o ID..."
+                                placeholder="Buscar por nombre comercial, razón social, contacto, email, RFC o ID..."
                                 value={clientSearch}
                                 onValueChange={setClientSearch}
                               />
                               <CommandList>
                                 {(() => {
-                                  const q = clientSearch.trim().toLowerCase();
-                                  if (!q) {
+                                  const rawQ = clientSearch.trim().toLowerCase();
+                                  if (!rawQ) {
                                     return (
                                       <div className="py-6 text-center text-xs text-slate-500">
                                         Escribe para buscar entre {clients.length.toLocaleString()} clientes
                                       </div>
                                     );
                                   }
+                                  // Whitespace-insensitive so "control de plagas" matches "controldeplagas"
+                                  const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+                                  const q = squash(rawQ);
                                   const MAX = 50;
                                   const matches: Client[] = [];
                                   // Sellers can only pick existing clients from their own sucursal
                                   const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
                                   const sellerSucursalId = currentUser?.role === "Seller" ? norm(currentUser.sucursalId) : null;
-                                  const probe = clients.find(c => c.id === '0000004799');
-                                  console.log('[client-search] sellerSucursalId raw/norm:', currentUser?.sucursalId, '/', sellerSucursalId, '| 0000004799 in list?', !!probe, '| its sucursalId raw/norm:', probe?.sucursalId, '/', norm(probe?.sucursalId));
                                   for (const c of clients) {
                                     if (sellerSucursalId && norm(c.sucursalId) !== sellerSucursalId) continue;
                                     const stripped = c.id.replace(/^0+/, '');
                                     if (
-                                      c.company.toLowerCase().includes(q) ||
-                                      c.name.toLowerCase().includes(q) ||
-                                      (c.rfc || '').toLowerCase().includes(q) ||
-                                      c.id.includes(q) ||
-                                      stripped.includes(q)
+                                      squash(c.company).includes(q) ||
+                                      squash(c.tradeName || '').includes(q) ||
+                                      squash(c.name).includes(q) ||
+                                      squash(c.email || '').includes(q) ||
+                                      squash(c.rfc || '').includes(q) ||
+                                      c.id.includes(rawQ) ||
+                                      stripped.includes(rawQ)
                                     ) {
                                       matches.push(c);
                                       if (matches.length >= MAX) break;
@@ -1012,7 +1015,10 @@ export default function App() {
                                       }}
                                     >
                                       <div className="flex flex-col gap-0.5">
-                                        <span className="font-medium">{client.company}</span>
+                                        <span className="font-medium">{client.tradeName || client.company}</span>
+                                        {client.tradeName && client.company && (
+                                          <span className="text-xs text-slate-500">{client.company}</span>
+                                        )}
                                         {client.name && <span className="text-xs text-slate-500">{client.name}</span>}
                                         {client.rfc && <span className="text-[10px] text-slate-400">{client.rfc}</span>}
                                       </div>

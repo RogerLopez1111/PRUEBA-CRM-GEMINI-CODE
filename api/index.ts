@@ -635,7 +635,7 @@ app.get("/api/clients", async (_req, res) => {
     const { data, error } = await supabase
       .from("clientes")
       .select(`
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Descripcion, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       `)
@@ -654,7 +654,8 @@ app.get("/api/clients", async (_req, res) => {
     id: c.Cl_Cve_Cliente,
     name: c.Cl_Contacto_1 || "",
     email: c.Cl_email_contacto_1 || "",
-    company: c.Cl_Razon_Social || "",
+    company: (c.Cl_Razon_Social || "").trim(),
+    tradeName: c.Cl_Descripcion ? String(c.Cl_Descripcion).trim() : undefined,
     rfc: c.Cl_R_F_C || undefined,
     phone: c.Cl_Telefono_1 || undefined,
     city: c.Cl_Ciudad || undefined,

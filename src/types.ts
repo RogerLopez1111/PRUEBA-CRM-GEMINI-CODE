@@ -27,7 +27,8 @@ export interface Client {
   id: string;           // Cl_Cve_Cliente
   name: string;         // Cl_Contacto_1
   email: string;        // Cl_email_contacto_1
-  company: string;      // Cl_Razon_Social
+  company: string;      // Cl_Razon_Social (razón social / legal name)
+  tradeName?: string;   // Cl_Descripcion (ERP "Nombre" / commercial / trade name)
   rfc?: string;         // Cl_R_F_C
   phone?: string;       // Cl_Telefono_1
   city?: string;        // Cl_Ciudad
