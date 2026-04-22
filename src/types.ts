@@ -11,8 +11,15 @@ export interface LeadHistory {
   evidenceUrl?: string;
   quotedAmount?: number;
   invoicedAmount?: number;
+  rechazoMotivoId?: number;
+  rechazoMotivo?: string;
   updatedBy: string;
   timestamp: string;
+}
+
+export interface RechazoMotivo {
+  id: number;
+  descripcion: string;
 }
 
 // Maps to Supabase `clientes` table, which mirrors ERP [dbo].[Cliente]

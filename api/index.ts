@@ -110,7 +110,7 @@ async function getLeadsWithHistory() {
       .select(`
         *,
         clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-        lead_history(*)
+        lead_history(*, rechazo_motivos(descripcion))
       `)
       .order("Cl_CreatedAt_CRM", { ascending: false }),
     getSucursalesMap(),
@@ -145,6 +145,8 @@ async function getLeadsWithHistory() {
         evidenceUrl: h.evidence_url ?? undefined,
         quotedAmount: h.quoted_amount ?? undefined,
         invoicedAmount: h.invoiced_amount ?? undefined,
+        rechazoMotivoId: h.rechazo_motivo_id ?? undefined,
+        rechazoMotivo: (h.rechazo_motivos as any)?.descripcion ?? undefined,
         updatedBy: h.updated_by,
         timestamp: h.timestamp,
       })),
@@ -541,7 +543,7 @@ app.post("/api/leads/:id/assign", async (req, res) => {
 
 app.post("/api/leads/:id/status", async (req, res) => {
   const { id } = req.params;
-  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount } = req.body;
+  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount, rechazoMotivoId } = req.body;
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase
@@ -605,6 +607,7 @@ app.post("/api/leads/:id/status", async (req, res) => {
     evidence_url: evidenceUrl || null,
     quoted_amount: status === "COTIZADO" ? quotedAmount : null,
     invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
+    rechazo_motivo_id: status === "RECHAZADO" ? (rechazoMotivoId ?? null) : null,
     updated_by: userId || "System",
     timestamp: now,
   });
@@ -681,6 +684,15 @@ app.get("/api/lookups/segmentos", async (_req, res) => {
     .select("Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado")
     .eq("Es_Cve_Estado", "AC");
   res.json((data || []).map((s) => ({ id: String(s.Sg_Cve_Segmento), name: s.Sg_Descripcion })));
+});
+
+app.get("/api/lookups/rechazo-motivos", async (_req, res) => {
+  const { data } = await supabase
+    .from("rechazo_motivos")
+    .select("id, descripcion")
+    .eq("activo", true)
+    .order("id");
+  res.json((data || []).map((m) => ({ id: m.id, descripcion: m.descripcion })));
 });
 
 export default app;

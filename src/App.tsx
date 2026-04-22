@@ -31,7 +31,8 @@ import {
   ChevronRight,
   Target,
   Building2,
-  Bell
+  Bell,
+  XCircle
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -233,6 +234,7 @@ export default function App() {
   const [clients, setClients] = useState<Client[]>([]);
   const [sucursales, setSucursales] = useState<{id: string, name: string}[]>([]);
   const [segmentos, setSegmentos] = useState<{id: string, name: string}[]>([]);
+  const [rechazoMotivos, setRechazoMotivos] = useState<{ id: number; descripcion: string }[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -256,12 +258,13 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [statusUpdate, setStatusUpdate] = useState({ 
-    status: "" as LeadStatus, 
-    comment: "", 
+  const [statusUpdate, setStatusUpdate] = useState({
+    status: "" as LeadStatus,
+    comment: "",
     evidenceUrl: "",
     quotedAmount: 0,
-    invoicedAmount: 0
+    invoicedAmount: 0,
+    rechazoMotivoId: 0,
   });
 
   // Admin Hub Filters
@@ -346,12 +349,13 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes] = await Promise.all([
+      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes, motivosRes] = await Promise.all([
         fetch("/api/leads"),
         fetch("/api/users"),
         fetch("/api/clients"),
         fetch("/api/lookups/sucursales"),
-        fetch("/api/lookups/segmentos")
+        fetch("/api/lookups/segmentos"),
+        fetch("/api/lookups/rechazo-motivos")
       ]);
 
       const safeJson = async (res: Response, fallback: any) => {
@@ -364,12 +368,14 @@ export default function App() {
       const clientsData = await safeJson(clientsRes, []);
       const sucursalesData = await safeJson(sucursalesRes, []);
       const segmentosData = await safeJson(segmentosRes, []);
+      const motivosData = await safeJson(motivosRes, []);
 
       setLeads(leadsData);
       setUsers(usersData);
       setClients(clientsData);
       setSucursales(sucursalesData);
       setSegmentos(segmentosData);
+      setRechazoMotivos(motivosData);
 
       // Set defaults for new lead if not already set
       setNewLead(prev => ({
@@ -420,24 +426,26 @@ export default function App() {
 
 
   const handleStatusChange = async (
-    leadId: string, 
-    status: LeadStatus, 
-    comment?: string, 
+    leadId: string,
+    status: LeadStatus,
+    comment?: string,
     evidenceUrl?: string,
     quotedAmount?: number,
-    invoicedAmount?: number
+    invoicedAmount?: number,
+    rechazoMotivoId?: number
   ) => {
     try {
       const res = await fetch(`/api/leads/${leadId}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          status, 
-          comment, 
-          evidenceUrl, 
+        body: JSON.stringify({
+          status,
+          comment,
+          evidenceUrl,
           quotedAmount,
           invoicedAmount,
-          userId: currentUser?.id 
+          rechazoMotivoId,
+          userId: currentUser?.id
         })
       });
       if (res.ok) {
@@ -455,7 +463,8 @@ export default function App() {
           comment: "",
           evidenceUrl: "",
           quotedAmount: 0,
-          invoicedAmount: 0
+          invoicedAmount: 0,
+          rechazoMotivoId: 0,
         });
         fetchData();
       }
@@ -466,12 +475,13 @@ export default function App() {
 
   const openStatusUpdate = (lead: Lead, newStatus?: LeadStatus) => {
     setSelectedLead(lead);
-    setStatusUpdate({ 
-      status: newStatus || lead.status, 
-      comment: "", 
+    setStatusUpdate({
+      status: newStatus || lead.status,
+      comment: "",
       evidenceUrl: "",
       quotedAmount: lead.quotedAmount || 0,
-      invoicedAmount: lead.invoicedAmount || 0
+      invoicedAmount: lead.invoicedAmount || 0,
+      rechazoMotivoId: 0
     });
     setIsStatusUpdateOpen(true);
   };
@@ -2530,6 +2540,14 @@ export default function App() {
                             </div>
                           </div>
                           <p className="text-xs text-slate-700 mt-1">{item.comment}</p>
+                          {item.rechazoMotivo && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <XCircle className="w-3 h-3 text-red-600" />
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-100 text-[10px] py-0">
+                                Motivo: {item.rechazoMotivo}
+                              </Badge>
+                            </div>
+                          )}
                           {(item.quotedAmount !== undefined || item.invoicedAmount !== undefined) && (
                             <div className="flex gap-2 mt-2">
                               {item.quotedAmount !== undefined && (
@@ -2651,13 +2669,35 @@ export default function App() {
                         <FileText className="w-3 h-3" />
                         Monto Facturado ($)
                       </label>
-                      <Input 
+                      <Input
                         type="number"
                         placeholder="0.00"
                         value={statusUpdate.invoicedAmount || ""}
                         onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
                         className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
                       />
+                    </div>
+                  )}
+
+                  {statusUpdate.status === "RECHAZADO" && (
+                    <div className="grid gap-2 p-3 bg-red-50 rounded-lg border border-red-100">
+                      <label className="text-xs font-bold text-red-700 flex items-center gap-2">
+                        <XCircle className="w-3 h-3" />
+                        Motivo del Rechazo
+                      </label>
+                      <Select
+                        value={statusUpdate.rechazoMotivoId ? String(statusUpdate.rechazoMotivoId) : ""}
+                        onValueChange={(val) => setStatusUpdate({ ...statusUpdate, rechazoMotivoId: Number(val) })}
+                      >
+                        <SelectTrigger className="bg-white border-red-200 focus-visible:ring-red-500 h-8 text-sm">
+                          <SelectValue placeholder="Seleccionar motivo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rechazoMotivos.map(m => (
+                            <SelectItem key={m.id} value={String(m.id)}>{m.descripcion}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
 
@@ -2676,17 +2716,18 @@ export default function App() {
                 </div>
                 <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
                   <Button variant="ghost" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cancelar</Button>
-                  <Button 
+                  <Button
                     size="sm"
                     onClick={() => handleStatusChange(
-                      selectedLead!.id, 
-                      statusUpdate.status as LeadStatus, 
-                      statusUpdate.comment, 
+                      selectedLead!.id,
+                      statusUpdate.status as LeadStatus,
+                      statusUpdate.comment,
                       statusUpdate.evidenceUrl,
                       statusUpdate.quotedAmount,
-                      statusUpdate.invoicedAmount
+                      statusUpdate.invoicedAmount,
+                      statusUpdate.rechazoMotivoId || undefined
                     )}
-                    disabled={!statusUpdate.comment}
+                    disabled={!statusUpdate.comment || (statusUpdate.status === "RECHAZADO" && !statusUpdate.rechazoMotivoId)}
                     className="gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
