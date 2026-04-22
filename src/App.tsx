@@ -1654,14 +1654,23 @@ export default function App() {
                       <CardContent className="max-h-[250px] overflow-y-auto space-y-3">
                         {lostLeads.length > 0 ? (
                           lostLeads.map(lead => {
-                            const lastComment = lead.history.filter(h => h.status === "RECHAZADO").pop()?.comment;
+                            const lastRejection = lead.history.filter(h => h.status === "RECHAZADO").pop();
+                            const motivo = lastRejection?.rechazoMotivo;
+                            const comment = lastRejection?.comment;
                             return (
                               <div key={lead.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                                 <div className="flex justify-between items-start mb-1">
                                   <p className="text-xs font-bold text-slate-700">{lead.company}</p>
                                   <span className="text-[10px] font-mono text-slate-400">${lead.value.toLocaleString()}</span>
                                 </div>
-                                <p className="text-xs text-slate-500 italic">"{lastComment || "No se proporcionó motivo"}"</p>
+                                <p className="text-xs font-semibold text-red-700">
+                                  {motivo || "Sin motivo registrado"}
+                                </p>
+                                {comment && (
+                                  <p className="mt-1 text-[11px] font-light italic text-slate-500 leading-snug">
+                                    {comment}
+                                  </p>
+                                )}
                               </div>
                             );
                           })
