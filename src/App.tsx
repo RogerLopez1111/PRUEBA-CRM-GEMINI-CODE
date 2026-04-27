@@ -228,6 +228,33 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBad
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+// CRM-only client IDs are random alphanumeric (created in the new-lead flow);
+// ERP clients have all-numeric ids.
+const isCrmClientId = (id: string | undefined | null) => !!id && !/^\d+$/.test(id);
+
+// For a list of leads belonging to one seller, returns Map<"YYYY-MM", count>
+// of brand-new clients the seller brought on. Attribution is anchored to the
+// lead.newClient flag (Cl_New_Client_CRM) — set true when the lead was created
+// against a brand-new prospect — so credit survives the ERP re-point that
+// happens on FACTURADO. The clientId itself can flip from CRM-alphanumeric to
+// ERP-numeric, which would otherwise erase historical credit.
+function newClientsByMonth(sellerLeads: Lead[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const l of sellerLeads) {
+    if (!l.newClient) continue;
+    const d = new Date(l.createdAt);
+    if (isNaN(d.getTime())) continue;
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    counts.set(ym, (counts.get(ym) || 0) + 1);
+  }
+  return counts;
+}
+
+const currentYearMonth = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
 export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -266,7 +293,10 @@ export default function App() {
     quotedAmount: 0,
     invoicedAmount: 0,
     rechazoMotivoId: 0,
+    erpClientId: "",
   });
+  const [isErpClientSearchOpen, setIsErpClientSearchOpen] = useState(false);
+  const [erpClientSearch, setErpClientSearch] = useState("");
 
   // Admin Hub Filters
   const [adminFilterSeller, setAdminFilterSeller] = useState<string>("all");
@@ -450,7 +480,8 @@ export default function App() {
     evidenceUrl?: string,
     quotedAmount?: number,
     invoicedAmount?: number,
-    rechazoMotivoId?: number
+    rechazoMotivoId?: number,
+    erpClientId?: string
   ) => {
     try {
       const res = await fetch(`/api/leads/${leadId}/status`, {
@@ -463,14 +494,12 @@ export default function App() {
           quotedAmount,
           invoicedAmount,
           rechazoMotivoId,
+          erpClientId,
           userId: currentUser?.id
         })
       });
       if (res.ok) {
-        const data = await res.json();
-        if (data?.erpMigrationWarning) {
-          toast.warning(data.erpMigrationWarning, { duration: 8000 });
-        } else if (status === "FACTURADO") {
+        if (status === "FACTURADO") {
           toast.success("Lead facturado y vinculado al cliente ERP");
         } else {
           toast.success(`Lead marcado como ${status}`);
@@ -483,8 +512,13 @@ export default function App() {
           quotedAmount: 0,
           invoicedAmount: 0,
           rechazoMotivoId: 0,
+          erpClientId: "",
         });
+        setErpClientSearch("");
         fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update status");
       }
     } catch (error) {
       toast.error("Failed to update status");
@@ -499,8 +533,10 @@ export default function App() {
       evidenceUrl: "",
       quotedAmount: lead.quotedAmount || 0,
       invoicedAmount: lead.invoicedAmount || 0,
-      rechazoMotivoId: 0
+      rechazoMotivoId: 0,
+      erpClientId: "",
     });
+    setErpClientSearch("");
     setIsStatusUpdateOpen(true);
   };
 
@@ -1455,6 +1491,8 @@ export default function App() {
                         <TableHead className="font-semibold">Vendido ($)</TableHead>
                         <TableHead className="font-semibold">Cotizado ($)</TableHead>
                         <TableHead className="font-semibold">Perdido ($)</TableHead>
+                        <TableHead className="font-semibold">Origen</TableHead>
+                        <TableHead className="font-semibold">Nuevos Clientes</TableHead>
                         <TableHead className="font-semibold">Progreso Meta</TableHead>
                         <TableHead className="text-right font-semibold">Conversión</TableHead>
                       </TableRow>
@@ -1465,6 +1503,11 @@ export default function App() {
                         const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
                         const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
                         const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
+                        const clientInitiated = userLeads.filter(l => l.clientInitiated).length;
+                        const sellerInitiated = userLeads.length - clientInitiated;
+                        const newClientCounts = newClientsByMonth(userLeads);
+                        const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
+                        const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
                         const progress = Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100));
 
                         return (
@@ -1480,6 +1523,18 @@ export default function App() {
                             <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
                             <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
                             <TableCell className="text-red-600">${lostValue.toLocaleString()}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5 leading-tight">
+                                <span className="text-[11px] text-blue-600">Cliente: <span className="font-bold">{clientInitiated}</span></span>
+                                <span className="text-[11px] text-slate-600">Vendedor: <span className="font-bold">{sellerInitiated}</span></span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5 leading-tight">
+                                <span className="text-sm font-bold text-emerald-700">{newClientsThisMonth}</span>
+                                <span className="text-[10px] text-slate-500">este mes · {newClientsTotal} total</span>
+                              </div>
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden border">
@@ -1519,6 +1574,31 @@ export default function App() {
                   ].filter(d => d.value > 0);
 
                   const lostLeads = userLeads.filter(l => l.status === "RECHAZADO");
+
+                  const clientInitiatedCount = userLeads.filter(l => l.clientInitiated).length;
+                  const sellerInitiatedCount = userLeads.length - clientInitiatedCount;
+                  const clientInitiatedPct = userLeads.length > 0
+                    ? Math.round((clientInitiatedCount / userLeads.length) * 100)
+                    : 0;
+
+                  const newClientCounts = newClientsByMonth(userLeads);
+                  const recentMonthsForUser = (() => {
+                    const out: { ym: string; label: string; count: number }[] = [];
+                    const now = new Date();
+                    for (let i = 5; i >= 0; i--) {
+                      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                      out.push({
+                        ym,
+                        label: `${MESES[d.getMonth()].slice(0, 3)} ${String(d.getFullYear()).slice(2)}`,
+                        count: newClientCounts.get(ym) || 0,
+                      });
+                    }
+                    return out;
+                  })();
+                  const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
+                  const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
+                  const maxBar = Math.max(1, ...recentMonthsForUser.map(m => m.count));
 
                   return (
                     <div key={user.id} className="lg:col-span-3 space-y-6">
@@ -1619,6 +1699,58 @@ export default function App() {
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-slate-500">Leads Activos</span>
                                 <span className="text-sm font-bold">{user.workload?.activeLeads || 0}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Origen del Contacto</span>
+                                <span className="text-[10px] text-slate-400">{userLeads.length} total</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2">
+                                  <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wider">Cliente</p>
+                                  <p className="text-lg font-bold text-blue-700 leading-tight">{clientInitiatedCount}</p>
+                                  <p className="text-[10px] text-blue-600/70">{clientInitiatedPct}% del total</p>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                                  <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Vendedor</p>
+                                  <p className="text-lg font-bold text-slate-700 leading-tight">{sellerInitiatedCount}</p>
+                                  <p className="text-[10px] text-slate-500">{100 - clientInitiatedPct}% del total</p>
+                                </div>
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
+                                <div className="h-full bg-blue-500" style={{ width: `${clientInitiatedPct}%` }} />
+                                <div className="h-full bg-slate-400" style={{ width: `${100 - clientInitiatedPct}%` }} />
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevos Clientes</span>
+                                <span className="text-[10px] text-slate-400">{newClientsTotal} total</span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-2xl font-bold text-emerald-600 leading-none">{newClientsThisMonth}</span>
+                                <span className="text-[10px] text-slate-500">este mes</span>
+                              </div>
+                              <div className="flex items-end gap-1 h-12 pt-1">
+                                {recentMonthsForUser.map(m => {
+                                  const isCurrent = m.ym === currentYearMonth();
+                                  const heightPct = (m.count / maxBar) * 100;
+                                  return (
+                                    <div key={m.ym} className="flex-1 flex flex-col items-center gap-0.5">
+                                      <span className="text-[9px] font-semibold text-slate-600">{m.count || ""}</span>
+                                      <div className="w-full bg-slate-100 rounded-t flex items-end" style={{ height: "100%" }}>
+                                        <div
+                                          className={`w-full rounded-t ${isCurrent ? "bg-emerald-500" : "bg-emerald-300"}`}
+                                          style={{ height: `${m.count === 0 ? 0 : Math.max(8, heightPct)}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[9px] text-slate-400">{m.label}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           </CardContent>
@@ -2737,18 +2869,110 @@ export default function App() {
                   )}
 
                   {statusUpdate.status === "FACTURADO" && (
-                    <div className="grid gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                      <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
-                        <FileText className="w-3 h-3" />
-                        Monto Facturado ($)
-                      </label>
-                      <Input
-                        type="number"
-                        placeholder="0.00"
-                        value={statusUpdate.invoicedAmount || ""}
-                        onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
-                        className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
-                      />
+                    <div className="grid gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                          <FileText className="w-3 h-3" />
+                          Monto Facturado ($)
+                        </label>
+                        <Input
+                          type="number"
+                          placeholder="0.00"
+                          value={statusUpdate.invoicedAmount || ""}
+                          onChange={(e) => setStatusUpdate({...statusUpdate, invoicedAmount: Number(e.target.value)})}
+                          className="bg-white border-indigo-200 focus-visible:ring-indigo-500 h-8 text-sm"
+                        />
+                      </div>
+
+                      {selectedLead && isCrmClientId(selectedLead.clientId) && (
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                            <Building2 className="w-3 h-3" />
+                            Cliente ERP a vincular
+                          </label>
+                          <p className="text-[10px] text-indigo-700/70 -mt-1">
+                            Este lead aún apunta a un prospecto CRM. Selecciona el ID del cliente ERP que ya existe para vincularlo.
+                          </p>
+                          <Popover open={isErpClientSearchOpen} onOpenChange={setIsErpClientSearchOpen}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full justify-between font-normal bg-white border-indigo-200 h-8 text-sm">
+                                {statusUpdate.erpClientId
+                                  ? (() => {
+                                      const c = clients.find(c => c.id === statusUpdate.erpClientId);
+                                      return c
+                                        ? `${statusUpdate.erpClientId} — ${c.tradeName || c.company}`
+                                        : statusUpdate.erpClientId;
+                                    })()
+                                  : "Buscar cliente ERP por ID, nombre, RFC..."}
+                                <Search className="w-3 h-3 ml-2 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="p-0 w-[320px]" align="start">
+                              <Command shouldFilter={false}>
+                                <CommandInput
+                                  placeholder="ID, nombre comercial, razón social, RFC..."
+                                  value={erpClientSearch}
+                                  onValueChange={setErpClientSearch}
+                                />
+                                <CommandList>
+                                  {(() => {
+                                    const rawQ = erpClientSearch.trim().toLowerCase();
+                                    if (!rawQ) {
+                                      return (
+                                        <div className="py-6 text-center text-xs text-slate-500">
+                                          Escribe para buscar entre los clientes ERP
+                                        </div>
+                                      );
+                                    }
+                                    const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+                                    const q = squash(rawQ);
+                                    const MAX = 50;
+                                    const matches: Client[] = [];
+                                    for (const c of clients) {
+                                      if (c.source !== 'erp') continue;
+                                      const stripped = c.id.replace(/^0+/, '');
+                                      if (
+                                        squash(c.company).includes(q) ||
+                                        squash(c.tradeName || '').includes(q) ||
+                                        squash(c.name).includes(q) ||
+                                        squash(c.rfc || '').includes(q) ||
+                                        c.id.includes(rawQ) ||
+                                        stripped.includes(rawQ)
+                                      ) {
+                                        matches.push(c);
+                                        if (matches.length >= MAX) break;
+                                      }
+                                    }
+                                    if (matches.length === 0) {
+                                      return <CommandEmpty>No se encontraron clientes ERP.</CommandEmpty>;
+                                    }
+                                    return (
+                                      <CommandGroup>
+                                        {matches.map(c => (
+                                          <CommandItem
+                                            key={c.id}
+                                            value={c.id}
+                                            onSelect={() => {
+                                              setStatusUpdate({ ...statusUpdate, erpClientId: c.id });
+                                              setIsErpClientSearchOpen(false);
+                                            }}
+                                          >
+                                            <div className="flex flex-col">
+                                              <span className="text-xs font-mono text-slate-500">{c.id}</span>
+                                              <span className="text-sm font-medium">{c.tradeName || c.company}</span>
+                                              {c.tradeName && <span className="text-[10px] text-slate-400">{c.company}</span>}
+                                            </div>
+                                          </CommandItem>
+                                        ))}
+                                      </CommandGroup>
+                                    );
+                                  })()}
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -2798,9 +3022,14 @@ export default function App() {
                       statusUpdate.evidenceUrl,
                       statusUpdate.quotedAmount,
                       statusUpdate.invoicedAmount,
-                      statusUpdate.rechazoMotivoId || undefined
+                      statusUpdate.rechazoMotivoId || undefined,
+                      statusUpdate.erpClientId || undefined
                     )}
-                    disabled={!statusUpdate.comment || (statusUpdate.status === "RECHAZADO" && !statusUpdate.rechazoMotivoId)}
+                    disabled={
+                      !statusUpdate.comment ||
+                      (statusUpdate.status === "RECHAZADO" && !statusUpdate.rechazoMotivoId) ||
+                      (statusUpdate.status === "FACTURADO" && selectedLead != null && isCrmClientId(selectedLead.clientId) && !statusUpdate.erpClientId)
+                    }
                     className="gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />

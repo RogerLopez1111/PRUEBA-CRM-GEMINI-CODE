@@ -134,6 +134,7 @@ async function getLeadsWithHistory() {
     quotedAmount: l.Cl_QuotedAmount_CRM ?? undefined,
     invoicedAmount: l.Cl_InvoicedAmount_CRM ?? undefined,
     clientInitiated: !!l.Cl_Client_Initiated_CRM,
+    newClient: !!l.Cl_New_Client_CRM,
     createdAt: l.Cl_CreatedAt_CRM,
     updatedAt: l.Cl_UpdatedAt_CRM,
     history: ((l.lead_history as any[]) || [])
@@ -491,6 +492,7 @@ app.post("/api/leads", async (req, res) => {
     Sc_Cve_Sucursal: sucursalId || null,
     Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
     Cl_Client_Initiated_CRM: !!clientInitiated,
+    Cl_New_Client_CRM: !isExistingClient,
     Cl_CreatedAt_CRM: now,
     Cl_UpdatedAt_CRM: now,
   });
@@ -545,7 +547,7 @@ app.post("/api/leads/:id/assign", async (req, res) => {
 
 app.post("/api/leads/:id/status", async (req, res) => {
   const { id } = req.params;
-  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount, rechazoMotivoId } = req.body;
+  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount, rechazoMotivoId, erpClientId } = req.body;
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase
@@ -557,8 +559,6 @@ app.post("/api/leads/:id/status", async (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const updates: Record<string, any> = { Cl_Status_CRM: status, Cl_UpdatedAt_CRM: now };
-  // If the user leaves the quoted amount blank when marking COTIZADO,
-  // assume they quoted the full Valor Potencial.
   const effectiveQuotedAmount = status === "COTIZADO"
     ? (quotedAmount && quotedAmount > 0 ? quotedAmount : (lead.Cl_Valor_CRM || 0))
     : quotedAmount;
@@ -570,37 +570,32 @@ app.post("/api/leads/:id/status", async (req, res) => {
     updates.Cl_Valor_CRM = invoicedAmount;
   }
 
-  // When a sale is closed, migrate the CRM prospect to the real ERP client
-  // Bridge: match by Cl_Razon_Social (exact, case-insensitive)
-  let erpMigrationWarning: string | null = null;
+  // When a sale is closed on a CRM-only prospect, the seller must supply the
+  // matching ERP client id so we can re-point the lead and retire the prospect.
   if (status === "FACTURADO") {
-    const razonSocial = (lead.clientes as any)?.Cl_Razon_Social;
     const oldClientId = lead.Cl_Cve_Cliente;
-
-    if (razonSocial && !isErpId(oldClientId)) {
-      // Search Supabase for an ERP client with the same Razon Social (synced by sync-erp script)
-      const { data: matches } = await supabase
-        .from("clientes")
-        .select("Cl_Cve_Cliente, Cl_Razon_Social")
-        .ilike("Cl_Razon_Social", razonSocial);
-
-      const erpMatches = (matches || []).filter((c) => isErpId(c.Cl_Cve_Cliente));
-
-      if (erpMatches.length === 1) {
-        const erpId = erpMatches[0].Cl_Cve_Cliente;
-
-        // Re-point ALL leads that referenced the CRM prospect to the ERP client
-        await supabase.from("leads")
-          .update({ Cl_Cve_Cliente: erpId })
-          .eq("Cl_Cve_Cliente", oldClientId);
-
-        // Delete the CRM prospect (leads no longer reference it)
-        await supabase.from("clientes").delete().eq("Cl_Cve_Cliente", oldClientId);
-      } else if (erpMatches.length === 0) {
-        erpMigrationWarning = `Cliente "${razonSocial}" no encontrado en el ERP. Asegúrate de correr la sincronización primero.`;
-      } else {
-        erpMigrationWarning = `Se encontraron ${erpMatches.length} clientes con el nombre "${razonSocial}" en el ERP. Verifica cuál es el correcto.`;
+    if (!isErpId(oldClientId)) {
+      const requestedErpId = String(erpClientId || "").trim();
+      if (!requestedErpId) {
+        return res.status(400).json({ error: "Selecciona el ID del cliente ERP para vincular antes de facturar." });
       }
+      if (!isErpId(requestedErpId)) {
+        return res.status(400).json({ error: "El ID del cliente ERP debe ser numérico." });
+      }
+      const { data: erpClient } = await supabase
+        .from("clientes")
+        .select("Cl_Cve_Cliente")
+        .eq("Cl_Cve_Cliente", requestedErpId)
+        .maybeSingle();
+      if (!erpClient) {
+        return res.status(400).json({ error: `No existe un cliente ERP con id ${requestedErpId}.` });
+      }
+
+      // Re-point every lead that referenced the CRM prospect, then retire the prospect.
+      await supabase.from("leads")
+        .update({ Cl_Cve_Cliente: requestedErpId })
+        .eq("Cl_Cve_Cliente", oldClientId);
+      await supabase.from("clientes").delete().eq("Cl_Cve_Cliente", oldClientId);
     }
   }
 
@@ -620,8 +615,7 @@ app.post("/api/leads/:id/status", async (req, res) => {
   });
 
   const leads = await getLeadsWithHistory();
-  const updatedLead = leads.find((l) => l.id === id);
-  res.json(erpMigrationWarning ? { ...updatedLead, erpMigrationWarning } : updatedLead);
+  res.json(leads.find((l) => l.id === id));
 });
 
 // ---------------------------------------------------------------------------

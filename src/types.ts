@@ -55,6 +55,7 @@ export interface Lead {
   quotedAmount?: number;   // Cl_QuotedAmount_CRM
   invoicedAmount?: number; // Cl_InvoicedAmount_CRM
   clientInitiated?: boolean; // Cl_Client_Initiated_CRM — true when the customer reached out first
+  newClient?: boolean;  // Cl_New_Client_CRM — true when this lead created a brand-new CRM prospect (survives the ERP re-point on FACTURADO)
   createdAt: string;    // Cl_CreatedAt_CRM
   updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];
