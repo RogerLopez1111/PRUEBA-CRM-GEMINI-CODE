@@ -133,6 +133,7 @@ async function getLeadsWithHistory() {
     segmento: segmentosMap[String(l.Sg_Cve_Segmento)] || String(l.Sg_Cve_Segmento || ""),
     quotedAmount: l.Cl_QuotedAmount_CRM ?? undefined,
     invoicedAmount: l.Cl_InvoicedAmount_CRM ?? undefined,
+    clientInitiated: !!l.Cl_Client_Initiated_CRM,
     createdAt: l.Cl_CreatedAt_CRM,
     updatedAt: l.Cl_UpdatedAt_CRM,
     history: ((l.lead_history as any[]) || [])
@@ -426,7 +427,7 @@ app.get("/api/leads", async (_req, res) => {
 });
 
 app.post("/api/leads", async (req, res) => {
-  const { userId, isExistingClient, clientId: existingClientId, ...leadData } = req.body;
+  const { userId, isExistingClient, clientId: existingClientId, clientInitiated, ...leadData } = req.body;
   const now = new Date().toISOString();
   const status = "ASIGNADO";
 
@@ -489,6 +490,7 @@ app.post("/api/leads", async (req, res) => {
     Cl_Valor_CRM: leadData.value,
     Sc_Cve_Sucursal: sucursalId || null,
     Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
+    Cl_Client_Initiated_CRM: !!clientInitiated,
     Cl_CreatedAt_CRM: now,
     Cl_UpdatedAt_CRM: now,
   });

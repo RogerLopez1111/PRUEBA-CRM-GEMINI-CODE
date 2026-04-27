@@ -251,7 +251,8 @@ export default function App() {
     segmento: "",
     isExistingClient: false,
     clientId: "",
-    assignedTo: ""
+    assignedTo: "",
+    clientInitiated: false,
   });
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
@@ -568,7 +569,8 @@ export default function App() {
           segmento: segmentos.length > 0 ? segmentos[0].name : "",
           isExistingClient: false,
           clientId: "",
-          assignedTo: ""
+          assignedTo: "",
+          clientInitiated: false,
         });
         fetchData();
       } else {
@@ -1051,13 +1053,26 @@ export default function App() {
 
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Valor Potencial ($)</label>
-                      <Input 
+                      <Input
                         type="number"
                         placeholder="5000"
                         value={newLead.value || ""}
                         onChange={(e) => setNewLead({...newLead, value: Number(e.target.value)})}
                       />
                     </div>
+
+                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border border-slate-200 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={newLead.clientInitiated}
+                        onChange={(e) => setNewLead({ ...newLead, clientInitiated: e.target.checked })}
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">Cliente me contactó</span>
+                        <span className="text-[11px] text-slate-500">Marcar si fue el cliente quien inició el contacto.</span>
+                      </div>
+                    </label>
                     
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Segmento</label>

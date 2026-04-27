@@ -54,6 +54,7 @@ export interface Lead {
   segmento: string;     // Sg_Cve_Segmento → resolved name from segmentos.Sg_Descripcion
   quotedAmount?: number;   // Cl_QuotedAmount_CRM
   invoicedAmount?: number; // Cl_InvoicedAmount_CRM
+  clientInitiated?: boolean; // Cl_Client_Initiated_CRM — true when the customer reached out first
   createdAt: string;    // Cl_CreatedAt_CRM
   updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];
