@@ -256,6 +256,80 @@ const currentYearMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
+// Median days between the first ASIGNADO and the first CONTACTADO history entry.
+function timeToFirstContact(leads: Lead[]): { median: number | null; count: number } {
+  const days: number[] = [];
+  for (const l of leads) {
+    const asig = l.history.find(h => h.status === "ASIGNADO");
+    const cont = l.history.find(h => h.status === "CONTACTADO");
+    if (!asig || !cont) continue;
+    const diff = (new Date(cont.timestamp).getTime() - new Date(asig.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+    if (isFinite(diff) && diff >= 0) days.push(diff);
+  }
+  if (days.length === 0) return { median: null, count: 0 };
+  const sorted = [...days].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return { median, count: sorted.length };
+}
+
+// Pareto of rechazo motivos for a set of leads — lost value (pesos) drives the order.
+function rechazoMotivosPareto(leads: Lead[]): { name: string; count: number; lostValue: number }[] {
+  const map = new Map<string, { count: number; lostValue: number }>();
+  for (const l of leads) {
+    if (l.status !== "RECHAZADO") continue;
+    const lastRej = [...l.history].reverse().find(h => h.status === "RECHAZADO");
+    const motivo = lastRej?.rechazoMotivo || "Sin motivo";
+    const ex = map.get(motivo) || { count: 0, lostValue: 0 };
+    ex.count += 1;
+    ex.lostValue += l.value || 0;
+    map.set(motivo, ex);
+  }
+  return [...map.entries()]
+    .map(([name, v]) => ({ name, count: v.count, lostValue: v.lostValue }))
+    .sort((a, b) => b.lostValue - a.lostValue || b.count - a.count);
+}
+
+// Stage-by-stage funnel. For each lead, the deepest stage it ever touched
+// (via current status or any history entry) counts toward every prior stage.
+// RECHAZADO is treated as a terminal off-funnel state, not a stage.
+const FUNNEL_STAGES: LeadStatus[] = ["ASIGNADO", "CONTACTADO", "NEGOCIACION", "COTIZADO", "FACTURADO", "ENTREGADO"];
+function funnelByStage(leads: Lead[]): { stage: LeadStatus; count: number; pctOfTop: number; stepConversion: number | null }[] {
+  const counts: Record<string, number> = {};
+  for (const s of FUNNEL_STAGES) counts[s] = 0;
+  for (const l of leads) {
+    let deepest = -1;
+    for (const h of l.history) {
+      const i = FUNNEL_STAGES.indexOf(h.status as LeadStatus);
+      if (i > deepest) deepest = i;
+    }
+    const cur = FUNNEL_STAGES.indexOf(l.status as LeadStatus);
+    if (cur > deepest) deepest = cur;
+    if (deepest < 0) continue;
+    for (let i = 0; i <= deepest; i++) counts[FUNNEL_STAGES[i]] += 1;
+  }
+  const top = counts[FUNNEL_STAGES[0]] || 1;
+  return FUNNEL_STAGES.map((stage, idx) => {
+    const prev = idx === 0 ? null : counts[FUNNEL_STAGES[idx - 1]];
+    const stepConversion = prev && prev > 0 ? (counts[stage] / prev) * 100 : (idx === 0 ? null : null);
+    return {
+      stage,
+      count: counts[stage],
+      pctOfTop: top > 0 ? (counts[stage] / top) * 100 : 0,
+      stepConversion,
+    };
+  });
+}
+
+const formatDays = (d: number) => {
+  if (d < 1) {
+    const hours = Math.round(d * 24);
+    return `${hours}h`;
+  }
+  if (d < 10) return `${d.toFixed(1)}d`;
+  return `${Math.round(d)}d`;
+};
+
 export default function App() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -278,6 +352,9 @@ export default function App() {
     clienteId: string;
     clienteName: string;
   }>({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
+  const [faltantesFilterSucursal, setFaltantesFilterSucursal] = useState<string>("all");
+  const [faltantesFilterMonth, setFaltantesFilterMonth] = useState<string>("all");
+  const [faltantesFilterEstado, setFaltantesFilterEstado] = useState<"all" | "pendiente" | "resuelto">("all");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -363,6 +440,91 @@ export default function App() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const faltantesMonthOptions = useMemo(() => {
+    const set = new Set<string>();
+    const now = new Date();
+    set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    for (const f of faltantes) {
+      const d = new Date(f.createdAt);
+      if (!isNaN(d.getTime())) {
+        set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+    }
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [faltantes]);
+
+  const filteredFaltantes = useMemo(() => {
+    return faltantes.filter(f => {
+      if (currentUser?.role === "Seller" && f.vendedorId !== currentUser.id) return false;
+      if (faltantesFilterEstado !== "all" && f.estado !== faltantesFilterEstado) return false;
+      if (faltantesFilterSucursal !== "all" && f.sucursalName !== faltantesFilterSucursal) return false;
+      if (faltantesFilterMonth !== "all") {
+        const d = new Date(f.createdAt);
+        if (isNaN(d.getTime())) return false;
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (ym !== faltantesFilterMonth) return false;
+      }
+      return true;
+    });
+  }, [faltantes, currentUser, faltantesFilterEstado, faltantesFilterSucursal, faltantesFilterMonth]);
+
+  // Admin rollup aggregations — derived from the same filtered set so the
+  // rollup and the list always agree.
+  const faltantesRollup = useMemo(() => {
+    type ProductAgg = { name: string; productoId: string | null; incidentes: number; cantidad: number; sucursales: Set<string> };
+    const productAgg = new Map<string, ProductAgg>();
+    const sucursalAgg = new Map<string, { incidentes: number; products: Map<string, number> }>();
+    const monthAgg = new Map<string, number>();
+
+    for (const f of filteredFaltantes) {
+      const productKey = f.productoId || `__free:${f.productoDescripcion.toLowerCase().trim()}`;
+      const productName = f.productoDescripcion;
+      const p = productAgg.get(productKey) || { name: productName, productoId: f.productoId ?? null, incidentes: 0, cantidad: 0, sucursales: new Set<string>() };
+      p.incidentes += 1;
+      p.cantidad += Number(f.cantidad) || 0;
+      if (f.sucursalName) p.sucursales.add(f.sucursalName);
+      productAgg.set(productKey, p);
+
+      if (f.sucursalName) {
+        const s = sucursalAgg.get(f.sucursalName) || { incidentes: 0, products: new Map<string, number>() };
+        s.incidentes += 1;
+        s.products.set(productName, (s.products.get(productName) || 0) + 1);
+        sucursalAgg.set(f.sucursalName, s);
+      }
+
+      const d = new Date(f.createdAt);
+      if (!isNaN(d.getTime())) {
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        monthAgg.set(ym, (monthAgg.get(ym) || 0) + 1);
+      }
+    }
+
+    const topProducts = [...productAgg.values()]
+      .sort((a, b) => b.incidentes - a.incidentes || b.cantidad - a.cantidad)
+      .slice(0, 10);
+
+    const bySucursal = [...sucursalAgg.entries()]
+      .map(([name, v]) => {
+        const top = [...v.products.entries()].sort((a, b) => b[1] - a[1])[0];
+        return { name, incidentes: v.incidentes, topProduct: top ? top[0] : null, topProductCount: top ? top[1] : 0 };
+      })
+      .sort((a, b) => b.incidentes - a.incidentes);
+
+    const now = new Date();
+    const byMonth: { ym: string; label: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      byMonth.push({
+        ym,
+        label: `${MESES[d.getMonth()].slice(0, 3)} ${String(d.getFullYear()).slice(2)}`,
+        count: monthAgg.get(ym) || 0,
+      });
+    }
+
+    return { topProducts, bySucursal, byMonth, totalIncidentes: filteredFaltantes.length };
+  }, [filteredFaltantes]);
 
   const kanbanMonthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1579,6 +1741,8 @@ export default function App() {
                         <TableHead className="font-semibold">Perdido ($)</TableHead>
                         <TableHead className="font-semibold">Origen</TableHead>
                         <TableHead className="font-semibold">Nuevos Clientes</TableHead>
+                        <TableHead className="font-semibold">1er Contacto</TableHead>
+                        <TableHead className="font-semibold">COT→FACT</TableHead>
                         <TableHead className="font-semibold">Progreso Meta</TableHead>
                         <TableHead className="text-right font-semibold">Conversión</TableHead>
                       </TableRow>
@@ -1594,6 +1758,9 @@ export default function App() {
                         const newClientCounts = newClientsByMonth(userLeads);
                         const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
                         const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
+                        const ttfc = timeToFirstContact(userLeads);
+                        const userFunnel = funnelByStage(userLeads);
+                        const cotToFact = userFunnel.find(s => s.stage === "FACTURADO")?.stepConversion ?? null;
                         const progress = Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100));
 
                         return (
@@ -1620,6 +1787,23 @@ export default function App() {
                                 <span className="text-sm font-bold text-emerald-700">{newClientsThisMonth}</span>
                                 <span className="text-[10px] text-slate-500">este mes · {newClientsTotal} total</span>
                               </div>
+                            </TableCell>
+                            <TableCell>
+                              {ttfc.median !== null ? (
+                                <div className="flex flex-col gap-0.5 leading-tight">
+                                  <span className="text-sm font-bold text-slate-900">{formatDays(ttfc.median)}</span>
+                                  <span className="text-[10px] text-slate-500">mediana · n={ttfc.count}</span>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">sin datos</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {cotToFact !== null ? (
+                                <span className="text-xs font-bold text-slate-900">{cotToFact.toFixed(0)}%</span>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">—</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
@@ -1692,6 +1876,19 @@ export default function App() {
                   const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
                   const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
                   const maxBar = Math.max(1, ...recentMonthsForUser.map(m => m.count));
+
+                  const userTtfc = timeToFirstContact(userLeads);
+                  const userFunnelData = funnelByStage(userLeads);
+                  const userPareto = rechazoMotivosPareto(userLeads);
+                  const totalLost = userPareto.reduce((s, m) => s + m.lostValue, 0);
+                  const stageColor: Record<string, string> = {
+                    ASIGNADO: "bg-slate-400",
+                    CONTACTADO: "bg-blue-500",
+                    NEGOCIACION: "bg-purple-500",
+                    COTIZADO: "bg-orange-500",
+                    FACTURADO: "bg-indigo-500",
+                    ENTREGADO: "bg-emerald-500",
+                  };
 
                   return (
                     <div key={user.id} className="lg:col-span-3 space-y-6">
@@ -1937,6 +2134,91 @@ export default function App() {
                             <p className="text-xs italic">Aún no hay tratos perdidos</p>
                           </div>
                         )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Embudo de Conversión */}
+                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Embudo de Conversión</CardTitle>
+                        <CardDescription className="text-[10px]">Leads que tocaron cada etapa, % vs ASIGNADO y conversión paso a paso</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {userFunnelData[0].count === 0 ? (
+                          <p className="text-xs italic text-slate-400 text-center py-6">Sin leads.</p>
+                        ) : (
+                          userFunnelData.map((s) => (
+                            <div key={s.stage} className="space-y-0.5">
+                              <div className="flex items-baseline justify-between text-[11px]">
+                                <span className="font-semibold text-slate-700">{s.stage}</span>
+                                <div className="flex items-baseline gap-2">
+                                  {s.stepConversion !== null && (
+                                    <span className="text-[10px] text-slate-400">{s.stepConversion.toFixed(0)}% ↓</span>
+                                  )}
+                                  <span className="font-bold text-slate-900">{s.count}</span>
+                                  <span className="text-[10px] text-slate-500">{s.pctOfTop.toFixed(0)}%</span>
+                                </div>
+                              </div>
+                              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${stageColor[s.stage] || "bg-slate-400"}`} style={{ width: `${s.pctOfTop}%` }} />
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Tiempo a Primer Contacto */}
+                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Tiempo a Primer Contacto</CardTitle>
+                        <CardDescription className="text-[10px]">Tiempo entre asignación y primer CONTACTADO</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {userTtfc.median === null ? (
+                          <p className="text-xs italic text-slate-400 text-center py-6">Aún no hay leads contactados.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-3xl font-bold text-slate-900 leading-none">{formatDays(userTtfc.median)}</p>
+                              <p className="text-[10px] text-slate-500 mt-1">mediana sobre {userTtfc.count} leads</p>
+                            </div>
+                            <div className="text-[10px] text-slate-500 leading-relaxed">
+                              Tiempo a primer contacto correlaciona fuertemente con la tasa de cierre. Por debajo de 1 día es ideal; arriba de 3 días la conversión cae rápido.
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Pareto de Motivos de Rechazo */}
+                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Pareto de Motivos</CardTitle>
+                        <CardDescription className="text-[10px]">
+                          {totalLost > 0 ? `$${totalLost.toLocaleString()} en valor perdido` : "Sin valor perdido aún"}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 max-h-[250px] overflow-y-auto">
+                        {userPareto.length === 0 ? (
+                          <p className="text-xs italic text-slate-400 text-center py-6">Sin tratos rechazados.</p>
+                        ) : (() => {
+                          const max = userPareto[0].lostValue || 1;
+                          return userPareto.map((m) => (
+                            <div key={m.name} className="space-y-0.5">
+                              <div className="flex items-baseline justify-between text-[11px]">
+                                <span className="font-medium text-slate-700 truncate pr-2">{m.name}</span>
+                                <div className="flex items-baseline gap-2 shrink-0">
+                                  <span className="text-[10px] text-slate-500">×{m.count}</span>
+                                  <span className="font-bold text-red-700">${m.lostValue.toLocaleString()}</span>
+                                </div>
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-red-400 rounded-full" style={{ width: `${(m.lostValue / max) * 100}%` }} />
+                              </div>
+                            </div>
+                          ));
+                        })()}
                       </CardContent>
                     </Card>
 
@@ -2208,11 +2490,155 @@ export default function App() {
               </Dialog>
             </div>
 
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
+                <Select value={faltantesFilterSucursal} onValueChange={setFaltantesFilterSucursal}>
+                  <SelectTrigger className="w-[160px] h-9">
+                    <SelectValue placeholder="Todas las Sucursales" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las Sucursales</SelectItem>
+                    {sucursales.map(s => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mes</p>
+                <Select value={faltantesFilterMonth} onValueChange={setFaltantesFilterMonth}>
+                  <SelectTrigger className="w-[160px] h-9">
+                    <SelectValue placeholder="Todos los meses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los meses</SelectItem>
+                    {faltantesMonthOptions.map(ym => {
+                      const [y, m] = ym.split("-").map(Number);
+                      return <SelectItem key={ym} value={ym}>{`${MESES[m - 1]} ${y}`}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
+                <Select value={faltantesFilterEstado} onValueChange={(v) => setFaltantesFilterEstado(v as "all" | "pendiente" | "resuelto")}>
+                  <SelectTrigger className="w-[140px] h-9">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="pendiente">Pendientes</SelectItem>
+                    <SelectItem value="resuelto">Resueltos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {currentUser.role === "Admin" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Card className="border-none shadow-sm bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Productos más solicitados sin existencia</CardTitle>
+                    <CardDescription className="text-[10px]">{faltantesRollup.totalIncidentes} incidentes en el filtro actual</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 max-h-[320px] overflow-y-auto">
+                    {faltantesRollup.topProducts.length === 0 ? (
+                      <p className="text-xs italic text-slate-400 text-center py-8">Sin datos para el filtro actual.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-[10px]">Producto</TableHead>
+                            <TableHead className="text-[10px] text-right">Incid.</TableHead>
+                            <TableHead className="text-[10px] text-right">Cant.</TableHead>
+                            <TableHead className="text-[10px] text-right">Sucs.</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {faltantesRollup.topProducts.map((p, i) => (
+                            <TableRow key={`${p.productoId || p.name}-${i}`}>
+                              <TableCell className="text-xs leading-tight">
+                                <div className="font-medium text-slate-900 line-clamp-2">{p.name}</div>
+                                {p.productoId && <span className="text-[9px] font-mono text-slate-400">{p.productoId}</span>}
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-amber-700">{p.incidentes}</TableCell>
+                              <TableCell className="text-right text-xs">{p.cantidad}</TableCell>
+                              <TableCell className="text-right text-xs">{p.sucursales.size}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-sm bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Por sucursal</CardTitle>
+                    <CardDescription className="text-[10px]">Volumen de incidentes y producto más afectado</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2 max-h-[320px] overflow-y-auto">
+                    {faltantesRollup.bySucursal.length === 0 ? (
+                      <p className="text-xs italic text-slate-400 text-center py-8">Sin datos.</p>
+                    ) : (() => {
+                      const max = faltantesRollup.bySucursal[0]?.incidentes || 1;
+                      return faltantesRollup.bySucursal.map(s => (
+                        <div key={s.name} className="space-y-1">
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="font-medium text-slate-700 truncate pr-2">{s.name}</span>
+                            <span className="font-bold text-amber-700">{s.incidentes}</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(s.incidentes / max) * 100}%` }} />
+                          </div>
+                          {s.topProduct && (
+                            <p className="text-[10px] text-slate-500 truncate">
+                              Top: <span className="text-slate-700">{s.topProduct}</span> <span className="text-slate-400">×{s.topProductCount}</span>
+                            </p>
+                          )}
+                        </div>
+                      ));
+                    })()}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-sm bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Por mes</CardTitle>
+                    <CardDescription className="text-[10px]">Últimos 6 meses</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const max = Math.max(1, ...faltantesRollup.byMonth.map(m => m.count));
+                      return (
+                        <div className="flex items-end gap-1.5 h-32 pt-2">
+                          {faltantesRollup.byMonth.map(m => {
+                            const isCurrent = m.ym === currentYearMonth();
+                            return (
+                              <div key={m.ym} className="flex-1 flex flex-col items-center gap-1">
+                                <span className="text-[10px] font-semibold text-slate-700">{m.count || ""}</span>
+                                <div className="w-full bg-slate-100 rounded-t flex items-end" style={{ height: "100%" }}>
+                                  <div
+                                    className={`w-full rounded-t ${isCurrent ? "bg-amber-500" : "bg-amber-300"}`}
+                                    style={{ height: `${m.count === 0 ? 0 : Math.max(8, (m.count / max) * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-slate-400">{m.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4">
               {(() => {
-                const visible = currentUser.role === "Seller"
-                  ? faltantes.filter(f => f.vendedorId === currentUser.id)
-                  : faltantes;
+                const visible = filteredFaltantes;
                 if (visible.length === 0) {
                   return (
                     <Card className="border-dashed border-2 bg-transparent">
