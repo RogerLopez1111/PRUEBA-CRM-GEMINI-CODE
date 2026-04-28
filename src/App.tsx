@@ -41,12 +41,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { Lead, User, LeadStatus, Client, SalesGoal } from "./types";
+import { Lead, User, LeadStatus, Client, SalesGoal, Product, ProductoFaltante } from "./types";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -262,6 +263,21 @@ export default function App() {
   const [sucursales, setSucursales] = useState<{id: string, name: string}[]>([]);
   const [segmentos, setSegmentos] = useState<{id: string, name: string}[]>([]);
   const [rechazoMotivos, setRechazoMotivos] = useState<{ id: number; descripcion: string }[]>([]);
+  const [productos, setProductos] = useState<Product[]>([]);
+  const [faltantes, setFaltantes] = useState<ProductoFaltante[]>([]);
+  const [isFaltanteOpen, setIsFaltanteOpen] = useState(false);
+  const [isProductoSearchOpen, setIsProductoSearchOpen] = useState(false);
+  const [productoSearch, setProductoSearch] = useState("");
+  const [isFaltanteClientSearchOpen, setIsFaltanteClientSearchOpen] = useState(false);
+  const [faltanteClientSearch, setFaltanteClientSearch] = useState("");
+  const [newFaltante, setNewFaltante] = useState<{
+    productoId: string;
+    productoDescripcion: string;
+    cantidad: number;
+    comentario: string;
+    clienteId: string;
+    clienteName: string;
+  }>({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -397,13 +413,15 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes, motivosRes] = await Promise.all([
+      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes, motivosRes, productosRes, faltantesRes] = await Promise.all([
         fetch("/api/leads"),
         fetch("/api/users"),
         fetch("/api/clients"),
         fetch("/api/lookups/sucursales"),
         fetch("/api/lookups/segmentos"),
-        fetch("/api/lookups/rechazo-motivos")
+        fetch("/api/lookups/rechazo-motivos"),
+        fetch("/api/productos"),
+        fetch("/api/productos-faltantes")
       ]);
 
       const safeJson = async (res: Response, fallback: any) => {
@@ -417,6 +435,8 @@ export default function App() {
       const sucursalesData = await safeJson(sucursalesRes, []);
       const segmentosData = await safeJson(segmentosRes, []);
       const motivosData = await safeJson(motivosRes, []);
+      const productosData = await safeJson(productosRes, []);
+      const faltantesData = await safeJson(faltantesRes, []);
 
       setLeads(leadsData);
       setUsers(usersData);
@@ -424,6 +444,8 @@ export default function App() {
       setSucursales(sucursalesData);
       setSegmentos(segmentosData);
       setRechazoMotivos(motivosData);
+      setProductos(productosData);
+      setFaltantes(faltantesData);
 
       // Set defaults for new lead if not already set
       setNewLead(prev => ({
@@ -522,6 +544,66 @@ export default function App() {
       }
     } catch (error) {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleCreateFaltante = async () => {
+    if (!currentUser) return;
+    if (!newFaltante.productoDescripcion.trim()) {
+      toast.error("Selecciona un producto o escribe una descripción");
+      return;
+    }
+    if (!newFaltante.cantidad || newFaltante.cantidad <= 0) {
+      toast.error("Captura una cantidad válida");
+      return;
+    }
+    try {
+      const res = await fetch("/api/productos-faltantes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          productoId: newFaltante.productoId || undefined,
+          productoDescripcion: newFaltante.productoDescripcion,
+          cantidad: newFaltante.cantidad,
+          comentario: newFaltante.comentario,
+          clienteId: newFaltante.clienteId || undefined,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Faltante registrado");
+        setIsFaltanteOpen(false);
+        setNewFaltante({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
+        setProductoSearch("");
+        setFaltanteClientSearch("");
+        const r = await fetch("/api/productos-faltantes");
+        if (r.ok) setFaltantes(await r.json());
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al registrar faltante");
+      }
+    } catch {
+      toast.error("Error al registrar faltante");
+    }
+  };
+
+  const toggleFaltanteEstado = async (f: ProductoFaltante) => {
+    const next = f.estado === "pendiente" ? "resuelto" : "pendiente";
+    try {
+      const res = await fetch(`/api/productos-faltantes/${f.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: next }),
+      });
+      if (res.ok) {
+        const r = await fetch("/api/productos-faltantes");
+        if (r.ok) setFaltantes(await r.json());
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al actualizar");
+      }
+    } catch {
+      toast.error("Error al actualizar");
     }
   };
 
@@ -963,6 +1045,10 @@ export default function App() {
               <TabsTrigger value="performance" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <BarChart3 className="w-4 h-4" />
                 <span className="hidden sm:inline">Rendimiento</span>
+              </TabsTrigger>
+              <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="hidden sm:inline">Faltantes</span>
               </TabsTrigger>
               {currentUser.role === "Admin" && (
                 <TabsTrigger value="admin" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
@@ -1581,6 +1667,13 @@ export default function App() {
                     ? Math.round((clientInitiatedCount / userLeads.length) * 100)
                     : 0;
 
+                  const userFaltantes = faltantes.filter(f => f.vendedorId === user.id);
+                  const faltantesThisMonth = userFaltantes.filter(f => {
+                    const d = new Date(f.createdAt);
+                    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
+                  }).length;
+                  const faltantesPendientes = userFaltantes.filter(f => f.estado === "pendiente").length;
+
                   const newClientCounts = newClientsByMonth(userLeads);
                   const recentMonthsForUser = (() => {
                     const out: { ym: string; label: string; count: number }[] = [];
@@ -1722,6 +1815,23 @@ export default function App() {
                               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
                                 <div className="h-full bg-blue-500" style={{ width: `${clientInitiatedPct}%` }} />
                                 <div className="h-full bg-slate-400" style={{ width: `${100 - clientInitiatedPct}%` }} />
+                              </div>
+                            </div>
+
+                            <div className="pt-4 border-t space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Faltantes</span>
+                                <span className="text-[10px] text-slate-400">{userFaltantes.length} total</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2">
+                                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Este mes</p>
+                                  <p className="text-lg font-bold text-amber-700 leading-tight">{faltantesThisMonth}</p>
+                                </div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                                  <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Pendientes</p>
+                                  <p className="text-lg font-bold text-slate-700 leading-tight">{faltantesPendientes}</p>
+                                </div>
                               </div>
                             </div>
 
@@ -1885,6 +1995,272 @@ export default function App() {
           </div>
           )}
         </TabsContent>
+
+          <TabsContent value="faltantes" className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Productos Faltantes</h2>
+                <p className="text-slate-500">Registra ventas perdidas porque no había el producto que el cliente pedía.</p>
+              </div>
+              <Dialog open={isFaltanteOpen} onOpenChange={setIsFaltanteOpen}>
+                <DialogTrigger nativeButton={true} render={<Button className="gap-2 shadow-sm" />}>
+                  <Plus className="w-4 h-4" />
+                  Registrar Faltante
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[520px]">
+                  <DialogHeader>
+                    <DialogTitle>Registrar Producto Faltante</DialogTitle>
+                    <DialogDescription>
+                      Captura el producto que no estaba disponible y la razón que te dió el área de compras o logística.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-2">
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Producto</label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Descripción del producto"
+                          value={newFaltante.productoDescripcion}
+                          onChange={(e) => setNewFaltante({ ...newFaltante, productoDescripcion: e.target.value, productoId: "" })}
+                          className="flex-1"
+                        />
+                        <Popover open={isProductoSearchOpen} onOpenChange={setIsProductoSearchOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="shrink-0">
+                              <Search className="w-4 h-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[340px]" align="end">
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar por descripción, clave, número de parte, código de barras..."
+                                value={productoSearch}
+                                onValueChange={setProductoSearch}
+                              />
+                              <CommandList>
+                                {(() => {
+                                  const rawQ = productoSearch.trim().toLowerCase();
+                                  if (!rawQ) {
+                                    return (
+                                      <div className="py-6 text-center text-xs text-slate-500">
+                                        Escribe para buscar entre {productos.length.toLocaleString()} productos activos
+                                      </div>
+                                    );
+                                  }
+                                  const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+                                  const q = squash(rawQ);
+                                  const MAX = 50;
+                                  const matches: Product[] = [];
+                                  for (const p of productos) {
+                                    if (
+                                      squash(p.descripcion).includes(q) ||
+                                      squash(p.descripcionCorta || '').includes(q) ||
+                                      squash(p.claveCorta || '').includes(q) ||
+                                      squash(p.numeroParte || '').includes(q) ||
+                                      (p.barras || '').includes(rawQ) ||
+                                      p.id.includes(rawQ)
+                                    ) {
+                                      matches.push(p);
+                                      if (matches.length >= MAX) break;
+                                    }
+                                  }
+                                  if (matches.length === 0) return <CommandEmpty>Sin resultados.</CommandEmpty>;
+                                  return (
+                                    <CommandGroup>
+                                      {matches.map(p => (
+                                        <CommandItem
+                                          key={p.id}
+                                          value={p.id}
+                                          onSelect={() => {
+                                            setNewFaltante({ ...newFaltante, productoId: p.id, productoDescripcion: p.descripcion });
+                                            setIsProductoSearchOpen(false);
+                                          }}
+                                        >
+                                          <div className="flex flex-col">
+                                            <span className="text-sm font-medium">{p.descripcion}</span>
+                                            <span className="text-[10px] text-slate-500">
+                                              {p.claveCorta || p.numeroParte || p.id}
+                                              {p.unidadVenta ? ` · ${p.unidadVenta}` : ''}
+                                            </span>
+                                          </div>
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  );
+                                })()}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      {newFaltante.productoId && (
+                        <p className="text-[10px] text-emerald-700">Vinculado a producto ERP {newFaltante.productoId}</p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Cantidad solicitada</label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={newFaltante.cantidad || ""}
+                        onChange={(e) => setNewFaltante({ ...newFaltante, cantidad: Number(e.target.value) })}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Cliente (opcional)</label>
+                      <Popover open={isFaltanteClientSearchOpen} onOpenChange={setIsFaltanteClientSearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal">
+                            {newFaltante.clienteId
+                              ? `${newFaltante.clienteId} — ${newFaltante.clienteName}`
+                              : "Sin cliente vinculado"}
+                            <Search className="w-3 h-3 ml-2 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-[320px]" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Buscar cliente por nombre o ID..."
+                              value={faltanteClientSearch}
+                              onValueChange={setFaltanteClientSearch}
+                            />
+                            <CommandList>
+                              {(() => {
+                                const rawQ = faltanteClientSearch.trim().toLowerCase();
+                                if (!rawQ) {
+                                  return (
+                                    <div className="py-6 text-center text-xs text-slate-500">
+                                      Opcional — escribe para buscar
+                                    </div>
+                                  );
+                                }
+                                const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+                                const q = squash(rawQ);
+                                const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
+                                const sellerSucursalId = currentUser?.role === "Seller" ? norm(currentUser.sucursalId) : null;
+                                const MAX = 50;
+                                const matches: Client[] = [];
+                                for (const c of clients) {
+                                  if (sellerSucursalId && norm(c.sucursalId) !== sellerSucursalId) continue;
+                                  if (
+                                    squash(c.company).includes(q) ||
+                                    squash(c.tradeName || '').includes(q) ||
+                                    squash(c.name).includes(q) ||
+                                    c.id.includes(rawQ)
+                                  ) {
+                                    matches.push(c);
+                                    if (matches.length >= MAX) break;
+                                  }
+                                }
+                                if (matches.length === 0) return <CommandEmpty>Sin resultados.</CommandEmpty>;
+                                return (
+                                  <CommandGroup>
+                                    <CommandItem
+                                      value="__none__"
+                                      onSelect={() => {
+                                        setNewFaltante({ ...newFaltante, clienteId: "", clienteName: "" });
+                                        setIsFaltanteClientSearchOpen(false);
+                                      }}
+                                    >
+                                      <span className="text-xs italic text-slate-500">Sin cliente</span>
+                                    </CommandItem>
+                                    {matches.map(c => (
+                                      <CommandItem
+                                        key={c.id}
+                                        value={c.id}
+                                        onSelect={() => {
+                                          setNewFaltante({ ...newFaltante, clienteId: c.id, clienteName: c.tradeName || c.company });
+                                          setIsFaltanteClientSearchOpen(false);
+                                        }}
+                                      >
+                                        <div className="flex flex-col">
+                                          <span className="text-xs font-mono text-slate-500">{c.id}</span>
+                                          <span className="text-sm font-medium">{c.tradeName || c.company}</span>
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                );
+                              })()}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Comentario / razón</label>
+                      <Textarea
+                        placeholder="Razón dada por compras o logística (ej. proveedor sin existencia, llegada en 2 semanas, descontinuado...)"
+                        value={newFaltante.comentario}
+                        onChange={(e) => setNewFaltante({ ...newFaltante, comentario: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsFaltanteOpen(false)}>Cancelar</Button>
+                    <Button onClick={handleCreateFaltante}>Registrar</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {(() => {
+                const visible = currentUser.role === "Seller"
+                  ? faltantes.filter(f => f.vendedorId === currentUser.id)
+                  : faltantes;
+                if (visible.length === 0) {
+                  return (
+                    <Card className="border-dashed border-2 bg-transparent">
+                      <CardContent className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                        <AlertTriangle className="w-10 h-10 opacity-20" />
+                        <p className="text-sm">{currentUser.role === "Seller" ? "Aún no has registrado faltantes." : "No hay faltantes registrados."}</p>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                return visible.map(f => (
+                  <Card key={f.id} className="border-none shadow-sm bg-white">
+                    <CardContent className="p-4 flex flex-col md:flex-row md:items-start gap-4 justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-sm text-slate-900">{f.productoDescripcion}</h4>
+                          <Badge variant="outline" className={f.estado === "pendiente" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}>
+                            {f.estado === "pendiente" ? "Pendiente" : "Resuelto"}
+                          </Badge>
+                          {f.productoId && <span className="text-[10px] font-mono text-slate-400">ERP {f.productoId}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                          <span>Cantidad: <span className="font-semibold text-slate-700">{f.cantidad}</span></span>
+                          {f.clienteName && <span>Cliente: <span className="font-medium text-slate-700">{f.clienteName}</span></span>}
+                          {currentUser.role === "Admin" && f.vendedorName && <span>Vendedor: <span className="font-medium text-slate-700">{f.vendedorName}</span></span>}
+                          {f.sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{f.sucursalName}</span></span>}
+                          <span>Registrado: {new Date(f.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        {f.comentario && (
+                          <p className="text-xs text-slate-600 italic mt-2 leading-snug">{f.comentario}</p>
+                        )}
+                      </div>
+                      {(currentUser.role === "Admin" || f.vendedorId === currentUser.id) && (
+                        <Button
+                          size="sm"
+                          variant={f.estado === "pendiente" ? "outline" : "ghost"}
+                          onClick={() => toggleFaltanteEstado(f)}
+                          className="shrink-0"
+                        >
+                          {f.estado === "pendiente" ? "Marcar resuelto" : "Reabrir"}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ));
+              })()}
+            </div>
+          </TabsContent>
 
           {currentUser.role === "Admin" && (
             <TabsContent value="admin" className="space-y-6">
@@ -2928,8 +3304,12 @@ export default function App() {
                                     const q = squash(rawQ);
                                     const MAX = 50;
                                     const matches: Client[] = [];
+                                    // Sellers can only link clients from their own sucursal; admins see all
+                                    const norm = (v?: string) => /^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim();
+                                    const sellerSucursalId = currentUser?.role === "Seller" ? norm(currentUser.sucursalId) : null;
                                     for (const c of clients) {
                                       if (c.source !== 'erp') continue;
+                                      if (sellerSucursalId && norm(c.sucursalId) !== sellerSucursalId) continue;
                                       const stripped = c.id.replace(/^0+/, '');
                                       if (
                                         squash(c.company).includes(q) ||

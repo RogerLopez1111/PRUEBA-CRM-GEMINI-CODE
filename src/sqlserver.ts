@@ -186,6 +186,30 @@ export async function findErpClientByRazonSocial(razonSocial: string): Promise<R
   }
 }
 
+// ---------------------------------------------------------------------------
+// Productos (read-only from ERP)
+// Tier-1 column subset: identity / search / status / unit / audit dates.
+// Mirrored to Supabase `productos` for the lost-sales picker.
+// ---------------------------------------------------------------------------
+
+export async function getProductosRaw(): Promise<Record<string, any>[]> {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT
+        Pr_Cve_Producto, Pr_Clave_Corta, Pr_Numero_Parte, Pr_Barras,
+        Pr_Descripcion, Pr_Descripcion_Corta, Pr_Unidad_Venta,
+        Es_Cve_Estado, Fecha_Alta, Fecha_Ult_Modif, Fecha_Baja
+      FROM Producto
+      ORDER BY Pr_Descripcion
+    `);
+    return r.recordset;
+  } catch (err) {
+    console.error('[MSSQL] getProductosRaw:', err);
+    return [];
+  }
+}
+
 export async function getErpClientById(id: string): Promise<ReturnType<typeof mapErpClient> | null> {
   try {
     const p = await getPool();

@@ -20,6 +20,7 @@ import {
   getVendedores,
   getErpClients,
   getErpClientsRaw,
+  getProductosRaw,
 } from '../src/sqlserver.js';
 
 const supabase = createClient(
@@ -216,6 +217,66 @@ async function syncClients() {
 }
 
 // ---------------------------------------------------------------------------
+// Productos — Tier-1 column subset mirror of ERP Producto
+// ---------------------------------------------------------------------------
+async function syncProductos() {
+  const rawRows = await getProductosRaw();
+  if (!rawRows.length) { console.warn('⚠  No productos returned from SQL Server'); return; }
+
+  const CHUNK = 500;
+  let upserted = 0;
+  for (let i = 0; i < rawRows.length; i += CHUNK) {
+    const chunk = rawRows.slice(i, i + CHUNK).map(normalizeErpRow);
+    const { error } = await supabase.from('productos').upsert(chunk, { onConflict: 'Pr_Cve_Producto' });
+    if (error) console.error(`✗ productos chunk ${i}–${i + chunk.length}:`, error.message);
+    else upserted += chunk.length;
+  }
+  console.log(`✓ productos upserted: ${upserted} / ${rawRows.length}`);
+
+  // Delete productos in Supabase that no longer exist in ERP, skipping any
+  // still referenced by productos_faltantes rows (FK constraint).
+  const erpIdSet = new Set(rawRows.map((r) => String(r.Pr_Cve_Producto)));
+
+  const supabaseIds: string[] = [];
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('productos')
+      .select('Pr_Cve_Producto')
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('✗ productos fetch for diff:', error.message); return; }
+    if (!data || data.length === 0) break;
+    for (const row of data) supabaseIds.push(String(row.Pr_Cve_Producto));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  const orphans = supabaseIds.filter((id) => !erpIdSet.has(id));
+  if (!orphans.length) { console.log('✓ productos: no orphans to delete'); return; }
+
+  const { data: refs } = await supabase
+    .from('productos_faltantes')
+    .select('Pr_Cve_Producto')
+    .in('Pr_Cve_Producto', orphans);
+  const referenced = new Set((refs || []).map((r) => String(r.Pr_Cve_Producto)));
+  const safeToDelete = orphans.filter((id) => !referenced.has(id));
+  const skipped = orphans.filter((id) => referenced.has(id));
+
+  let deleted = 0;
+  for (let i = 0; i < safeToDelete.length; i += CHUNK) {
+    const ids = safeToDelete.slice(i, i + CHUNK);
+    const { error } = await supabase.from('productos').delete().in('Pr_Cve_Producto', ids);
+    if (error) console.error(`✗ productos delete chunk ${i}:`, error.message);
+    else deleted += ids.length;
+  }
+  console.log(`✓ productos deleted: ${deleted} orphaned ERP ids`);
+  if (skipped.length) {
+    console.warn(`⚠  ${skipped.length} orphaned productos kept because productos_faltantes still references them: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -224,6 +285,7 @@ async function main() {
   await syncSegmentos();
   await syncVendedores();
   await syncClients();
+  await syncProductos();
   console.log('── done ──\n');
   process.exit(0);
 }

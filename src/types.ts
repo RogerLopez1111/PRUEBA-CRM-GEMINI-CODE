@@ -93,6 +93,37 @@ export interface User {
   };
 }
 
+// Maps to Supabase `productos` table — Tier-1 mirror of ERP [dbo].[Producto]
+export interface Product {
+  id: string;            // Pr_Cve_Producto
+  claveCorta?: string;   // Pr_Clave_Corta
+  numeroParte?: string;  // Pr_Numero_Parte
+  barras?: string;       // Pr_Barras
+  descripcion: string;   // Pr_Descripcion
+  descripcionCorta?: string; // Pr_Descripcion_Corta
+  unidadVenta?: string;  // Pr_Unidad_Venta
+  estado?: string;       // Es_Cve_Estado ('AC' | 'BA')
+}
+
+// Maps to Supabase `productos_faltantes` (CRM-only) — log of stock-out lost sales
+export type ProductoFaltanteEstado = 'pendiente' | 'resuelto';
+export interface ProductoFaltante {
+  id: string;
+  vendedorId: string;     // Vn_Cve_Vendedor
+  vendedorName?: string;
+  sucursalId?: string;    // Sc_Cve_Sucursal
+  sucursalName?: string;
+  clienteId?: string | null; // Cl_Cve_Cliente — optional
+  clienteName?: string | null;
+  productoId?: string | null; // Pr_Cve_Producto — null when free-typed
+  productoDescripcion: string; // snapshot at log time
+  cantidad: number;
+  comentario: string;
+  estado: ProductoFaltanteEstado;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PerformanceMetric {
   userId: string;
   userName: string;
