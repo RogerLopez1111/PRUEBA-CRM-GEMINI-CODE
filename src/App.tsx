@@ -172,7 +172,7 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBad
       {...attributes}
       {...listeners}
       onClick={() => { if (!isDragging) onUpdate(); }}
-      className="relative bg-white rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all group overflow-hidden"
+      className="relative bg-white rounded-lg border cursor-pointer hover:bg-slate-50 hover:-translate-y-0.5 transition-all group overflow-hidden"
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${accent.bar}`} />
 
@@ -1043,7 +1043,7 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-          <Card className="border border-slate-200 bg-white overflow-hidden">
+          <Card className="bg-white overflow-hidden">
             <div className="h-2 bg-brand-navy" />
             <CardHeader className="text-center space-y-2 pt-8">
               <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
@@ -1351,7 +1351,7 @@ export default function App() {
                       />
                     </div>
 
-                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border border-slate-200 cursor-pointer select-none">
+                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-primary"
