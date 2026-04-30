@@ -7,8 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: 'Montserrat', sans-serif;
-    --font-sans: 'Montserrat', sans-serif;
+    --font-heading: 'Montserrat Variable', 'Montserrat', sans-serif;
+    --font-sans: 'Montserrat Variable', 'Montserrat', sans-serif;
+    --font-mono: 'Montserrat Variable', 'Montserrat', sans-serif;
     --color-brand-red: var(--brand-red);
     --color-brand-red-tint: var(--brand-red-tint);
     --color-brand-navy: var(--brand-navy);
@@ -155,12 +156,24 @@
     }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss01", "cv11";
+    font-family: var(--font-sans);
     }
   html {
     @apply font-sans;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    }
+  /* Force Montserrat on every element — overrides any browser default that
+     wouldn't otherwise inherit (form controls, code, kbd, samp, pre, monospace) */
+  *, *::before, *::after,
+  input, textarea, select, button, optgroup,
+  code, kbd, samp, pre, tt {
+    font-family: var(--font-sans);
+    }
+  /* Keep tabular figures wherever monospace was used for numeric alignment */
+  .font-mono, code, kbd, samp, pre, tt {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
     }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
@@ -181,6 +194,26 @@
   .border-brand-navy { border-color: var(--brand-navy); }
   .ring-brand-red    { --tw-ring-color: var(--brand-red); }
   .ring-brand-navy   { --tw-ring-color: var(--brand-navy); }
+}
+
+/* Flat aesthetic — strip every drop shadow / elevation across the app.
+   Reset Tailwind's --tw-shadow to a transparent zero offset; this leaves
+   --tw-ring-shadow (focus rings) and Card's ring-1 outline intact. */
+@layer base {
+  * {
+    --tw-shadow: 0 0 #0000;
+    --tw-shadow-colored: 0 0 #0000;
+  }
+  /* Catch arbitrary inline shadows (shadow-[...]) and drop-shadow utilities */
+  [class*="shadow-["],
+  [class*="drop-shadow-"] {
+    box-shadow: none !important;
+    filter: none !important;
+  }
+  /* Card's ring-1 hairline becomes the only visual edge — switch to a flat border */
+  [data-slot="card"] {
+    box-shadow: none !important;
+  }
 }
 
 /* Square containers & images — match the storefront's flat, structured look.

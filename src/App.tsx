@@ -1035,16 +1035,15 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-brand-navy">
-        <div className="absolute inset-0 opacity-90 bg-[radial-gradient(ellipse_at_top_left,rgba(183,11,15,0.35),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(20,20,86,0.9),transparent_60%)]" />
+      <div className="min-h-screen flex items-center justify-center p-4 bg-white">
         <div className="absolute top-0 inset-x-0 h-1 bg-brand-red" />
         <Toaster position="top-right" />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md relative z-10"
+          className="w-full max-w-md"
         >
-          <Card className="border-none shadow-2xl bg-white rounded-2xl overflow-hidden">
+          <Card className="border border-slate-200 bg-white overflow-hidden">
             <div className="h-1 bg-brand-red" />
             <CardHeader className="text-center space-y-2 pt-8">
               <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
@@ -1084,7 +1083,7 @@ export default function App() {
               </form>
             </CardContent>
           </Card>
-          <p className="text-center text-[11px] text-white/70 mt-4 tracking-wide">Ecosistemas · Soluciones Innovadoras</p>
+          <p className="text-center text-[11px] text-brand-gray mt-4 tracking-wide">Ecosistemas · Soluciones Innovadoras</p>
         </motion.div>
       </div>
     );
@@ -1106,7 +1105,7 @@ export default function App() {
       <Toaster position="top-right" />
       
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_0_0_var(--brand-red)]">
+      <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b-2 border-brand-red">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-8 object-contain" />
