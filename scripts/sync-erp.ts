@@ -23,9 +23,12 @@ import {
   getProductosRaw,
 } from '../src/sqlserver.js';
 
+// Sync runs locally / via scheduler with full DB access. Uses the service role
+// key so it can write to every mirrored table even after RLS is enabled.
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
 // ERP IDs are all-numeric (e.g. "0000000180"); CRM prospect IDs are random alphanumeric

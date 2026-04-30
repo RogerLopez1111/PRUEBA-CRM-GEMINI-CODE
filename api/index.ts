@@ -2,9 +2,14 @@ import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 
+// Server runs queries on behalf of users authenticated by our own login route,
+// so we use the service role key (server-only secret). This bypasses RLS by
+// design — RLS will be added later as defense-in-depth, not as the auth boundary.
+// Never expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
 // ERP clients have all-numeric IDs (e.g. "0000000180"); CRM prospects have random alphanumeric IDs
