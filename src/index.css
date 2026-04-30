@@ -75,8 +75,8 @@
     --primary: oklch(0.466 0.205 28.5);
     --primary-foreground: oklch(0.985 0 0);
 
-    /* secondary — faint navy tint, navy foreground (#141456) */
-    --secondary: oklch(0.97 0.01 273);
+    /* secondary — pure white surface, navy foreground (#141456) */
+    --secondary: oklch(1 0 0);
     --secondary-foreground: oklch(0.221 0.117 273);
 
     /* muted — #686868 institutional gray on a near-white surface */

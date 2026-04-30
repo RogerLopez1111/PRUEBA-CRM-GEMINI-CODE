@@ -1091,7 +1091,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50">
+      <div className="flex items-center justify-center h-screen bg-white">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-brand-red/20 ring-4 ring-brand-red/10" />
           <p className="text-brand-navy font-medium">Cargando...</p>
@@ -1101,7 +1101,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900">
+    <div className="min-h-screen bg-white font-sans text-slate-900">
       <Toaster position="top-right" />
       
       {/* Header */}
