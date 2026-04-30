@@ -1035,23 +1035,27 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-brand-navy">
+        <div className="absolute inset-0 opacity-90 bg-[radial-gradient(ellipse_at_top_left,rgba(183,11,15,0.35),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(20,20,86,0.9),transparent_60%)]" />
+        <div className="absolute top-0 inset-x-0 h-1 bg-brand-red" />
         <Toaster position="top-right" />
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md"
+          className="w-full max-w-md relative z-10"
         >
-          <Card className="border-none shadow-xl bg-white">
-            <CardHeader className="text-center space-y-1">
+          <Card className="border-none shadow-2xl bg-white rounded-2xl overflow-hidden">
+            <div className="h-1 bg-brand-red" />
+            <CardHeader className="text-center space-y-2 pt-8">
               <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
-              <CardDescription>Ingresa tus credenciales para acceder a tu panel de ventas</CardDescription>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-navy">Panel de Ventas</p>
+              <CardDescription>Ingresa tus credenciales para continuar</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-8">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 ml-1">Correo Electrónico</label>
+                    <label className="text-sm font-medium text-brand-navy ml-1">Correo Electrónico</label>
                     <Input
                       type="email"
                       placeholder="nombre@empresa.com"
@@ -1062,7 +1066,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 ml-1">Contraseña</label>
+                    <label className="text-sm font-medium text-brand-navy ml-1">Contraseña</label>
                     <Input
                       type="password"
                       placeholder="••••••••"
@@ -1073,13 +1077,14 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold">
+                <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold uppercase tracking-wide">
                   <LogIn className="w-5 h-5" />
                   Iniciar Sesión
                 </Button>
               </form>
             </CardContent>
           </Card>
+          <p className="text-center text-[11px] text-white/70 mt-4 tracking-wide">Ecosistemas · Soluciones Innovadoras</p>
         </motion.div>
       </div>
     );
@@ -1089,8 +1094,8 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen bg-slate-50">
         <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="w-12 h-12 bg-primary/20 rounded-full" />
-          <p className="text-slate-500 font-medium">Cargando...</p>
+          <div className="w-12 h-12 rounded-full bg-brand-red/20 ring-4 ring-brand-red/10" />
+          <p className="text-brand-navy font-medium">Cargando...</p>
         </div>
       </div>
     );
@@ -1101,16 +1106,18 @@ export default function App() {
       <Toaster position="top-right" />
       
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b border-slate-200/70 shadow-[0_1px_0_0_var(--brand-red)]">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-8 object-contain" />
+            <span className="hidden sm:inline-block h-6 w-px bg-slate-200" />
+            <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-brand-navy">CRM</span>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <div className="hidden md:flex flex-col items-end">
-              <span className="text-sm font-semibold">{currentUser.name}</span>
-              <span className="text-xs text-slate-500">{currentUser.role}</span>
+              <span className="text-sm font-semibold text-brand-navy">{currentUser.name}</span>
+              <span className="text-[10px] uppercase tracking-wider text-brand-gray">{currentUser.role}</span>
             </div>
             <Popover>
               <PopoverTrigger nativeButton={false} render={

@@ -6,8 +6,13 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
+    --font-heading: 'Montserrat', sans-serif;
     --font-sans: 'Montserrat', sans-serif;
+    --color-brand-red: var(--brand-red);
+    --color-brand-red-tint: var(--brand-red-tint);
+    --color-brand-navy: var(--brand-navy);
+    --color-brand-navy-tint: var(--brand-navy-tint);
+    --color-brand-gray: var(--brand-gray);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,56 +54,64 @@
 }
 
 :root {
-    /* surfaces — keep the white clean aesthetic */
+    /* === Ecosistemas brand === */
+    --brand-red: #b70b0f;
+    --brand-red-tint: #fbe7e8;
+    --brand-navy: #141456;
+    --brand-navy-tint: #e7e7f0;
+    --brand-gray: #686868;
+
+    /* surfaces — clean white canvas with a faint neutral tint for app body */
     --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --foreground: oklch(0.205 0.04 273);   /* near-black with a navy bias */
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.205 0.04 273);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
+    --popover-foreground: oklch(0.205 0.04 273);
 
     /* primary — #B70B0F institutional red */
-    --primary: oklch(0.44 0.22 27);
+    --primary: oklch(0.466 0.205 28.5);
     --primary-foreground: oklch(0.985 0 0);
 
-    /* secondary — subtle surface, navy foreground (#141456) */
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.20 0.11 265);
+    /* secondary — faint navy tint, navy foreground (#141456) */
+    --secondary: oklch(0.97 0.01 273);
+    --secondary-foreground: oklch(0.221 0.117 273);
 
-    /* muted — #686868 institutional gray */
+    /* muted — #686868 institutional gray on a near-white surface */
     --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.47 0 0);
+    --muted-foreground: oklch(0.518 0 0);
 
     /* accent hover — very light red tint */
-    --accent: oklch(0.96 0.01 27);
-    --accent-foreground: oklch(0.44 0.22 27);
+    --accent: oklch(0.96 0.025 28.5);
+    --accent-foreground: oklch(0.466 0.205 28.5);
 
     /* destructive keeps red family */
-    --destructive: oklch(0.44 0.22 27);
+    --destructive: oklch(0.466 0.205 28.5);
 
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
+    --border: oklch(0.92 0.005 273);
+    --input: oklch(0.92 0.005 273);
 
-    /* ring / focus — red */
-    --ring: oklch(0.44 0.22 27);
+    /* ring / focus — brand red */
+    --ring: oklch(0.466 0.205 28.5);
 
     /* charts — institutional palette */
-    --chart-1: oklch(0.44 0.22 27);   /* #B70B0F red */
-    --chart-2: oklch(0.20 0.11 265);  /* #141456 navy */
-    --chart-3: oklch(0.47 0 0);       /* #686868 gray */
-    --chart-4: oklch(0.60 0.14 27);   /* lighter red */
-    --chart-5: oklch(0.36 0.10 265);  /* lighter navy */
+    --chart-1: oklch(0.466 0.205 28.5);   /* #B70B0F red */
+    --chart-2: oklch(0.221 0.117 273);    /* #141456 navy */
+    --chart-3: oklch(0.518 0 0);          /* #686868 gray */
+    --chart-4: oklch(0.62 0.16 28.5);     /* lighter red */
+    --chart-5: oklch(0.38 0.11 273);      /* lighter navy */
 
     --radius: 0.625rem;
 
+    /* sidebar — navy-leaning rail to mirror the storefront branch card */
     --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.44 0.22 27);
+    --sidebar-foreground: oklch(0.221 0.117 273);
+    --sidebar-primary: oklch(0.466 0.205 28.5);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.96 0.01 27);
-    --sidebar-accent-foreground: oklch(0.44 0.22 27);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.44 0.22 27);
+    --sidebar-accent: oklch(0.96 0.025 28.5);
+    --sidebar-accent-foreground: oklch(0.466 0.205 28.5);
+    --sidebar-border: oklch(0.92 0.005 273);
+    --sidebar-ring: oklch(0.466 0.205 28.5);
 }
 
 .dark {
@@ -141,8 +154,63 @@
     }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
     }
   html {
     @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
+    }
+}
+
+/* Brand utilities — direct hex access for places that need exact tones */
+@layer utilities {
+  .text-brand-red    { color: var(--brand-red); }
+  .text-brand-navy   { color: var(--brand-navy); }
+  .text-brand-gray   { color: var(--brand-gray); }
+  .bg-brand-red      { background-color: var(--brand-red); }
+  .bg-brand-navy     { background-color: var(--brand-navy); }
+  .bg-brand-red-tint { background-color: var(--brand-red-tint); }
+  .bg-brand-navy-tint{ background-color: var(--brand-navy-tint); }
+  .border-brand-red  { border-color: var(--brand-red); }
+  .border-brand-navy { border-color: var(--brand-navy); }
+  .ring-brand-red    { --tw-ring-color: var(--brand-red); }
+  .ring-brand-navy   { --tw-ring-color: var(--brand-navy); }
+}
+
+/* Square containers & images — match the storefront's flat, structured look.
+   Keep small radii on inputs/buttons/badges (rounded-md / rounded-sm) and circles
+   (rounded-full) where roundness is functional. Flatten only larger container radii. */
+@layer base {
+  /* Container-shaped shadcn primitives */
+  [data-slot="card"],
+  [data-slot="card-header"],
+  [data-slot="card-footer"],
+  [data-slot="dialog-content"],
+  [data-slot="popover-content"],
+  [data-slot="sheet-content"],
+  [data-slot="alert"],
+  [data-slot="table-container"] {
+    border-radius: 0 !important;
+  }
+  /* Container-radius Tailwind utilities → square. Pills (rounded-md/sm) and
+     circles (rounded-full) are untouched. */
+  [class~="rounded-lg"],
+  [class~="rounded-xl"],
+  [class~="rounded-2xl"],
+  [class~="rounded-3xl"],
+  [class~="rounded-t-xl"],
+  [class~="rounded-b-xl"],
+  [class~="rounded-t-lg"],
+  [class~="rounded-b-lg"] {
+    border-radius: 0 !important;
+  }
+  /* All <img> tags render with square corners (logos, photos, product shots) */
+  img {
+    border-radius: 0 !important;
+  }
 }
