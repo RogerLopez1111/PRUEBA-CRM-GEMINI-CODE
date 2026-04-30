@@ -1201,7 +1201,7 @@ export default function App() {
       <main className="container mx-auto px-2 md:px-4 py-4 md:py-8">
         <Tabs defaultValue={currentUser.role === "Admin" ? "admin" : "my-leads"} className="space-y-6 md:space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <TabsList className="bg-white border shadow-sm p-1 h-12 w-full md:w-auto overflow-x-auto">
+            <TabsList variant="line" className="h-12 w-full md:w-auto overflow-x-auto border-b">
               <TabsTrigger value="my-leads" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <UserCheck className="w-4 h-4" />
                 <span className="hidden sm:inline">Mis Leads</span>
@@ -3094,15 +3094,15 @@ export default function App() {
                           </div>
                         </CardContent>
                       </Card>
-                      <Card className="border-none shadow-sm bg-white">
+                      <Card className="border-none bg-brand-navy text-white">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-slate-500">Pipeline Total</p>
-                              <h3 className="text-2xl font-bold">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
+                              <p className="text-sm font-medium text-white/70">Pipeline Total</p>
+                              <h3 className="text-2xl font-bold text-white">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
                             </div>
-                            <div className="bg-indigo-50 p-2 rounded-lg">
-                              <TrendingUp className="w-5 h-5 text-indigo-600" />
+                            <div className="bg-white/10 p-2 rounded-lg">
+                              <TrendingUp className="w-5 h-5 text-white" />
                             </div>
                           </div>
                         </CardContent>
