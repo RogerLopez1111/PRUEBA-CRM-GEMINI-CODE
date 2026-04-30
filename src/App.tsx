@@ -96,7 +96,7 @@ function KanbanColumn({ status, leads, users, onUpdate, getStatusBadge }: { key?
     <div key={status} className="flex-shrink-0 w-[260px] sm:w-72 md:w-80 flex flex-col gap-4">
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm uppercase tracking-wider" style={{color: "#141456"}}>{status}</h3>
+          <h3 className="font-bold text-base text-brand-navy">{status}</h3>
           <Badge variant="secondary" className="rounded-full h-5 w-5 p-0 flex items-center justify-center text-[10px]">
             {leads.filter(l => l.status === status).length}
           </Badge>
@@ -1047,7 +1047,7 @@ export default function App() {
             <div className="h-2 bg-brand-navy" />
             <CardHeader className="text-center space-y-2 pt-8">
               <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
-              <p className="text-sm font-semibold uppercase text-brand-navy">Panel de Ventas</p>
+              <p className="text-sm font-semibold text-brand-navy">Panel de ventas</p>
               <CardDescription>Ingresa tus credenciales para continuar</CardDescription>
             </CardHeader>
             <CardContent className="pb-8">
@@ -1076,14 +1076,14 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold uppercase tracking-wide">
+                <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold">
                   <LogIn className="w-5 h-5" />
-                  Iniciar Sesión
+                  Iniciar sesión
                 </Button>
               </form>
             </CardContent>
           </Card>
-          <p className="text-center text-[11px] text-brand-gray mt-4 tracking-wide">Ecosistemas · Soluciones Innovadoras</p>
+          <p className="text-center text-xs text-brand-gray mt-4">Ecosistemas · Soluciones Innovadoras</p>
         </motion.div>
       </div>
     );
@@ -1116,7 +1116,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className="hidden md:flex flex-col items-end">
               <span className="text-sm font-semibold text-brand-navy">{currentUser.name}</span>
-              <span className="text-[10px] uppercase tracking-wider text-brand-gray">{currentUser.role}</span>
+              <span className="text-xs text-brand-gray">{currentUser.role}</span>
             </div>
             <Popover>
               <PopoverTrigger nativeButton={false} render={
@@ -1500,7 +1500,7 @@ export default function App() {
 
                         <div className="flex flex-col sm:flex-row items-center gap-3">
                           <div className="w-full sm:w-auto">
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-1.5 ml-1">Actualizar Estado</p>
+                            <p className="text-sm font-semibold text-brand-navy mb-1.5 ml-1">Actualizar estado</p>
                             <Select 
                               value={lead.status} 
                               onValueChange={(val) => openStatusUpdate(lead, val as LeadStatus)}
@@ -1551,7 +1551,7 @@ export default function App() {
 
               <div className="flex flex-wrap items-end gap-3">
                 <div className="relative w-full md:w-64 space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar Leads</p>
+                  <p className="text-xs font-medium text-brand-gray ml-1">Buscar Leads</p>
                   <div className="relative">
                     <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                     <Input 
@@ -1563,7 +1563,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
+                  <p className="text-xs font-medium text-brand-gray ml-1">Sucursal</p>
                   <Select value={kanbanFilterSucursal} onValueChange={setKanbanFilterSucursal}>
                     <SelectTrigger className="w-[150px] h-9">
                       <SelectValue placeholder="Todas las Sucursales" />
@@ -1577,7 +1577,7 @@ export default function App() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Segmento</p>
+                  <p className="text-xs font-medium text-brand-gray ml-1">Segmento</p>
                   <Select value={kanbanFilterSegmento} onValueChange={setKanbanFilterSegmento}>
                     <SelectTrigger className="w-[150px] h-9">
                       <SelectValue placeholder="Todos los Segmentos" />
@@ -1591,7 +1591,7 @@ export default function App() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mes</p>
+                  <p className="text-xs font-medium text-brand-gray ml-1">Mes</p>
                   <Select value={kanbanFilterMonth} onValueChange={setKanbanFilterMonth}>
                     <SelectTrigger className="w-[160px] h-9">
                       <SelectValue placeholder="Mes" />
@@ -1607,7 +1607,7 @@ export default function App() {
                 </div>
                 {currentUser.role === "Admin" && (
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
+                    <p className="text-xs font-medium text-brand-gray ml-1">Vendedor</p>
                     <Select value={kanbanFilterSeller} onValueChange={setKanbanFilterSeller}>
                       <SelectTrigger className="w-[150px] h-9">
                         <SelectValue placeholder="Todos los Vendedores" />
@@ -1714,7 +1714,7 @@ export default function App() {
 
               {currentUser.role === "Admin" && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Filtrar por Vendedor</p>
+                  <p className="text-xs font-medium text-brand-gray ml-1">Filtrar por Vendedor</p>
                   <Select value={perfUserFilter} onValueChange={setPerfUserFilter}>
                     <SelectTrigger className="w-[200px] h-10">
                       <SelectValue placeholder="Seleccionar Vista" />
@@ -1906,7 +1906,7 @@ export default function App() {
                               <CheckCircle2 className="w-6 h-6 text-green-600" />
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Vendido</p>
+                              <p className="text-xs font-semibold text-brand-gray">Total Vendido</p>
                               <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
                               <p className="text-[10px] text-slate-400">{soldCount} tratos cerrados</p>
                             </div>
@@ -1918,7 +1918,7 @@ export default function App() {
                               <FileText className="w-6 h-6 text-amber-600" />
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cotizado</p>
+                              <p className="text-xs font-semibold text-brand-gray">Total Cotizado</p>
                               <p className="text-xl font-bold text-amber-600">${quotedValue.toLocaleString()}</p>
                               <p className="text-[10px] text-slate-400">{quotedCount} cotizaciones activas</p>
                             </div>
@@ -1930,7 +1930,7 @@ export default function App() {
                               <AlertCircle className="w-6 h-6 text-red-600" />
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Perdido</p>
+                              <p className="text-xs font-semibold text-brand-gray">Total Perdido</p>
                               <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
                               <p className="text-[10px] text-slate-400">{lostCount} tratos perdidos</p>
                             </div>
@@ -1942,7 +1942,7 @@ export default function App() {
                               <TrendingUp className="w-6 h-6 text-primary" />
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Meta de Ventas</p>
+                              <p className="text-xs font-semibold text-brand-gray">Meta de Ventas</p>
                               <p className="text-xl font-bold text-slate-900">${user.performance.salesGoal.toLocaleString()}</p>
                               <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}% alcanzado</p>
                             </div>
@@ -2000,17 +2000,17 @@ export default function App() {
 
                             <div className="pt-4 border-t space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Origen del Contacto</span>
+                                <span className="text-sm font-semibold text-brand-navy">Origen del Contacto</span>
                                 <span className="text-[10px] text-slate-400">{userLeads.length} total</span>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2">
-                                  <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wider">Cliente</p>
+                                  <p className="text-xs font-semibold text-blue-700">Cliente</p>
                                   <p className="text-lg font-bold text-blue-700 leading-tight">{clientInitiatedCount}</p>
                                   <p className="text-[10px] text-blue-600/70">{clientInitiatedPct}% del total</p>
                                 </div>
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                                  <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Vendedor</p>
+                                  <p className="text-xs font-semibold text-brand-gray">Vendedor</p>
                                   <p className="text-lg font-bold text-slate-700 leading-tight">{sellerInitiatedCount}</p>
                                   <p className="text-[10px] text-slate-500">{100 - clientInitiatedPct}% del total</p>
                                 </div>
@@ -2023,16 +2023,16 @@ export default function App() {
 
                             <div className="pt-4 border-t space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Faltantes</span>
+                                <span className="text-sm font-semibold text-brand-navy">Faltantes</span>
                                 <span className="text-[10px] text-slate-400">{userFaltantes.length} total</span>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-2">
-                                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Este mes</p>
+                                  <p className="text-xs font-semibold text-amber-700">Este mes</p>
                                   <p className="text-lg font-bold text-amber-700 leading-tight">{faltantesThisMonth}</p>
                                 </div>
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                                  <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Pendientes</p>
+                                  <p className="text-xs font-semibold text-brand-gray">Pendientes</p>
                                   <p className="text-lg font-bold text-slate-700 leading-tight">{faltantesPendientes}</p>
                                 </div>
                               </div>
@@ -2040,7 +2040,7 @@ export default function App() {
 
                             <div className="pt-4 border-t space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevos Clientes</span>
+                                <span className="text-sm font-semibold text-brand-navy">Nuevos Clientes</span>
                                 <span className="text-[10px] text-slate-400">{newClientsTotal} total</span>
                               </div>
                               <div className="flex items-baseline gap-2">
@@ -2071,7 +2071,7 @@ export default function App() {
 
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader>
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Distribución de Pipeline ($)</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Distribución de Pipeline ($)</CardTitle>
                       </CardHeader>
                       <CardContent className="h-[250px]">
                         {pieData.length > 0 ? (
@@ -2108,7 +2108,7 @@ export default function App() {
 
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader>
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Motivos de Rechazo</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Motivos de Rechazo</CardTitle>
                         <CardDescription className="text-[10px]">Últimos comentarios de tratos perdidos.</CardDescription>
                       </CardHeader>
                       <CardContent className="max-h-[250px] overflow-y-auto space-y-3">
@@ -2146,7 +2146,7 @@ export default function App() {
                     {/* Embudo de Conversión */}
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Embudo de Conversión</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Embudo de Conversión</CardTitle>
                         <CardDescription className="text-[10px]">Leads que tocaron cada etapa, % vs ASIGNADO y conversión paso a paso</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-2">
@@ -2177,7 +2177,7 @@ export default function App() {
                     {/* Tiempo a Primer Contacto */}
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Tiempo a Primer Contacto</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Tiempo a Primer Contacto</CardTitle>
                         <CardDescription className="text-[10px]">Tiempo entre asignación y primer CONTACTADO</CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -2200,7 +2200,7 @@ export default function App() {
                     {/* Pareto de Motivos de Rechazo */}
                     <Card className="border-none shadow-sm bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Pareto de Motivos</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Pareto de Motivos</CardTitle>
                         <CardDescription className="text-[10px]">
                           {totalLost > 0 ? `$${totalLost.toLocaleString()} en valor perdido` : "Sin valor perdido aún"}
                         </CardDescription>
@@ -2231,7 +2231,7 @@ export default function App() {
                     {/* Goals Timeline */}
                     <Card className="border-none shadow-sm bg-white lg:col-span-3">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Historial de Metas Mensuales</CardTitle>
+                        <CardTitle className="text-base font-bold text-brand-navy">Historial de Metas Mensuales</CardTitle>
                       </CardHeader>
                       <CardContent>
                         {(() => {
@@ -2498,7 +2498,7 @@ export default function App() {
 
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
+                <p className="text-xs font-medium text-brand-gray ml-1">Sucursal</p>
                 <Select value={faltantesFilterSucursal} onValueChange={setFaltantesFilterSucursal}>
                   <SelectTrigger className="w-[160px] h-9">
                     <SelectValue placeholder="Todas las Sucursales" />
@@ -2512,7 +2512,7 @@ export default function App() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Mes</p>
+                <p className="text-xs font-medium text-brand-gray ml-1">Mes</p>
                 <Select value={faltantesFilterMonth} onValueChange={setFaltantesFilterMonth}>
                   <SelectTrigger className="w-[160px] h-9">
                     <SelectValue placeholder="Todos los meses" />
@@ -2527,7 +2527,7 @@ export default function App() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
+                <p className="text-xs font-medium text-brand-gray ml-1">Estado</p>
                 <Select value={faltantesFilterEstado} onValueChange={(v) => setFaltantesFilterEstado(v as "all" | "pendiente" | "resuelto")}>
                   <SelectTrigger className="w-[140px] h-9">
                     <SelectValue placeholder="Todos" />
@@ -2545,7 +2545,7 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="border-none shadow-sm bg-white">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Productos más solicitados sin existencia</CardTitle>
+                    <CardTitle className="text-base font-bold text-brand-navy">Productos más solicitados sin existencia</CardTitle>
                     <CardDescription className="text-[10px]">{faltantesRollup.totalIncidentes} incidentes en el filtro actual</CardDescription>
                   </CardHeader>
                   <CardContent className="p-0 max-h-[320px] overflow-y-auto">
@@ -2581,7 +2581,7 @@ export default function App() {
 
                 <Card className="border-none shadow-sm bg-white">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Por sucursal</CardTitle>
+                    <CardTitle className="text-base font-bold text-brand-navy">Por sucursal</CardTitle>
                     <CardDescription className="text-[10px]">Volumen de incidentes y producto más afectado</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2 max-h-[320px] overflow-y-auto">
@@ -2611,7 +2611,7 @@ export default function App() {
 
                 <Card className="border-none shadow-sm bg-white">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Por mes</CardTitle>
+                    <CardTitle className="text-base font-bold text-brand-navy">Por mes</CardTitle>
                     <CardDescription className="text-[10px]">Últimos 6 meses</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -2803,7 +2803,7 @@ export default function App() {
                     </CardHeader>
                     <div className="px-6 py-3 border-b flex flex-wrap gap-4">
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Sucursal</p>
+                        <p className="text-xs font-medium text-brand-gray">Sucursal</p>
                         <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
                           <SelectTrigger className="w-[160px] h-8">
                             <SelectValue placeholder="Todas las Sucursales" />
@@ -2817,7 +2817,7 @@ export default function App() {
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Segmento</p>
+                        <p className="text-xs font-medium text-brand-gray">Segmento</p>
                         <Select value={adminFilterSegmento} onValueChange={setAdminFilterSegmento}>
                           <SelectTrigger className="w-[160px] h-8">
                             <SelectValue placeholder="Todos los Segmentos" />
@@ -2959,19 +2959,19 @@ export default function App() {
                       {/* Info */}
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Sucursal</p>
+                          <p className="text-xs font-medium text-brand-gray mb-1">Sucursal</p>
                           <p>{sucursales.find(s => s.id === selectedUserDetail?.sucursalId)?.name || "—"}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Meta del mes</p>
+                          <p className="text-xs font-medium text-brand-gray mb-1">Meta del mes</p>
                           <p>${(selectedUserDetail?.performance.salesGoal ?? 0).toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Valor cerrado</p>
+                          <p className="text-xs font-medium text-brand-gray mb-1">Valor cerrado</p>
                           <p>${(selectedUserDetail?.performance.totalValue ?? 0).toLocaleString()}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Conversión</p>
+                          <p className="text-xs font-medium text-brand-gray mb-1">Conversión</p>
                           <p>{((selectedUserDetail?.performance.conversionRate ?? 0) * 100).toFixed(0)}%</p>
                         </div>
                       </div>
@@ -3117,7 +3117,7 @@ export default function App() {
                       
                       <div className="flex flex-wrap items-center gap-4">
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Buscar</p>
+                          <p className="text-xs font-medium text-brand-gray ml-1">Buscar</p>
                           <div className="relative w-full md:w-64">
                             <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                             <Input 
@@ -3129,7 +3129,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Vendedor</p>
+                          <p className="text-xs font-medium text-brand-gray ml-1">Vendedor</p>
                           <Select value={adminFilterSeller} onValueChange={setAdminFilterSeller}>
                             <SelectTrigger className="w-[150px] h-9">
                               <SelectValue placeholder="Todos los Vendedores" />
@@ -3147,7 +3147,7 @@ export default function App() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Sucursal</p>
+                          <p className="text-xs font-medium text-brand-gray ml-1">Sucursal</p>
                           <Select value={adminFilterSucursal} onValueChange={setAdminFilterSucursal}>
                             <SelectTrigger className="w-[150px] h-9">
                               <SelectValue placeholder="Todas las Sucursales" />
@@ -3161,7 +3161,7 @@ export default function App() {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Estado</p>
+                          <p className="text-xs font-medium text-brand-gray ml-1">Estado</p>
                           <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
                             <SelectTrigger className="w-[150px] h-9">
                               <SelectValue placeholder="Todos los Estados" />
@@ -3211,7 +3211,7 @@ export default function App() {
                               <CardHeader className="p-4 pb-2">
                                 <div className="flex items-center justify-between mb-1">
                                   {getStatusBadge(lead.status)}
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {lead.id}</span>
+                                  <span className="text-xs font-medium text-brand-gray">ID: {lead.id}</span>
                                 </div>
                                 <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
                                 <CardDescription className="text-xs">{lead.company}</CardDescription>
@@ -3584,7 +3584,7 @@ export default function App() {
               </div>
               {statusUpdate.status === selectedLead?.status && (
                 <div className="p-4 bg-white border-t space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <label className="text-sm font-semibold text-brand-navy flex items-center gap-2">
                     <MessageSquare className="w-3 h-3" />
                     Agregar Comentario
                   </label>
@@ -3627,7 +3627,7 @@ export default function App() {
                 </DialogHeader>
                 <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
                   <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nuevo Estado</label>
+                    <label className="text-sm font-semibold text-brand-navy">Nuevo Estado</label>
                     <Select 
                       value={statusUpdate.status} 
                       onValueChange={(val) => setStatusUpdate({...statusUpdate, status: val as LeadStatus})}
@@ -3648,7 +3648,7 @@ export default function App() {
                   </div>
 
                   <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <label className="text-sm font-semibold text-brand-navy flex items-center gap-2">
                       <MessageSquare className="w-3 h-3" />
                       Comentario
                     </label>
@@ -3811,7 +3811,7 @@ export default function App() {
                   )}
 
                   <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <label className="text-sm font-semibold text-brand-navy flex items-center gap-2">
                       <Paperclip className="w-3 h-3" />
                       URL de Evidencia (Opcional)
                     </label>
