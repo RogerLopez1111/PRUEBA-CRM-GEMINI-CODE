@@ -180,12 +180,10 @@ app.post("/api/login", async (req, res) => {
     .eq("Es_Cve_Estado", "AC")
     .maybeSingle();
 
-  if (!vendor) {
-    res.status(401).json({ error: "Correo o contraseña incorrectos" });
-    return;
-  }
-
-  if (vendor.Vn_Password && vendor.Vn_Password !== password) {
+  // Accounts without a password set are not loggable. Use the same generic
+  // error as a wrong password so callers can't probe which accounts exist
+  // without a credential set.
+  if (!vendor || !vendor.Vn_Password || vendor.Vn_Password !== password) {
     res.status(401).json({ error: "Correo o contraseña incorrectos" });
     return;
   }
