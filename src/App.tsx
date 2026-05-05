@@ -1900,7 +1900,7 @@ export default function App() {
                     <div key={user.id} className="lg:col-span-3 space-y-6">
                       {/* Summary Scorecard */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <Card className="border-none shadow-sm bg-white">
+                        <Card className="bg-white">
                           <CardContent className="p-4 flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
                               <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -1912,7 +1912,7 @@ export default function App() {
                             </div>
                           </CardContent>
                         </Card>
-                        <Card className="border-none shadow-sm bg-white">
+                        <Card className="bg-white">
                           <CardContent className="p-4 flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
                               <FileText className="w-6 h-6 text-amber-600" />
@@ -1924,7 +1924,7 @@ export default function App() {
                             </div>
                           </CardContent>
                         </Card>
-                        <Card className="border-none shadow-sm bg-white">
+                        <Card className="bg-white">
                           <CardContent className="p-4 flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
                               <AlertCircle className="w-6 h-6 text-red-600" />
@@ -1936,7 +1936,7 @@ export default function App() {
                             </div>
                           </CardContent>
                         </Card>
-                        <Card className="border-none shadow-sm bg-white">
+                        <Card className="bg-white">
                           <CardContent className="p-4 flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-primary/5 flex items-center justify-center">
                               <TrendingUp className="w-6 h-6 text-primary" />
@@ -3055,7 +3055,7 @@ export default function App() {
                   <div className="space-y-6">
                     {/* Stats Overview */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <Card className="border-none shadow-sm bg-white">
+                      <Card className="bg-white">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between">
                             <div>
@@ -3068,7 +3068,7 @@ export default function App() {
                           </div>
                         </CardContent>
                       </Card>
-                      <Card className="border-none shadow-sm bg-white">
+                      <Card className="bg-white">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between">
                             <div>
@@ -3081,7 +3081,7 @@ export default function App() {
                           </div>
                         </CardContent>
                       </Card>
-                      <Card className="border-none shadow-sm bg-white">
+                      <Card className="bg-white">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between">
                             <div>
@@ -3094,15 +3094,15 @@ export default function App() {
                           </div>
                         </CardContent>
                       </Card>
-                      <Card className="border-none bg-brand-navy text-white">
+                      <Card className="bg-white">
                         <CardContent className="pt-6">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-white/70">Pipeline Total</p>
-                              <h3 className="text-2xl font-bold text-white">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
+                              <p className="text-sm font-medium text-slate-500">Pipeline Total</p>
+                              <h3 className="text-2xl font-bold">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
                             </div>
-                            <div className="bg-white/10 p-2 rounded-lg">
-                              <TrendingUp className="w-5 h-5 text-white" />
+                            <div className="bg-indigo-50 p-2 rounded-lg">
+                              <TrendingUp className="w-5 h-5 text-indigo-600" />
                             </div>
                           </div>
                         </CardContent>
@@ -3379,20 +3379,20 @@ export default function App() {
 
                 {adminSubTab === "goals" && (
                   <div className="space-y-6">
-                    <Card className="border-none shadow-sm bg-white">
+                    <Card className="border-none bg-brand-navy text-white">
                       <CardHeader className="pb-4">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Target className="w-5 h-5 text-slate-400" />
+                        <CardTitle className="text-lg flex items-center gap-2 text-white">
+                          <Target className="w-5 h-5 text-white/70" />
                           Establecer Meta por Sucursal
                         </CardTitle>
-                        <CardDescription>Aplica una meta de ventas a todos los vendedores activos de una sucursal para el período seleccionado.</CardDescription>
+                        <CardDescription className="text-white/70">Aplica una meta de ventas a todos los vendedores activos de una sucursal para el período seleccionado.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                           <div className="grid gap-2">
-                            <label className="text-sm font-medium">Sucursal</label>
+                            <label className="text-sm font-medium text-white/90">Sucursal</label>
                             <Select value={branchGoal.sucursalId} onValueChange={(val) => setBranchGoal({...branchGoal, sucursalId: val})}>
-                              <SelectTrigger>
+                              <SelectTrigger className="bg-white text-foreground border-transparent">
                                 <SelectValue placeholder="Seleccionar sucursal" />
                               </SelectTrigger>
                               <SelectContent>
@@ -3403,9 +3403,9 @@ export default function App() {
                             </Select>
                           </div>
                           <div className="grid gap-2">
-                            <label className="text-sm font-medium">Mes</label>
+                            <label className="text-sm font-medium text-white/90">Mes</label>
                             <Select value={String(branchGoal.month)} onValueChange={(val) => setBranchGoal({...branchGoal, month: Number(val)})}>
-                              <SelectTrigger>
+                              <SelectTrigger className="bg-white text-foreground border-transparent">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -3416,9 +3416,9 @@ export default function App() {
                             </Select>
                           </div>
                           <div className="grid gap-2">
-                            <label className="text-sm font-medium">Año</label>
+                            <label className="text-sm font-medium text-white/90">Año</label>
                             <Select value={String(branchGoal.year)} onValueChange={(val) => setBranchGoal({...branchGoal, year: Number(val)})}>
-                              <SelectTrigger>
+                              <SelectTrigger className="bg-white text-foreground border-transparent">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -3429,17 +3429,18 @@ export default function App() {
                             </Select>
                           </div>
                           <div className="grid gap-2">
-                            <label className="text-sm font-medium">Meta ($)</label>
+                            <label className="text-sm font-medium text-white/90">Meta ($)</label>
                             <Input
                               type="number"
                               placeholder="50000"
                               value={branchGoal.amount || ""}
                               onChange={(e) => setBranchGoal({...branchGoal, amount: Number(e.target.value)})}
+                              className="bg-white text-foreground border-transparent placeholder:text-muted-foreground"
                             />
                           </div>
                         </div>
                         {branchGoal.sucursalId && (
-                          <p className="text-xs text-slate-400 mt-3">
+                          <p className="text-xs text-white/60 mt-3">
                             Afectará a {users.filter(u => u.role === "Seller" && u.sucursalId === branchGoal.sucursalId).length} vendedor(es) activo(s) en {sucursales.find(s => s.id === branchGoal.sucursalId)?.name}.
                           </p>
                         )}
