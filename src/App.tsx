@@ -172,7 +172,7 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBad
       {...attributes}
       {...listeners}
       onClick={() => { if (!isDragging) onUpdate(); }}
-      className="relative bg-white rounded-lg border cursor-pointer hover:bg-slate-50 hover:-translate-y-0.5 transition-all group overflow-hidden"
+      className="relative bg-white rounded-lg border cursor-pointer hover:bg-slate-50 transition-colors group overflow-hidden"
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${accent.bar}`} />
 
@@ -1093,7 +1093,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen bg-white">
         <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-brand-red/20 ring-4 ring-brand-red/10" />
+          <div className="w-12 h-12 rounded-full bg-brand-red/20" />
           <p className="text-brand-navy font-medium">Cargando...</p>
         </div>
       </div>
@@ -1105,7 +1105,7 @@ export default function App() {
       <Toaster position="top-right" />
       
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b-2 border-brand-red">
+      <header className="sticky top-0 z-40 w-full bg-white border-b-2 border-brand-red">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-8 object-contain" />
@@ -1120,7 +1120,7 @@ export default function App() {
             </div>
             <Popover>
               <PopoverTrigger nativeButton={false} render={
-                <div className="relative w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border-2 border-white shadow-sm cursor-pointer hover:bg-slate-300 transition-colors">
+                <div className="relative w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border border-slate-200 cursor-pointer hover:bg-slate-300 transition-colors">
                   <Bell className="w-5 h-5 text-slate-600" />
                   {notifications.length > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
@@ -1169,7 +1169,7 @@ export default function App() {
             </Popover>
             <Dialog>
               <DialogTrigger nativeButton={false} render={
-                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border-2 border-white shadow-sm cursor-pointer hover:bg-slate-300 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border border-slate-200 cursor-pointer hover:bg-slate-300 transition-colors">
                   <Users className="w-5 h-5 text-slate-600" />
                 </div>
               } />
@@ -1228,7 +1228,7 @@ export default function App() {
 
             <div className="flex items-center gap-2">
               <Dialog open={isNewLeadOpen} onOpenChange={setIsNewLeadOpen}>
-                <DialogTrigger nativeButton={true} render={<Button className="gap-2 shadow-sm" />}>
+                <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
                   Nuevo Lead
                 </DialogTrigger>
@@ -1451,7 +1451,7 @@ export default function App() {
                   <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                   <Input 
                     placeholder="Buscar cliente o empresa..." 
-                    className="pl-9 h-10 shadow-sm bg-white"
+                    className="pl-9 h-10 bg-white"
                     value={myLeadsSearch}
                     onChange={(e) => setMyLeadsSearch(e.target.value)}
                   />
@@ -1481,7 +1481,7 @@ export default function App() {
                     l.company.toLowerCase().includes(myLeadsSearch.toLowerCase());
                   return isAssigned && matchesSearch;
                 }).map((lead) => (
-                  <Card key={lead.id} className="border-none shadow-sm bg-white overflow-hidden">
+                  <Card key={lead.id} className="bg-white overflow-hidden">
                     <CardContent className="p-0">
                       <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-6">
                         <div className="flex items-start gap-4">
@@ -1688,7 +1688,7 @@ export default function App() {
                 ))}
                 <DragOverlay>
                   {activeId ? (
-                    <div className="bg-white p-4 rounded-lg shadow-xl border-2 border-primary/20 w-80 opacity-90 rotate-2">
+                    <div className="bg-white p-4 rounded-lg border-2 border-primary w-80 opacity-90">
                       <div className="flex justify-between items-start mb-2">
                         <h4 className="font-bold text-sm text-primary">{leads.find(l => l.id === activeId)?.name}</h4>
                         <span className="text-[10px] font-mono font-bold text-slate-400">${leads.find(l => l.id === activeId)?.value.toLocaleString()}</span>
@@ -1731,7 +1731,7 @@ export default function App() {
             </div>
 
             {currentUser.role === "Admin" && perfUserFilter === "all" ? (
-              <Card className="border-none shadow-sm bg-white overflow-hidden">
+              <Card className="bg-white overflow-hidden">
                 <CardHeader>
                   <CardTitle>Resumen de Rendimiento del Equipo</CardTitle>
                   <CardDescription>Resumen de todos los vendedores y su estado actual del pipeline.</CardDescription>
@@ -1951,7 +1951,7 @@ export default function App() {
                       </div>
 
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <Card className="border-none shadow-sm bg-white overflow-hidden lg:col-span-1">
+                        <Card className="bg-white overflow-hidden lg:col-span-1">
                           <div className="h-2 bg-primary w-full opacity-20" />
                           <CardHeader>
                             <div className="flex items-center justify-between">
@@ -2069,7 +2069,7 @@ export default function App() {
                           </CardContent>
                         </Card>
 
-                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                    <Card className="bg-white lg:col-span-1">
                       <CardHeader>
                         <CardTitle className="text-base font-bold text-brand-navy">Distribución de Pipeline ($)</CardTitle>
                       </CardHeader>
@@ -2106,7 +2106,7 @@ export default function App() {
                       </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                    <Card className="bg-white lg:col-span-1">
                       <CardHeader>
                         <CardTitle className="text-base font-bold text-brand-navy">Motivos de Rechazo</CardTitle>
                         <CardDescription className="text-[10px]">Últimos comentarios de tratos perdidos.</CardDescription>
@@ -2144,7 +2144,7 @@ export default function App() {
                     </Card>
 
                     {/* Embudo de Conversión */}
-                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                    <Card className="bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base font-bold text-brand-navy">Embudo de Conversión</CardTitle>
                         <CardDescription className="text-[10px]">Leads que tocaron cada etapa, % vs ASIGNADO y conversión paso a paso</CardDescription>
@@ -2175,7 +2175,7 @@ export default function App() {
                     </Card>
 
                     {/* Tiempo a Primer Contacto */}
-                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                    <Card className="bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base font-bold text-brand-navy">Tiempo a Primer Contacto</CardTitle>
                         <CardDescription className="text-[10px]">Tiempo entre asignación y primer CONTACTADO</CardDescription>
@@ -2198,7 +2198,7 @@ export default function App() {
                     </Card>
 
                     {/* Pareto de Motivos de Rechazo */}
-                    <Card className="border-none shadow-sm bg-white lg:col-span-1">
+                    <Card className="bg-white lg:col-span-1">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base font-bold text-brand-navy">Pareto de Motivos</CardTitle>
                         <CardDescription className="text-[10px]">
@@ -2229,7 +2229,7 @@ export default function App() {
                     </Card>
 
                     {/* Goals Timeline */}
-                    <Card className="border-none shadow-sm bg-white lg:col-span-3">
+                    <Card className="bg-white lg:col-span-3">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base font-bold text-brand-navy">Historial de Metas Mensuales</CardTitle>
                       </CardHeader>
@@ -2291,7 +2291,7 @@ export default function App() {
                 <p className="text-slate-500">Registra ventas perdidas porque no había el producto que el cliente pedía.</p>
               </div>
               <Dialog open={isFaltanteOpen} onOpenChange={setIsFaltanteOpen}>
-                <DialogTrigger nativeButton={true} render={<Button className="gap-2 shadow-sm" />}>
+                <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
                   Registrar Faltante
                 </DialogTrigger>
@@ -2543,7 +2543,7 @@ export default function App() {
 
             {currentUser.role === "Admin" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="border-none shadow-sm bg-white">
+                <Card className="bg-white">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base font-bold text-brand-navy">Productos más solicitados sin existencia</CardTitle>
                     <CardDescription className="text-[10px]">{faltantesRollup.totalIncidentes} incidentes en el filtro actual</CardDescription>
@@ -2579,7 +2579,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-none shadow-sm bg-white">
+                <Card className="bg-white">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base font-bold text-brand-navy">Por sucursal</CardTitle>
                     <CardDescription className="text-[10px]">Volumen de incidentes y producto más afectado</CardDescription>
@@ -2609,7 +2609,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-none shadow-sm bg-white">
+                <Card className="bg-white">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base font-bold text-brand-navy">Por mes</CardTitle>
                     <CardDescription className="text-[10px]">Últimos 6 meses</CardDescription>
@@ -2656,7 +2656,7 @@ export default function App() {
                   );
                 }
                 return visible.map(f => (
-                  <Card key={f.id} className="border-none shadow-sm bg-white">
+                  <Card key={f.id} className="bg-white">
                     <CardContent className="p-4 flex flex-col md:flex-row md:items-start gap-4 justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -2702,18 +2702,18 @@ export default function App() {
                   <p className="text-slate-500">Gestiona roles de usuario, metas y supervisa la carga de trabajo del equipo.</p>
                 </div>
                 <Tabs value={adminSubTab} onValueChange={setAdminSubTab} className="w-full md:w-auto">
-                  <TabsList className="p-1 bg-transparent border-2 rounded-lg" style={{borderColor: "#141456"}}>
-                    <TabsTrigger value="users" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Usuarios</TabsTrigger>
-                    <TabsTrigger value="workload" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Carga de Trabajo</TabsTrigger>
-                    <TabsTrigger value="activity" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Actividad Global</TabsTrigger>
-                    <TabsTrigger value="goals" className="text-xs px-4 text-slate-500 data-[state=active]:bg-[#141456] data-[state=active]:text-white">Metas por Sucursal</TabsTrigger>
+                  <TabsList variant="line" className="border-b">
+                    <TabsTrigger value="users" className="text-xs px-4">Usuarios</TabsTrigger>
+                    <TabsTrigger value="workload" className="text-xs px-4">Carga de Trabajo</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-4">Actividad Global</TabsTrigger>
+                    <TabsTrigger value="goals" className="text-xs px-4">Metas por Sucursal</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
 
               <div className="grid grid-cols-1 gap-8">
                 {adminSubTab === "users" && (
-                  <Card className="border-none shadow-sm bg-white">
+                  <Card className="bg-white">
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <div>
@@ -3196,9 +3196,9 @@ export default function App() {
                           const stuckLevel = getStuckLevel(lead.updatedAt);
                           return (
                             <Card key={lead.id} className={cn(
-                              "border-none shadow-sm bg-white hover:ring-1 hover:ring-primary/20 transition-all cursor-pointer relative overflow-hidden",
-                              stuckLevel === "critical" && "ring-1 ring-red-200 bg-red-50/10",
-                              stuckLevel === "warning" && "ring-1 ring-orange-200 bg-orange-50/10"
+                              "bg-white hover:bg-slate-50 transition-colors cursor-pointer relative overflow-hidden",
+                              stuckLevel === "critical" && "border-red-300 bg-red-50/40",
+                              stuckLevel === "warning" && "border-orange-300 bg-orange-50/40"
                             )} onClick={() => openStatusUpdate(lead)}>
                               {stuckLevel !== "normal" && (
                                 <div className={cn(
@@ -3273,7 +3273,7 @@ export default function App() {
                 )}
 
                 {adminSubTab === "activity" && (
-                  <Card className="border-none shadow-sm bg-white">
+                  <Card className="bg-white">
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <div>
@@ -3453,7 +3453,7 @@ export default function App() {
                       </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm bg-white">
+                    <Card className="bg-white">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-lg flex items-center gap-2">
                           <Building2 className="w-5 h-5 text-slate-400" />

@@ -197,23 +197,32 @@
 }
 
 /* Flat aesthetic — strip every drop shadow / elevation across the app.
-   Reset Tailwind's --tw-shadow to a transparent zero offset; this leaves
-   --tw-ring-shadow (focus rings) and Card's ring-1 outline intact. */
+   Zero out --tw-shadow with !important so it beats Tailwind's per-class
+   override; ring shadows ride on a separate variable and stay intact. */
 @layer base {
   * {
     --tw-shadow: 0 0 #0000;
     --tw-shadow-colored: 0 0 #0000;
   }
-  /* Catch arbitrary inline shadows (shadow-[...]) and drop-shadow utilities */
+  .shadow-xs, .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl, .shadow-inner,
   [class*="shadow-["],
   [class*="drop-shadow-"] {
-    box-shadow: none !important;
+    --tw-shadow: 0 0 #0000 !important;
+    --tw-shadow-colored: 0 0 #0000 !important;
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000) !important;
     filter: none !important;
   }
-  /* Card's ring-1 hairline becomes the only visual edge — switch to a flat dark border */
-  [data-slot="card"] {
+  /* Card / floating surfaces — kill the ring-1 hairline and apply a flat dark border */
+  [data-slot="card"],
+  [data-slot="popover-content"],
+  [data-slot="dialog-content"],
+  [data-slot="sheet-content"] {
     box-shadow: none !important;
     border: 1px solid var(--border);
+  }
+  /* Dialog overlay — drop the backdrop-filter blur for full flat */
+  [data-slot="dialog-overlay"] {
+    backdrop-filter: none !important;
   }
 }
 
