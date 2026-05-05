@@ -1035,7 +1035,7 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-white">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-brand-navy">
         <div className="absolute top-0 inset-x-0 h-1 bg-brand-red" />
         <Toaster position="top-right" />
         <motion.div
@@ -1083,7 +1083,7 @@ export default function App() {
               </form>
             </CardContent>
           </Card>
-          <p className="text-center text-xs text-brand-gray mt-4">Ecosistemas · Soluciones Innovadoras</p>
+          <p className="text-center text-xs text-white/70 mt-4">Ecosistemas · Soluciones Innovadoras</p>
         </motion.div>
       </div>
     );
