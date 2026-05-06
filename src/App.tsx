@@ -1044,7 +1044,7 @@ export default function App() {
           className="w-full max-w-md"
         >
           <Card className="bg-white overflow-hidden pt-0">
-            <div className="h-2 bg-brand-navy" />
+            <div className="h-2 bg-white" />
             <CardHeader className="text-center space-y-2 pt-8">
               <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
               <p className="text-sm font-semibold text-brand-navy">Panel de ventas</p>
