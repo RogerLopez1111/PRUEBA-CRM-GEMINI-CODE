@@ -477,6 +477,9 @@ export default function App() {
     const productAgg = new Map<string, ProductAgg>();
     const sucursalAgg = new Map<string, { incidentes: number; products: Map<string, number> }>();
     const monthAgg = new Map<string, number>();
+    const clienteAgg = new Map<string, { name: string; incidentes: number; cantidad: number }>();
+    let cantidadTotal = 0;
+    let freeTextCount = 0;
 
     for (const f of filteredFaltantes) {
       const productKey = f.productoId || `__free:${f.productoDescripcion.toLowerCase().trim()}`;
@@ -498,6 +501,16 @@ export default function App() {
       if (!isNaN(d.getTime())) {
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         monthAgg.set(ym, (monthAgg.get(ym) || 0) + 1);
+      }
+
+      cantidadTotal += Number(f.cantidad) || 0;
+      if (!f.productoId) freeTextCount += 1;
+
+      if (f.clienteId && f.clienteName) {
+        const c = clienteAgg.get(f.clienteId) || { name: f.clienteName, incidentes: 0, cantidad: 0 };
+        c.incidentes += 1;
+        c.cantidad += Number(f.cantidad) || 0;
+        clienteAgg.set(f.clienteId, c);
       }
     }
 
@@ -524,8 +537,99 @@ export default function App() {
       });
     }
 
-    return { topProducts, bySucursal, byMonth, totalIncidentes: filteredFaltantes.length };
-  }, [filteredFaltantes]);
+    const topClientes = [...clienteAgg.entries()]
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.incidentes - a.incidentes || b.cantidad - a.cantidad)
+      .slice(0, 8);
+
+    const totalIncidentes = filteredFaltantes.length;
+    const freeTextPct = totalIncidentes ? Math.round((freeTextCount / totalIncidentes) * 100) : 0;
+
+    // Cross-month metrics (trend, recurrencia, productos nuevos del mes actual)
+    // ignore the month filter and only respect role + sucursal scoping so they
+    // stay meaningful regardless of which month the admin is inspecting.
+    const norm = (v?: string) => (v || "").trim();
+    const crossScopeBase = faltantes.filter(f => {
+      if (currentUser?.role === "Seller" && f.vendedorId !== currentUser.id) return false;
+      if (faltantesFilterSucursal !== "all" && f.sucursalName !== faltantesFilterSucursal) return false;
+      return true;
+    });
+
+    const currYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevYm = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+
+    let currCount = 0;
+    let prevCount = 0;
+    const productMonthSet = new Map<string, Set<string>>(); // productKey -> set of yyyy-mm seen
+    const productFirstSeen = new Map<string, string>();     // productKey -> earliest yyyy-mm
+    const productNamesXM = new Map<string, string>();       // productKey -> display name (latest)
+    const productIdsXM = new Map<string, string | null>();
+    const productCantidadCurrMonth = new Map<string, number>();
+    const productIncidentesCurrMonth = new Map<string, number>();
+
+    for (const f of crossScopeBase) {
+      const d = new Date(f.createdAt);
+      if (isNaN(d.getTime())) continue;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (ym === currYm) currCount += 1;
+      if (ym === prevYm) prevCount += 1;
+
+      const key = f.productoId || `__free:${norm(f.productoDescripcion).toLowerCase()}`;
+      const set = productMonthSet.get(key) || new Set<string>();
+      set.add(ym);
+      productMonthSet.set(key, set);
+      productNamesXM.set(key, f.productoDescripcion);
+      productIdsXM.set(key, f.productoId ?? null);
+      const earliest = productFirstSeen.get(key);
+      if (!earliest || ym < earliest) productFirstSeen.set(key, ym);
+
+      if (ym === currYm) {
+        productCantidadCurrMonth.set(key, (productCantidadCurrMonth.get(key) || 0) + (Number(f.cantidad) || 0));
+        productIncidentesCurrMonth.set(key, (productIncidentesCurrMonth.get(key) || 0) + 1);
+      }
+    }
+
+    const trendDelta = currCount - prevCount;
+    const trendPct = prevCount > 0 ? Math.round(((currCount - prevCount) / prevCount) * 100) : (currCount > 0 ? null : 0);
+
+    const recurrentes = [...productMonthSet.entries()]
+      .filter(([, months]) => months.size >= 3)
+      .map(([key, months]) => ({
+        key,
+        name: productNamesXM.get(key) || key,
+        productoId: productIdsXM.get(key) || null,
+        meses: months.size,
+      }))
+      .sort((a, b) => b.meses - a.meses)
+      .slice(0, 8);
+
+    const productosNuevos = [...productCantidadCurrMonth.keys()]
+      .filter(key => productFirstSeen.get(key) === currYm)
+      .map(key => ({
+        key,
+        name: productNamesXM.get(key) || key,
+        productoId: productIdsXM.get(key) || null,
+        cantidad: productCantidadCurrMonth.get(key) || 0,
+        incidentes: productIncidentesCurrMonth.get(key) || 0,
+      }))
+      .sort((a, b) => b.incidentes - a.incidentes || b.cantidad - a.cantidad)
+      .slice(0, 8);
+
+    return {
+      topProducts,
+      bySucursal,
+      byMonth,
+      totalIncidentes,
+      cantidadTotal,
+      freeTextPct,
+      freeTextCount,
+      topClientes,
+      trend: { currCount, prevCount, delta: trendDelta, pct: trendPct, currLabel: `${MESES[now.getMonth()].slice(0, 3)} ${String(now.getFullYear()).slice(2)}`, prevLabel: `${MESES[prev.getMonth()].slice(0, 3)} ${String(prev.getFullYear()).slice(2)}` },
+      recurrentes,
+      productosNuevos,
+    };
+  }, [filteredFaltantes, faltantes, currentUser, faltantesFilterSucursal]);
 
   const kanbanMonthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -2582,6 +2686,62 @@ export default function App() {
             </div>
 
             {currentUser.role === "Admin" && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Card className="bg-white">
+                  <CardHeader className="pb-1 pt-3">
+                    <CardDescription className="text-[10px] uppercase tracking-wide">Tendencia mes vs mes</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-1 pb-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-brand-navy">{faltantesRollup.trend.currCount}</span>
+                      <span className="text-[10px] text-slate-500">incid. en {faltantesRollup.trend.currLabel}</span>
+                    </div>
+                    <p className="text-[11px] mt-1">
+                      {faltantesRollup.trend.pct === null ? (
+                        <span className="text-amber-700 font-semibold">Nuevo este mes</span>
+                      ) : faltantesRollup.trend.pct === 0 && faltantesRollup.trend.delta === 0 ? (
+                        <span className="text-slate-500">Sin cambio vs {faltantesRollup.trend.prevLabel}</span>
+                      ) : (
+                        <span className={faltantesRollup.trend.delta > 0 ? "text-amber-700 font-semibold" : "text-emerald-700 font-semibold"}>
+                          {faltantesRollup.trend.delta > 0 ? "▲" : "▼"} {Math.abs(faltantesRollup.trend.pct ?? 0)}%
+                          <span className="text-slate-500 font-normal"> ({faltantesRollup.trend.prevCount} en {faltantesRollup.trend.prevLabel})</span>
+                        </span>
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white">
+                  <CardHeader className="pb-1 pt-3">
+                    <CardDescription className="text-[10px] uppercase tracking-wide">Volumen demandado perdido</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-1 pb-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-brand-navy">{faltantesRollup.cantidadTotal.toLocaleString()}</span>
+                      <span className="text-[10px] text-slate-500">unidades en el filtro</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {faltantesRollup.totalIncidentes} incidentes · {faltantesRollup.totalIncidentes ? Math.round(faltantesRollup.cantidadTotal / faltantesRollup.totalIncidentes) : 0} u. promedio
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white">
+                  <CardHeader className="pb-1 pt-3">
+                    <CardDescription className="text-[10px] uppercase tracking-wide">Cobertura del catálogo</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-1 pb-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className={`text-2xl font-bold ${faltantesRollup.freeTextPct >= 30 ? "text-amber-700" : "text-brand-navy"}`}>{faltantesRollup.freeTextPct}%</span>
+                      <span className="text-[10px] text-slate-500">descripciones libres</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {faltantesRollup.freeTextCount} sin vínculo a producto ERP — posible brecha en el catálogo.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {currentUser.role === "Admin" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="bg-white">
                   <CardHeader className="pb-2">
@@ -2677,6 +2837,110 @@ export default function App() {
                         </div>
                       );
                     })()}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {currentUser.role === "Admin" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Card className="bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-bold text-brand-navy">Recurrencia crónica</CardTitle>
+                    <CardDescription className="text-[10px]">Productos faltantes en 3 o más meses distintos (ignora el filtro de mes)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 max-h-[320px] overflow-y-auto">
+                    {faltantesRollup.recurrentes.length === 0 ? (
+                      <p className="text-xs italic text-slate-400 text-center py-8">Aún no hay productos con recurrencia crónica.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-[10px]">Producto</TableHead>
+                            <TableHead className="text-[10px] text-right">Meses</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {faltantesRollup.recurrentes.map((p, i) => (
+                            <TableRow key={`${p.key}-${i}`}>
+                              <TableCell className="text-xs leading-tight">
+                                <div className="font-medium text-slate-900 line-clamp-2">{p.name}</div>
+                                {p.productoId && <span className="text-[9px] font-mono text-slate-400">{p.productoId}</span>}
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-amber-700">{p.meses}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-bold text-brand-navy">Clientes más afectados</CardTitle>
+                    <CardDescription className="text-[10px]">Quiénes pierden más oportunidades por falta de stock</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 max-h-[320px] overflow-y-auto">
+                    {faltantesRollup.topClientes.length === 0 ? (
+                      <p className="text-xs italic text-slate-400 text-center py-8">Sin clientes vinculados en el filtro actual.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-[10px]">Cliente</TableHead>
+                            <TableHead className="text-[10px] text-right">Incid.</TableHead>
+                            <TableHead className="text-[10px] text-right">Cant.</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {faltantesRollup.topClientes.map((c: { id: string; name: string; incidentes: number; cantidad: number }) => (
+                            <TableRow key={c.id}>
+                              <TableCell className="text-xs leading-tight">
+                                <div className="font-medium text-slate-900 line-clamp-2">{c.name}</div>
+                                <span className="text-[9px] font-mono text-slate-400">{c.id}</span>
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-amber-700">{c.incidentes}</TableCell>
+                              <TableCell className="text-right text-xs">{c.cantidad}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-bold text-brand-navy">Productos nuevos este mes</CardTitle>
+                    <CardDescription className="text-[10px]">Productos que aparecen como faltantes por primera vez en {faltantesRollup.trend.currLabel}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 max-h-[320px] overflow-y-auto">
+                    {faltantesRollup.productosNuevos.length === 0 ? (
+                      <p className="text-xs italic text-slate-400 text-center py-8">Sin productos nuevos este mes.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-[10px]">Producto</TableHead>
+                            <TableHead className="text-[10px] text-right">Incid.</TableHead>
+                            <TableHead className="text-[10px] text-right">Cant.</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {faltantesRollup.productosNuevos.map((p: { key: string; name: string; productoId: string | null; cantidad: number; incidentes: number }, i: number) => (
+                            <TableRow key={`${p.key}-${i}`}>
+                              <TableCell className="text-xs leading-tight">
+                                <div className="font-medium text-slate-900 line-clamp-2">{p.name}</div>
+                                {p.productoId && <span className="text-[9px] font-mono text-slate-400">{p.productoId}</span>}
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-amber-700">{p.incidentes}</TableCell>
+                              <TableCell className="text-right text-xs">{p.cantidad}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
                   </CardContent>
                 </Card>
               </div>
