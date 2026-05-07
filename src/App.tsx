@@ -2727,25 +2727,26 @@ export default function App() {
             )}
 
             {currentUser.role === "Admin" && (
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                <Card className="bg-white">
-                  <CardHeader className="pb-1 pt-3">
-                    <CardDescription className="text-[10px] uppercase tracking-wide">Cobertura del catálogo</CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-1 pb-3">
-                    <div className="flex items-baseline gap-2">
-                      <span className={`text-2xl font-bold ${faltantesRollup.freeTextPct >= 30 ? "text-amber-700" : "text-brand-navy"}`}>{faltantesRollup.freeTextPct}%</span>
-                      <span className="text-[10px] text-slate-500">descripciones libres</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      {faltantesRollup.freeTextCount} sin vínculo a producto ERP — posible brecha en el catálogo.
-                    </p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-4">
+                  <Card className="bg-white">
+                    <CardHeader className="pb-1 pt-3">
+                      <CardDescription className="text-[10px] uppercase tracking-wide">Cobertura del catálogo</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-1 pb-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-2xl font-bold ${faltantesRollup.freeTextPct >= 30 ? "text-amber-700" : "text-brand-navy"}`}>{faltantesRollup.freeTextPct}%</span>
+                        <span className="text-[10px] text-slate-500">descripciones libres</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {faltantesRollup.freeTextCount} sin vínculo a producto ERP — posible brecha en el catálogo.
+                      </p>
+                    </CardContent>
+                  </Card>
 
-                <Card className="bg-white">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base font-bold text-brand-navy">Recurrencia crónica</CardTitle>
+                  <Card className="bg-white flex-1 min-h-0">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-bold text-brand-navy">Recurrencia crónica</CardTitle>
                     <CardDescription className="text-[10px]">Productos faltantes en 3 o más meses distintos (ignora el filtro de mes)</CardDescription>
                   </CardHeader>
                   <CardContent className="p-0 max-h-[320px] overflow-y-auto">
@@ -2774,6 +2775,7 @@ export default function App() {
                     )}
                   </CardContent>
                 </Card>
+                </div>
 
                 <Card className="bg-white">
                   <CardHeader className="pb-2">
