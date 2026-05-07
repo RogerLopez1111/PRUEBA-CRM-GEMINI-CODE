@@ -256,6 +256,27 @@ const currentYearMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
+const getTimeStuck = (updatedAt: string) => {
+  const lastUpdate = new Date(updatedAt).getTime();
+  const now = new Date().getTime();
+  const diffInMs = now - lastUpdate;
+  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays > 0) return `${diffInDays}d ${diffInHours % 24}h`;
+  if (diffInHours > 0) return `${diffInHours}h`;
+  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+  return `${diffInMinutes}m`;
+};
+
+const getStuckLevel = (updatedAt: string) => {
+  const lastUpdate = new Date(updatedAt).getTime();
+  const now = new Date().getTime();
+  const diffInHours = (now - lastUpdate) / (1000 * 60 * 60);
+  if (diffInHours > 72) return "critical";
+  if (diffInHours > 24) return "warning";
+  return "normal";
+};
+
 // Median days between the first ASIGNADO and the first CONTACTADO history entry.
 function timeToFirstContact(leads: Lead[]): { median: number | null; count: number } {
   const days: number[] = [];
@@ -1195,31 +1216,6 @@ export default function App() {
       case "RECHAZADO": return <Badge variant="destructive">Rechazado</Badge>;
       default: return <Badge>{status}</Badge>;
     }
-  };
-
-  const getTimeStuck = (updatedAt: string) => {
-    const lastUpdate = new Date(updatedAt).getTime();
-    const now = new Date().getTime();
-    const diffInMs = now - lastUpdate;
-    
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    const diffInDays = Math.floor(diffInHours / 24);
-
-    if (diffInDays > 0) return `${diffInDays}d ${diffInHours % 24}h`;
-    if (diffInHours > 0) return `${diffInHours}h`;
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    return `${diffInMinutes}m`;
-  };
-
-  const getStuckLevel = (updatedAt: string) => {
-    const lastUpdate = new Date(updatedAt).getTime();
-    const now = new Date().getTime();
-    const diffInMs = now - lastUpdate;
-    const diffInHours = diffInMs / (1000 * 60 * 60);
-
-    if (diffInHours > 72) return "critical"; // More than 3 days
-    if (diffInHours > 24) return "warning"; // More than 1 day
-    return "normal";
   };
 
   if (!currentUser) {
