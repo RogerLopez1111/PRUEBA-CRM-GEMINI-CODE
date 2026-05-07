@@ -1543,31 +1543,33 @@ export default function App() {
                       />
                     </div>
 
-                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-primary"
-                        checked={newLead.clientInitiated}
-                        onChange={(e) => setNewLead({ ...newLead, clientInitiated: e.target.checked })}
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">Cliente me contactó</span>
-                        <span className="text-[11px] text-slate-500">Marcar si fue el cliente quien inició el contacto.</span>
-                      </div>
-                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 mt-0.5 accent-primary"
+                          checked={newLead.clientInitiated}
+                          onChange={(e) => setNewLead({ ...newLead, clientInitiated: e.target.checked })}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">Cliente me contactó</span>
+                          <span className="text-[11px] text-slate-500">El cliente inició el contacto.</span>
+                        </div>
+                      </label>
 
-                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-primary"
-                        checked={newLead.mostrador}
-                        onChange={(e) => setNewLead({ ...newLead, mostrador: e.target.checked })}
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">Mostrador</span>
-                        <span className="text-[11px] text-slate-500">Marcar si el lead empezó como una consulta de mostrador (cliente caminó a sucursal).</span>
-                      </div>
-                    </label>
+                      <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 mt-0.5 accent-primary"
+                          checked={newLead.mostrador}
+                          onChange={(e) => setNewLead({ ...newLead, mostrador: e.target.checked })}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">Mostrador</span>
+                          <span className="text-[11px] text-slate-500">Consulta en sucursal (walk-in).</span>
+                        </div>
+                      </label>
+                    </div>
 
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Segmento</label>
