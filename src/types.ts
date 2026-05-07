@@ -11,8 +11,15 @@ export interface LeadHistory {
   evidenceUrl?: string;
   quotedAmount?: number;
   invoicedAmount?: number;
+  rechazoMotivoId?: number;
+  rechazoMotivo?: string;
   updatedBy: string;
   timestamp: string;
+}
+
+export interface RechazoMotivo {
+  id: number;
+  descripcion: string;
 }
 
 // Maps to Supabase `clientes` table, which mirrors ERP [dbo].[Cliente]
@@ -20,7 +27,8 @@ export interface Client {
   id: string;           // Cl_Cve_Cliente
   name: string;         // Cl_Contacto_1
   email: string;        // Cl_email_contacto_1
-  company: string;      // Cl_Razon_Social
+  company: string;      // Cl_Razon_Social (razón social / legal name)
+  tradeName?: string;   // Cl_Descripcion (ERP "Nombre" / commercial / trade name)
   rfc?: string;         // Cl_R_F_C
   phone?: string;       // Cl_Telefono_1
   city?: string;        // Cl_Ciudad
@@ -46,6 +54,8 @@ export interface Lead {
   segmento: string;     // Sg_Cve_Segmento → resolved name from segmentos.Sg_Descripcion
   quotedAmount?: number;   // Cl_QuotedAmount_CRM
   invoicedAmount?: number; // Cl_InvoicedAmount_CRM
+  clientInitiated?: boolean; // Cl_Client_Initiated_CRM — true when the customer reached out first
+  newClient?: boolean;  // Cl_New_Client_CRM — true when this lead created a brand-new CRM prospect (survives the ERP re-point on FACTURADO)
   createdAt: string;    // Cl_CreatedAt_CRM
   updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];
@@ -81,6 +91,37 @@ export interface User {
     activeLeads: number;
     pipelineValue: number;
   };
+}
+
+// Maps to Supabase `productos` table — Tier-1 mirror of ERP [dbo].[Producto]
+export interface Product {
+  id: string;            // Pr_Cve_Producto
+  claveCorta?: string;   // Pr_Clave_Corta
+  numeroParte?: string;  // Pr_Numero_Parte
+  barras?: string;       // Pr_Barras
+  descripcion: string;   // Pr_Descripcion
+  descripcionCorta?: string; // Pr_Descripcion_Corta
+  unidadVenta?: string;  // Pr_Unidad_Venta
+  estado?: string;       // Es_Cve_Estado ('AC' | 'BA')
+}
+
+// Maps to Supabase `productos_faltantes` (CRM-only) — log of stock-out lost sales
+export type ProductoFaltanteEstado = 'pendiente' | 'resuelto';
+export interface ProductoFaltante {
+  id: string;
+  vendedorId: string;     // Vn_Cve_Vendedor
+  vendedorName?: string;
+  sucursalId?: string;    // Sc_Cve_Sucursal
+  sucursalName?: string;
+  clienteId?: string | null; // Cl_Cve_Cliente — optional
+  clienteName?: string | null;
+  productoId?: string | null; // Pr_Cve_Producto — null when free-typed
+  productoDescripcion: string; // snapshot at log time
+  cantidad: number;
+  comentario: string;
+  estado: ProductoFaltanteEstado;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PerformanceMetric {

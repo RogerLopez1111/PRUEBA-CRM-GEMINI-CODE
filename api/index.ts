@@ -2,9 +2,14 @@ import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 
+// Server runs queries on behalf of users authenticated by our own login route,
+// so we use the service role key (server-only secret). This bypasses RLS by
+// design — RLS will be added later as defense-in-depth, not as the auth boundary.
+// Never expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
 // ERP clients have all-numeric IDs (e.g. "0000000180"); CRM prospects have random alphanumeric IDs
@@ -110,7 +115,7 @@ async function getLeadsWithHistory() {
       .select(`
         *,
         clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-        lead_history(*)
+        lead_history(*, rechazo_motivos(descripcion))
       `)
       .order("Cl_CreatedAt_CRM", { ascending: false }),
     getSucursalesMap(),
@@ -133,6 +138,8 @@ async function getLeadsWithHistory() {
     segmento: segmentosMap[String(l.Sg_Cve_Segmento)] || String(l.Sg_Cve_Segmento || ""),
     quotedAmount: l.Cl_QuotedAmount_CRM ?? undefined,
     invoicedAmount: l.Cl_InvoicedAmount_CRM ?? undefined,
+    clientInitiated: !!l.Cl_Client_Initiated_CRM,
+    newClient: !!l.Cl_New_Client_CRM,
     createdAt: l.Cl_CreatedAt_CRM,
     updatedAt: l.Cl_UpdatedAt_CRM,
     history: ((l.lead_history as any[]) || [])
@@ -145,6 +152,8 @@ async function getLeadsWithHistory() {
         evidenceUrl: h.evidence_url ?? undefined,
         quotedAmount: h.quoted_amount ?? undefined,
         invoicedAmount: h.invoiced_amount ?? undefined,
+        rechazoMotivoId: h.rechazo_motivo_id ?? undefined,
+        rechazoMotivo: (h.rechazo_motivos as any)?.descripcion ?? undefined,
         updatedBy: h.updated_by,
         timestamp: h.timestamp,
       })),
@@ -171,12 +180,10 @@ app.post("/api/login", async (req, res) => {
     .eq("Es_Cve_Estado", "AC")
     .maybeSingle();
 
-  if (!vendor) {
-    res.status(401).json({ error: "Correo o contraseña incorrectos" });
-    return;
-  }
-
-  if (vendor.Vn_Password && vendor.Vn_Password !== password) {
+  // Accounts without a password set are not loggable. Use the same generic
+  // error as a wrong password so callers can't probe which accounts exist
+  // without a credential set.
+  if (!vendor || !vendor.Vn_Password || vendor.Vn_Password !== password) {
     res.status(401).json({ error: "Correo o contraseña incorrectos" });
     return;
   }
@@ -424,7 +431,7 @@ app.get("/api/leads", async (_req, res) => {
 });
 
 app.post("/api/leads", async (req, res) => {
-  const { userId, isExistingClient, clientId: existingClientId, ...leadData } = req.body;
+  const { userId, isExistingClient, clientId: existingClientId, clientInitiated, ...leadData } = req.body;
   const now = new Date().toISOString();
   const status = "ASIGNADO";
 
@@ -487,6 +494,8 @@ app.post("/api/leads", async (req, res) => {
     Cl_Valor_CRM: leadData.value,
     Sc_Cve_Sucursal: sucursalId || null,
     Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
+    Cl_Client_Initiated_CRM: !!clientInitiated,
+    Cl_New_Client_CRM: !isExistingClient,
     Cl_CreatedAt_CRM: now,
     Cl_UpdatedAt_CRM: now,
   });
@@ -541,7 +550,7 @@ app.post("/api/leads/:id/assign", async (req, res) => {
 
 app.post("/api/leads/:id/status", async (req, res) => {
   const { id } = req.params;
-  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount } = req.body;
+  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount, rechazoMotivoId, erpClientId } = req.body;
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase
@@ -553,45 +562,43 @@ app.post("/api/leads/:id/status", async (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const updates: Record<string, any> = { Cl_Status_CRM: status, Cl_UpdatedAt_CRM: now };
-  if (status === "COTIZADO" && quotedAmount !== undefined) {
-    updates.Cl_QuotedAmount_CRM = quotedAmount;
+  const effectiveQuotedAmount = status === "COTIZADO"
+    ? (quotedAmount && quotedAmount > 0 ? quotedAmount : (lead.Cl_Valor_CRM || 0))
+    : quotedAmount;
+  if (status === "COTIZADO") {
+    updates.Cl_QuotedAmount_CRM = effectiveQuotedAmount;
   }
   if (status === "FACTURADO" && invoicedAmount !== undefined) {
     updates.Cl_InvoicedAmount_CRM = invoicedAmount;
     updates.Cl_Valor_CRM = invoicedAmount;
   }
 
-  // When a sale is closed, migrate the CRM prospect to the real ERP client
-  // Bridge: match by Cl_Razon_Social (exact, case-insensitive)
-  let erpMigrationWarning: string | null = null;
+  // When a sale is closed on a CRM-only prospect, the seller must supply the
+  // matching ERP client id so we can re-point the lead and retire the prospect.
   if (status === "FACTURADO") {
-    const razonSocial = (lead.clientes as any)?.Cl_Razon_Social;
     const oldClientId = lead.Cl_Cve_Cliente;
-
-    if (razonSocial && !isErpId(oldClientId)) {
-      // Search Supabase for an ERP client with the same Razon Social (synced by sync-erp script)
-      const { data: matches } = await supabase
-        .from("clientes")
-        .select("Cl_Cve_Cliente, Cl_Razon_Social")
-        .ilike("Cl_Razon_Social", razonSocial);
-
-      const erpMatches = (matches || []).filter((c) => isErpId(c.Cl_Cve_Cliente));
-
-      if (erpMatches.length === 1) {
-        const erpId = erpMatches[0].Cl_Cve_Cliente;
-
-        // Re-point ALL leads that referenced the CRM prospect to the ERP client
-        await supabase.from("leads")
-          .update({ Cl_Cve_Cliente: erpId })
-          .eq("Cl_Cve_Cliente", oldClientId);
-
-        // Delete the CRM prospect (leads no longer reference it)
-        await supabase.from("clientes").delete().eq("Cl_Cve_Cliente", oldClientId);
-      } else if (erpMatches.length === 0) {
-        erpMigrationWarning = `Cliente "${razonSocial}" no encontrado en el ERP. Asegúrate de correr la sincronización primero.`;
-      } else {
-        erpMigrationWarning = `Se encontraron ${erpMatches.length} clientes con el nombre "${razonSocial}" en el ERP. Verifica cuál es el correcto.`;
+    if (!isErpId(oldClientId)) {
+      const requestedErpId = String(erpClientId || "").trim();
+      if (!requestedErpId) {
+        return res.status(400).json({ error: "Selecciona el ID del cliente ERP para vincular antes de facturar." });
       }
+      if (!isErpId(requestedErpId)) {
+        return res.status(400).json({ error: "El ID del cliente ERP debe ser numérico." });
+      }
+      const { data: erpClient } = await supabase
+        .from("clientes")
+        .select("Cl_Cve_Cliente")
+        .eq("Cl_Cve_Cliente", requestedErpId)
+        .maybeSingle();
+      if (!erpClient) {
+        return res.status(400).json({ error: `No existe un cliente ERP con id ${requestedErpId}.` });
+      }
+
+      // Re-point every lead that referenced the CRM prospect, then retire the prospect.
+      await supabase.from("leads")
+        .update({ Cl_Cve_Cliente: requestedErpId })
+        .eq("Cl_Cve_Cliente", oldClientId);
+      await supabase.from("clientes").delete().eq("Cl_Cve_Cliente", oldClientId);
     }
   }
 
@@ -603,15 +610,15 @@ app.post("/api/leads/:id/status", async (req, res) => {
     status,
     comment: comment || `Status updated to ${status}`,
     evidence_url: evidenceUrl || null,
-    quoted_amount: status === "COTIZADO" ? quotedAmount : null,
+    quoted_amount: status === "COTIZADO" ? effectiveQuotedAmount : null,
     invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
+    rechazo_motivo_id: status === "RECHAZADO" ? (rechazoMotivoId ?? null) : null,
     updated_by: userId || "System",
     timestamp: now,
   });
 
   const leads = await getLeadsWithHistory();
-  const updatedLead = leads.find((l) => l.id === id);
-  res.json(erpMigrationWarning ? { ...updatedLead, erpMigrationWarning } : updatedLead);
+  res.json(leads.find((l) => l.id === id));
 });
 
 // ---------------------------------------------------------------------------
@@ -627,7 +634,7 @@ app.get("/api/clients", async (_req, res) => {
     const { data, error } = await supabase
       .from("clientes")
       .select(`
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Descripcion, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
         Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
       `)
@@ -646,7 +653,8 @@ app.get("/api/clients", async (_req, res) => {
     id: c.Cl_Cve_Cliente,
     name: c.Cl_Contacto_1 || "",
     email: c.Cl_email_contacto_1 || "",
-    company: c.Cl_Razon_Social || "",
+    company: (c.Cl_Razon_Social || "").trim(),
+    tradeName: c.Cl_Descripcion ? String(c.Cl_Descripcion).trim() : undefined,
     rfc: c.Cl_R_F_C || undefined,
     phone: c.Cl_Telefono_1 || undefined,
     city: c.Cl_Ciudad || undefined,
@@ -666,10 +674,12 @@ app.get("/api/clients", async (_req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get("/api/lookups/sucursales", async (_req, res) => {
+  // neq alone excludes NULL rows (PostgREST inherits SQL 3-valued logic),
+  // so explicitly allow NULL to mean "active by default"
   const { data } = await supabase
     .from("sucursales")
     .select("Sc_Cve_Sucursal, Sc_Descripcion, Es_Cve_Estado")
-    .eq("Es_Cve_Estado", "AC");
+    .or("Es_Cve_Estado.is.null,Es_Cve_Estado.neq.BA");
   res.json((data || []).map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion })));
 });
 
@@ -679,6 +689,157 @@ app.get("/api/lookups/segmentos", async (_req, res) => {
     .select("Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado")
     .eq("Es_Cve_Estado", "AC");
   res.json((data || []).map((s) => ({ id: String(s.Sg_Cve_Segmento), name: s.Sg_Descripcion })));
+});
+
+app.get("/api/lookups/rechazo-motivos", async (_req, res) => {
+  const { data, error } = await supabase
+    .from("rechazo_motivos")
+    .select("id, descripcion")
+    .order("id");
+  if (error) console.error("[rechazo-motivos]", error.message);
+  res.json((data || []).map((m) => ({ id: m.id, descripcion: m.descripcion })));
+});
+
+// ---------------------------------------------------------------------------
+// Productos (active only, paginated like /api/clients)
+// ---------------------------------------------------------------------------
+app.get("/api/productos", async (_req, res) => {
+  const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("productos")
+      .select("Pr_Cve_Producto, Pr_Clave_Corta, Pr_Numero_Parte, Pr_Barras, Pr_Descripcion, Pr_Descripcion_Corta, Pr_Unidad_Venta, Es_Cve_Estado")
+      .eq("Es_Cve_Estado", "AC")
+      .order("Pr_Descripcion", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error("[productos] page error:", error.message); break; }
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  res.json(allRows.map((p) => ({
+    id: String(p.Pr_Cve_Producto),
+    claveCorta: p.Pr_Clave_Corta ? String(p.Pr_Clave_Corta).trim() : undefined,
+    numeroParte: p.Pr_Numero_Parte ? String(p.Pr_Numero_Parte).trim() : undefined,
+    barras: p.Pr_Barras ? String(p.Pr_Barras).trim() : undefined,
+    descripcion: (p.Pr_Descripcion || "").trim(),
+    descripcionCorta: p.Pr_Descripcion_Corta ? String(p.Pr_Descripcion_Corta).trim() : undefined,
+    unidadVenta: p.Pr_Unidad_Venta ? String(p.Pr_Unidad_Venta).trim() : undefined,
+    estado: p.Es_Cve_Estado ? String(p.Es_Cve_Estado).trim() : undefined,
+  })));
+});
+
+// ---------------------------------------------------------------------------
+// Productos faltantes (lost sales due to stock-outs)
+// ---------------------------------------------------------------------------
+
+async function fetchFaltantes(filters: { vendedorId?: string } = {}) {
+  let query = supabase
+    .from("productos_faltantes")
+    .select(`
+      id, Vn_Cve_Vendedor, Sc_Cve_Sucursal, Cl_Cve_Cliente, Pr_Cve_Producto,
+      producto_descripcion, cantidad, comentario, estado, created_at, updated_at,
+      vendedores(Vn_Descripcion),
+      sucursales(Sc_Descripcion),
+      clientes(Cl_Razon_Social, Cl_Descripcion)
+    `)
+    .order("created_at", { ascending: false });
+  if (filters.vendedorId) query = query.eq("Vn_Cve_Vendedor", filters.vendedorId);
+  const { data, error } = await query;
+  if (error) { console.error("[faltantes]", error.message); return []; }
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    vendedorId: String(r.Vn_Cve_Vendedor || ""),
+    vendedorName: r.vendedores?.Vn_Descripcion || undefined,
+    sucursalId: r.Sc_Cve_Sucursal ? String(r.Sc_Cve_Sucursal) : undefined,
+    sucursalName: r.sucursales?.Sc_Descripcion || undefined,
+    clienteId: r.Cl_Cve_Cliente ? String(r.Cl_Cve_Cliente) : null,
+    clienteName: r.clientes
+      ? (String(r.clientes.Cl_Descripcion || r.clientes.Cl_Razon_Social || "").trim() || null)
+      : null,
+    productoId: r.Pr_Cve_Producto ? String(r.Pr_Cve_Producto) : null,
+    productoDescripcion: r.producto_descripcion || "",
+    cantidad: Number(r.cantidad || 0),
+    comentario: r.comentario || "",
+    estado: r.estado as "pendiente" | "resuelto",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+app.get("/api/productos-faltantes", async (req, res) => {
+  const vendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+  res.json(await fetchFaltantes({ vendedorId }));
+});
+
+app.post("/api/productos-faltantes", async (req, res) => {
+  const { userId, productoId, productoDescripcion, cantidad, comentario, clienteId } = req.body;
+  if (!userId) return res.status(400).json({ error: "Falta el id del vendedor." });
+  if (!productoDescripcion || !String(productoDescripcion).trim()) {
+    return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
+  }
+  if (!cantidad || Number(cantidad) <= 0) {
+    return res.status(400).json({ error: "La cantidad debe ser mayor a 0." });
+  }
+
+  const { data: seller } = await supabase
+    .from("vendedores")
+    .select("Sc_Cve_Sucursal")
+    .eq("Vn_Cve_Vendedor", userId)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const id = Math.random().toString(36).substr(2, 12);
+
+  const { error } = await supabase.from("productos_faltantes").insert({
+    id,
+    Vn_Cve_Vendedor: userId,
+    Sc_Cve_Sucursal: seller?.Sc_Cve_Sucursal || null,
+    Cl_Cve_Cliente: clienteId || null,
+    Pr_Cve_Producto: productoId || null,
+    producto_descripcion: String(productoDescripcion).trim(),
+    cantidad: Number(cantidad),
+    comentario: comentario ? String(comentario).trim() : "",
+    estado: "pendiente",
+    created_at: now,
+    updated_at: now,
+  });
+  if (error) return res.status(400).json({ error: error.message });
+
+  const all = await fetchFaltantes();
+  res.status(201).json(all.find((f) => f.id === id));
+});
+
+app.patch("/api/productos-faltantes/:id", async (req, res) => {
+  const { id } = req.params;
+  const { estado, comentario, productoId, productoDescripcion, cantidad, clienteId } = req.body;
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (estado === "pendiente" || estado === "resuelto") updates.estado = estado;
+  if (typeof comentario === "string") updates.comentario = comentario.trim();
+  if (productoId !== undefined) updates.Pr_Cve_Producto = productoId || null;
+  if (typeof productoDescripcion === "string") {
+    if (!productoDescripcion.trim()) {
+      return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
+    }
+    updates.producto_descripcion = productoDescripcion.trim();
+  }
+  if (cantidad !== undefined) {
+    if (!cantidad || Number(cantidad) <= 0) {
+      return res.status(400).json({ error: "La cantidad debe ser mayor a 0." });
+    }
+    updates.cantidad = Number(cantidad);
+  }
+  if (clienteId !== undefined) updates.Cl_Cve_Cliente = clienteId || null;
+
+  const { error } = await supabase.from("productos_faltantes").update(updates).eq("id", id);
+  if (error) return res.status(400).json({ error: error.message });
+
+  const all = await fetchFaltantes();
+  res.json(all.find((f) => f.id === id));
 });
 
 export default app;

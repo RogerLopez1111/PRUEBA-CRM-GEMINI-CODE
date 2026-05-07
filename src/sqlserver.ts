@@ -34,13 +34,15 @@ function mapErpClient(c: Record<string, any>) {
     id: String(c.Cl_Cve_Cliente ?? ''),
     name: String(c.Cl_Contacto_1 ?? ''),
     email: String(c.Cl_email_contacto_1 ?? ''),
-    company: String(c.Cl_Razon_Social ?? ''),
+    company: String(c.Cl_Razon_Social ?? '').trim(),
+    tradeName: c.Cl_Descripcion ? String(c.Cl_Descripcion).trim() : undefined,
     rfc: c.Cl_R_F_C ? String(c.Cl_R_F_C) : undefined,
     phone: c.Cl_Telefono_1 ? String(c.Cl_Telefono_1) : undefined,
     city: c.Cl_Ciudad ? String(c.Cl_Ciudad) : undefined,
     state: c.Cl_Estado ? String(c.Cl_Estado) : undefined,
     sucursalId: c.Sc_Cve_Sucursal ? String(c.Sc_Cve_Sucursal) : undefined,
     segmentoId: c.Sg_Cve_Segmento ? String(c.Sg_Cve_Segmento) : undefined,
+    estado: c.Es_Cve_Estado ? String(c.Es_Cve_Estado).trim() : undefined,
     createdAt: c.Fecha_Alta instanceof Date ? c.Fecha_Alta.toISOString() : new Date().toISOString(),
     source: 'erp' as const,
   };
@@ -135,15 +137,28 @@ export async function getErpClients(): Promise<ReturnType<typeof mapErpClient>[]
     const p = await getPool();
     const r = await p.request().query(`
       SELECT
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Descripcion, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
-        Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
+        Sc_Cve_Sucursal, Sg_Cve_Segmento, Es_Cve_Estado, Fecha_Alta
       FROM Cliente
       ORDER BY Cl_Razon_Social
     `);
     return r.recordset.map(mapErpClient);
   } catch (err) {
     console.error('[MSSQL] getErpClients:', err);
+    return [];
+  }
+}
+
+// Raw SELECT * used by the sync script to mirror every ERP column into Supabase.
+// Date columns come back as JS Date objects; callers must normalize before writing.
+export async function getErpClientsRaw(): Promise<Record<string, any>[]> {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`SELECT * FROM Cliente ORDER BY Cl_Razon_Social`);
+    return r.recordset;
+  } catch (err) {
+    console.error('[MSSQL] getErpClientsRaw:', err);
     return [];
   }
 }
@@ -157,9 +172,9 @@ export async function findErpClientByRazonSocial(razonSocial: string): Promise<R
     req.input('razon', sql.NVarChar, razonSocial.trim());
     const r = await req.query(`
       SELECT TOP 10
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Descripcion, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
-        Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
+        Sc_Cve_Sucursal, Sg_Cve_Segmento, Es_Cve_Estado, Fecha_Alta
       FROM Cliente
       WHERE LOWER(LTRIM(RTRIM(Cl_Razon_Social))) = LOWER(LTRIM(RTRIM(@razon)))
         AND Es_Cve_Estado = 'AC'
@@ -171,6 +186,30 @@ export async function findErpClientByRazonSocial(razonSocial: string): Promise<R
   }
 }
 
+// ---------------------------------------------------------------------------
+// Productos (read-only from ERP)
+// Tier-1 column subset: identity / search / status / unit / audit dates.
+// Mirrored to Supabase `productos` for the lost-sales picker.
+// ---------------------------------------------------------------------------
+
+export async function getProductosRaw(): Promise<Record<string, any>[]> {
+  try {
+    const p = await getPool();
+    const r = await p.request().query(`
+      SELECT
+        Pr_Cve_Producto, Pr_Clave_Corta, Pr_Numero_Parte, Pr_Barras,
+        Pr_Descripcion, Pr_Descripcion_Corta, Pr_Unidad_Venta,
+        Es_Cve_Estado, Fecha_Alta, Fecha_Ult_Modif, Fecha_Baja
+      FROM Producto
+      ORDER BY Pr_Descripcion
+    `);
+    return r.recordset;
+  } catch (err) {
+    console.error('[MSSQL] getProductosRaw:', err);
+    return [];
+  }
+}
+
 export async function getErpClientById(id: string): Promise<ReturnType<typeof mapErpClient> | null> {
   try {
     const p = await getPool();
@@ -178,9 +217,9 @@ export async function getErpClientById(id: string): Promise<ReturnType<typeof ma
     req.input('id', sql.NVarChar, id);
     const r = await req.query(`
       SELECT TOP 1
-        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Contacto_1, Cl_email_contacto_1,
+        Cl_Cve_Cliente, Cl_Razon_Social, Cl_Descripcion, Cl_Contacto_1, Cl_email_contacto_1,
         Cl_R_F_C, Cl_Telefono_1, Cl_Ciudad, Cl_Estado,
-        Sc_Cve_Sucursal, Sg_Cve_Segmento, Fecha_Alta
+        Sc_Cve_Sucursal, Sg_Cve_Segmento, Es_Cve_Estado, Fecha_Alta
       FROM Cliente
       WHERE Cl_Cve_Cliente = @id
     `);
