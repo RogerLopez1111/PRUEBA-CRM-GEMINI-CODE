@@ -3127,8 +3127,6 @@ export default function App() {
                           <TableRow className="bg-slate-50/50">
                             <TableHead className="font-semibold">Usuario</TableHead>
                             <TableHead className="font-semibold">Rol</TableHead>
-                            <TableHead className="font-semibold">Carga de Trabajo</TableHead>
-                            <TableHead className="font-semibold">Valor del Pipeline</TableHead>
                             <TableHead className="font-semibold">Meta de Ventas ($)</TableHead>
                             <TableHead className="text-right font-semibold">Acciones</TableHead>
                           </TableRow>
@@ -3163,36 +3161,10 @@ export default function App() {
                                 </Select>
                               </TableCell>
                               <TableCell>
-                                <div className="flex flex-col gap-1.5 w-32">
-                                  <div className="flex justify-between text-[10px] font-bold">
-                                    <span>{user.workload?.activeLeads || 0} Leads</span>
-                                    <span className={
-                                      (user.workload?.activeLeads || 0) > 10 ? "text-red-500" : 
-                                      (user.workload?.activeLeads || 0) > 5 ? "text-orange-500" : "text-green-500"
-                                    }>
-                                      {(user.workload?.activeLeads || 0) > 10 ? "Alta" : 
-                                       (user.workload?.activeLeads || 0) > 5 ? "Media" : "Baja"}
-                                    </span>
-                                  </div>
-                                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                    <div 
-                                      className={`h-full transition-all ${
-                                        (user.workload?.activeLeads || 0) > 10 ? "bg-red-500" : 
-                                        (user.workload?.activeLeads || 0) > 5 ? "bg-orange-500" : "bg-green-500"
-                                      }`}
-                                      style={{ width: `${Math.min(((user.workload?.activeLeads || 0) / 15) * 100, 100)}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                ${(user.workload?.pipelineValue || 0).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <Input 
-                                    type="number" 
-                                    className="w-28 h-8" 
+                                  <Input
+                                    type="number"
+                                    className="w-28 h-8"
                                     defaultValue={user.performance.salesGoal}
                                     onBlur={(e) => {
                                       const newVal = Number(e.target.value);
