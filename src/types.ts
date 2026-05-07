@@ -106,6 +106,36 @@ export interface Product {
   estado?: string;       // Es_Cve_Estado ('AC' | 'BA')
 }
 
+// Maps to Supabase `pedidos_extraordinarios` (CRM-only) — formal request to procure
+// a product outside the regular buy windows because a client (tied to an active lead)
+// is willing to wait up to 10 days. Distinct from faltantes (which are *lost* sales).
+export type PedidoExtraordinarioEstado = 'solicitado' | 'aprobado' | 'rechazado' | 'cancelado';
+export interface PedidoExtraordinario {
+  id: string;
+  vendedorId: string;
+  vendedorName?: string;
+  sucursalId?: string;
+  sucursalName?: string;
+  leadId: string;
+  leadCompany?: string;
+  leadStatus?: LeadStatus;
+  clienteId: string | null;     // denormalized from lead.clientId
+  clienteName?: string | null;
+  productoId?: string | null;
+  productoDescripcion: string;
+  cantidad: number;
+  valorEstimado: number;        // estimated sale value if fulfilled
+  compromisoDias: number;       // 1..10 — days client is willing to wait
+  justificacion: string;
+  estado: PedidoExtraordinarioEstado;
+  resolucionComentario?: string;  // comment from admin when approved/rejected
+  resueltoPor?: string;           // admin user id who resolved
+  resueltoPorName?: string;
+  resueltoAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Maps to Supabase `productos_faltantes` (CRM-only) — log of stock-out lost sales
 export type ProductoFaltanteEstado = 'pendiente' | 'resuelto';
 export interface ProductoFaltante {
