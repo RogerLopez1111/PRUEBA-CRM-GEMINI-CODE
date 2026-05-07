@@ -423,7 +423,7 @@ export default function App() {
     clientInitiated: false,
     mostrador: false,
   });
-  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller" | "Compras", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [isStatusUpdateOpen, setIsStatusUpdateOpen] = useState(false);
@@ -1374,7 +1374,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateRole = async (userId: string, role: "Admin" | "Seller") => {
+  const handleUpdateRole = async (userId: string, role: "Admin" | "Seller" | "Compras") => {
     try {
       const res = await fetch(`/api/users/${userId}/role`, {
         method: "POST",
@@ -1627,25 +1627,29 @@ export default function App() {
       </header>
 
       <main className="container mx-auto px-2 md:px-4 py-4 md:py-8">
-        <Tabs defaultValue={currentUser.role === "Admin" ? "admin" : "my-leads"} className="space-y-6 md:space-y-8">
+        <Tabs defaultValue={currentUser.role === "Compras" ? "pedidos" : currentUser.role === "Admin" ? "admin" : "my-leads"} className="space-y-6 md:space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <TabsList variant="line" className="h-12 w-full md:w-auto overflow-x-auto border-b">
-              <TabsTrigger value="my-leads" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
-                <UserCheck className="w-4 h-4" />
-                <span className="hidden sm:inline">Mis Leads</span>
-              </TabsTrigger>
-              <TabsTrigger value="kanban" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
-                <Kanban className="w-4 h-4" />
-                <span className="hidden sm:inline">Pipeline</span>
-              </TabsTrigger>
-              <TabsTrigger value="performance" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Rendimiento</span>
-              </TabsTrigger>
-              <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="hidden sm:inline">Faltantes</span>
-              </TabsTrigger>
+              {currentUser.role !== "Compras" && (
+                <>
+                  <TabsTrigger value="my-leads" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                    <UserCheck className="w-4 h-4" />
+                    <span className="hidden sm:inline">Mis Leads</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="kanban" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                    <Kanban className="w-4 h-4" />
+                    <span className="hidden sm:inline">Pipeline</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="performance" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                    <BarChart3 className="w-4 h-4" />
+                    <span className="hidden sm:inline">Rendimiento</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Faltantes</span>
+                  </TabsTrigger>
+                </>
+              )}
               <TabsTrigger value="pedidos" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <Clock className="w-4 h-4" />
                 <span className="hidden sm:inline">Pedidos Extraordinarios</span>
@@ -1659,6 +1663,7 @@ export default function App() {
             </TabsList>
 
             <div className="flex items-center gap-2">
+              {currentUser.role !== "Compras" && (
               <Dialog open={isNewLeadOpen} onOpenChange={setIsNewLeadOpen}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
@@ -1882,6 +1887,7 @@ export default function App() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              )}
             </div>
           </div>
 
@@ -3253,6 +3259,7 @@ export default function App() {
                 <h2 className="text-2xl font-bold tracking-tight">Pedidos Extraordinarios</h2>
                 <p className="text-slate-500">Solicita la compra de un producto fuera de las ventanas regulares cuando el cliente está dispuesto a esperar (máx. 10 días).</p>
               </div>
+              {currentUser.role !== "Compras" && (
               <Dialog open={isPedidoOpen} onOpenChange={(open) => { setIsPedidoOpen(open); if (!open) resetPedidoForm(); }}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
@@ -3462,6 +3469,7 @@ export default function App() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              )}
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
@@ -3512,7 +3520,7 @@ export default function App() {
               </div>
             </div>
 
-            {currentUser.role === "Admin" && (
+            {(currentUser.role === "Admin" || currentUser.role === "Compras") && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Card className="bg-white">
                   <CardHeader className="pb-1 pt-3">
@@ -3586,6 +3594,8 @@ export default function App() {
                   };
                   const isOwner = p.vendedorId === currentUser.id;
                   const isAdmin = currentUser.role === "Admin";
+                  const isCompras = currentUser.role === "Compras";
+                  const canResolve = (isAdmin || isCompras) && p.estado === "solicitado";
                   const canSellerCancel = isOwner && p.estado === "solicitado";
                   return (
                     <Card key={p.id} className="bg-white">
@@ -3601,7 +3611,7 @@ export default function App() {
                             <span>Valor: <span className="font-semibold text-slate-700">${p.valorEstimado.toLocaleString()}</span></span>
                             <span>Compromiso: <span className="font-semibold text-slate-700">{p.compromisoDias}d</span></span>
                             <span>Lead: <span className="font-medium text-slate-700">{p.leadCompany || p.leadId}</span></span>
-                            {isAdmin && p.vendedorName && <span>Vendedor: <span className="font-medium text-slate-700">{p.vendedorName}</span></span>}
+                            {(isAdmin || isCompras) && p.vendedorName && <span>Vendedor: <span className="font-medium text-slate-700">{p.vendedorName}</span></span>}
                             {p.sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{p.sucursalName}</span></span>}
                             <span>Solicitado: {new Date(p.createdAt).toLocaleDateString()}</span>
                             {p.resueltoAt && <span>Resuelto: {new Date(p.resueltoAt).toLocaleDateString()}{p.resueltoPorName ? ` por ${p.resueltoPorName}` : ""}</span>}
@@ -3614,7 +3624,7 @@ export default function App() {
                           )}
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                          {isAdmin && p.estado === "solicitado" && (
+                          {canResolve && (
                             <>
                               <Button size="sm" variant="default" onClick={() => setResolvePedido({ id: p.id, action: "aprobar", comment: "" })}>Aprobar</Button>
                               <Button size="sm" variant="outline" onClick={() => setResolvePedido({ id: p.id, action: "rechazar", comment: "" })}>Rechazar</Button>
@@ -3723,7 +3733,7 @@ export default function App() {
                                   <label className="text-sm font-medium">Rol</label>
                                   <Select 
                                     value={newUser.role} 
-                                    onValueChange={(val) => setNewUser({...newUser, role: val as "Admin" | "Seller"})}
+                                    onValueChange={(val) => setNewUser({...newUser, role: val as "Admin" | "Seller" | "Compras"})}
                                   >
                                     <SelectTrigger>
                                       <SelectValue />
@@ -3731,6 +3741,7 @@ export default function App() {
                                     <SelectContent>
                                       <SelectItem value="Admin">Admin</SelectItem>
                                       <SelectItem value="Seller">Vendedor</SelectItem>
+                                      <SelectItem value="Compras">Compras</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -3827,7 +3838,7 @@ export default function App() {
                               <TableCell>
                                 <Select 
                                   value={user.role} 
-                                  onValueChange={(val) => handleUpdateRole(user.id, val as "Admin" | "Seller")}
+                                  onValueChange={(val) => handleUpdateRole(user.id, val as "Admin" | "Seller" | "Compras")}
                                 >
                                   <SelectTrigger className="w-[110px] h-8">
                                     <SelectValue />
@@ -3835,6 +3846,7 @@ export default function App() {
                                   <SelectContent>
                                     <SelectItem value="Admin">Admin</SelectItem>
                                     <SelectItem value="Seller">Vendedor</SelectItem>
+                                    <SelectItem value="Compras">Compras</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </TableCell>

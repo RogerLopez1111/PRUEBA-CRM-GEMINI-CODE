@@ -984,12 +984,20 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
   if (fetchErr || !existing) return res.status(404).json({ error: "Pedido no encontrado." });
 
   const isAdmin = actorRole === "Admin";
+  const isCompras = actorRole === "Compras";
   const isOwner = actorId && actorId === existing.Vn_Cve_Vendedor;
 
   // Permission check.
-  if (!isAdmin && !isOwner) return res.status(403).json({ error: "No autorizado." });
-  // Sellers can only cancel their own pending request.
-  if (!isAdmin) {
+  if (!isAdmin && !isCompras && !isOwner) return res.status(403).json({ error: "No autorizado." });
+  // Compras can only resolve a pending pedido as aprobado or rechazado.
+  if (isCompras && !isAdmin) {
+    if (estado !== "aprobado" && estado !== "rechazado") {
+      return res.status(403).json({ error: "Compras solo puede aprobar o rechazar pedidos." });
+    }
+    if (existing.estado !== "solicitado") return res.status(409).json({ error: "Pedido ya resuelto." });
+  }
+  // Sellers (non-admin, non-compras) can only cancel their own pending request.
+  if (!isAdmin && !isCompras) {
     if (estado !== "cancelado") return res.status(403).json({ error: "Como vendedor solo puedes cancelar tu propio pedido." });
     if (existing.estado !== "solicitado") return res.status(409).json({ error: "Solo se puede cancelar un pedido pendiente." });
   }
@@ -1036,7 +1044,7 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
     if (typeof justificacion === "string") updates.justificacion = justificacion.trim();
     if (typeof resolucionComentario === "string") updates.resolucion_comentario = resolucionComentario.trim();
   } else if (typeof resolucionComentario === "string") {
-    // Sellers can attach a cancellation comment.
+    // Compras attaches the approve/reject comment; sellers attach a cancel comment.
     updates.resolucion_comentario = resolucionComentario.trim();
   }
 

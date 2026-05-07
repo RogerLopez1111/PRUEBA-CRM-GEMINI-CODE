@@ -80,7 +80,7 @@ export interface User {
   id: string;           // Vn_Cve_Vendedor
   name: string;         // Vn_Descripcion
   email: string;        // Vn_Email
-  role: 'Admin' | 'Seller'; // Vn_Perfil
+  role: 'Admin' | 'Seller' | 'Compras'; // Vn_Perfil — Compras only sees Pedidos Extraordinarios and can approve/reject
   sucursalId: string;   // Sc_Cve_Sucursal
   performance: {
     totalClosed: number;
