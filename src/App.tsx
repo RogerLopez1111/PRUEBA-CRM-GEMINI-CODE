@@ -394,7 +394,6 @@ export default function App() {
 
   // Admin Hub Filters
   const [adminFilterSeller, setAdminFilterSeller] = useState<string>("all");
-  const [adminFilterStatus, setAdminFilterStatus] = useState<string>("all");
   const [adminFilterSucursal, setAdminFilterSucursal] = useState<string>("all");
   const [adminFilterSegmento, setAdminFilterSegmento] = useState<string>("all");
   const [adminSearch, setAdminSearch] = useState("");
@@ -600,6 +599,85 @@ export default function App() {
       productosNuevos,
     };
   }, [filteredFaltantes, faltantes, currentUser, faltantesFilterSucursal]);
+
+  // Admin "Carga de Trabajo" insights — per-vendedor stats and the stuck-leads
+  // intervention pile. Reuses the admin filters already on screen (search,
+  // vendedor, sucursal). Estado is intentionally not used here: workload is
+  // about active and stuck leads, not arbitrary statuses.
+  const workloadInsights = useMemo(() => {
+    const isActive = (s: LeadStatus) => s !== "FACTURADO" && s !== "ENTREGADO" && s !== "RECHAZADO";
+    const isClosed = (s: LeadStatus) => s === "FACTURADO" || s === "ENTREGADO";
+    const now = new Date();
+    const currYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const sucursalIdFilter: string | null = adminFilterSucursal === "all" ? null : (sucursales.find((s: { id: string; name: string }) => s.name === adminFilterSucursal)?.id || null);
+    const vendedorIdFilter: string | null = adminFilterSeller !== "all" && adminFilterSeller !== "unassigned" ? adminFilterSeller : null;
+    const q = adminSearch.trim().toLowerCase();
+
+    const matchUserSearch = (u: User) => !q || u.name.toLowerCase().includes(q);
+
+    const filteredUsers: User[] = users.filter((u: User) => {
+      if (sucursalIdFilter && u.sucursalId !== sucursalIdFilter) return false;
+      if (vendedorIdFilter && u.id !== vendedorIdFilter) return false;
+      if (!matchUserSearch(u)) return false;
+      return true;
+    });
+
+    type WorkloadStat = {
+      user: User;
+      sucursalName: string;
+      activeLeads: number;
+      pipelineValue: number;
+      stuckCount: number;
+      closedThisMonth: number;
+      convPct: number;
+    };
+    const stats: WorkloadStat[] = filteredUsers.map((u: User) => {
+      const userLeads: Lead[] = leads.filter((l: Lead) => l.assignedTo === u.id);
+      const activeLeads: Lead[] = userLeads.filter((l: Lead) => isActive(l.status));
+      const pipelineValue = activeLeads.reduce((acc: number, l: Lead) => acc + (l.value || 0), 0);
+      const stuckCount = activeLeads.filter((l: Lead) => getStuckLevel(l.updatedAt) !== "normal").length;
+      const closedThisMonth = userLeads.filter((l: Lead) => {
+        if (!isClosed(l.status)) return false;
+        const d = new Date(l.updatedAt);
+        if (isNaN(d.getTime())) return false;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currYm;
+      }).length;
+      const closedTotal = userLeads.filter((l: Lead) => isClosed(l.status)).length;
+      const convPct = userLeads.length ? Math.round((closedTotal / userLeads.length) * 100) : 0;
+      return {
+        user: u,
+        sucursalName: sucursales.find((s: { id: string; name: string }) => s.id === u.sucursalId)?.name || "—",
+        activeLeads: activeLeads.length,
+        pipelineValue,
+        stuckCount,
+        closedThisMonth,
+        convPct,
+      };
+    }).sort((a: WorkloadStat, b: WorkloadStat) => b.activeLeads - a.activeLeads || b.pipelineValue - a.pipelineValue);
+
+    const teamAvgConv = stats.length ? Math.round(stats.reduce((acc: number, x: WorkloadStat) => acc + x.convPct, 0) / stats.length) : 0;
+
+    const rank = (lvl: string) => lvl === "critical" ? 0 : lvl === "warning" ? 1 : 2;
+    const stuckLeads: Lead[] = leads.filter((l: Lead) => {
+      if (!isActive(l.status)) return false;
+      if (getStuckLevel(l.updatedAt) === "normal") return false;
+      if (vendedorIdFilter && l.assignedTo !== vendedorIdFilter) return false;
+      if (adminFilterSeller === "unassigned" && l.assignedTo) return false;
+      if (sucursalIdFilter) {
+        const owner = users.find((u: User) => u.id === l.assignedTo);
+        if (!owner || owner.sucursalId !== sucursalIdFilter) return false;
+      }
+      if (q && !l.name.toLowerCase().includes(q) && !l.company.toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a: Lead, b: Lead) => {
+      const la = getStuckLevel(a.updatedAt), lb = getStuckLevel(b.updatedAt);
+      if (rank(la) !== rank(lb)) return rank(la) - rank(lb);
+      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    });
+
+    return { stats, teamAvgConv, stuckLeads };
+  }, [leads, users, sucursales, adminFilterSeller, adminFilterSucursal, adminSearch]);
 
   const kanbanMonthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -3375,114 +3453,145 @@ export default function App() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-brand-gray ml-1">Estado</p>
-                          <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
-                            <SelectTrigger className="w-[150px] h-9">
-                              <SelectValue placeholder="Todos los Estados" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">Todos los Estados</SelectItem>
-                              <SelectItem value="ASIGNADO">Asignado</SelectItem>
-                              <SelectItem value="CONTACTADO">Contactado</SelectItem>
-                              <SelectItem value="NEGOCIACION">Negociación</SelectItem>
-                              <SelectItem value="COTIZADO">Cotizado</SelectItem>
-                              <SelectItem value="FACTURADO">Facturado</SelectItem>
-                              <SelectItem value="ENTREGADO">Entregado</SelectItem>
-                              <SelectItem value="RECHAZADO">Rechazado</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {leads
-                        .filter(l => {
-                          const matchesSeller = adminFilterSeller === "all" || 
-                                              (adminFilterSeller === "unassigned" && !l.assignedTo) || 
-                                              l.assignedTo === adminFilterSeller;
-                          const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
-                          const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
-                                              l.company.toLowerCase().includes(adminSearch.toLowerCase());
-                          return matchesSeller && matchesStatus && matchesSearch;
-                        })
-                        .map((lead) => {
-                          const stuckLevel = getStuckLevel(lead.updatedAt);
-                          return (
-                            <Card key={lead.id} className={cn(
-                              "bg-white hover:bg-slate-50 transition-colors cursor-pointer relative overflow-hidden",
-                              stuckLevel === "critical" && "border-red-300 bg-red-50/40",
-                              stuckLevel === "warning" && "border-orange-300 bg-orange-50/40"
-                            )} onClick={() => openStatusUpdate(lead)}>
-                              {stuckLevel !== "normal" && (
+                    <Card className="bg-white">
+                      <CardHeader className="pb-2">
+                        <div className="flex flex-col md:flex-row md:items-end justify-between gap-2">
+                          <div>
+                            <CardTitle className="text-base font-bold text-brand-navy">Carga por vendedor</CardTitle>
+                            <CardDescription className="text-[11px]">Volumen activo, valor de pipeline y conversión por persona. Conversión promedio del equipo: <span className="font-semibold text-brand-navy">{workloadInsights.teamAvgConv}%</span></CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        {workloadInsights.stats.length === 0 ? (
+                          <div className="py-10 text-center text-xs text-slate-400">Sin vendedores que coincidan con los filtros actuales.</div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="text-[10px]">Vendedor</TableHead>
+                                <TableHead className="text-[10px]">Sucursal</TableHead>
+                                <TableHead className="text-[10px] text-right">Carga</TableHead>
+                                <TableHead className="text-[10px] text-right">Pipeline</TableHead>
+                                <TableHead className="text-[10px] text-right">Stuck &gt;1d</TableHead>
+                                <TableHead className="text-[10px] text-right">Cerrados (mes)</TableHead>
+                                <TableHead className="text-[10px] text-right">Conv. %</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {workloadInsights.stats.map((s: { user: User; sucursalName: string; activeLeads: number; pipelineValue: number; stuckCount: number; closedThisMonth: number; convPct: number }) => {
+                                const loadColor = s.activeLeads > 10 ? "text-red-600" : s.activeLeads > 5 ? "text-orange-600" : "text-emerald-600";
+                                const loadBar = s.activeLeads > 10 ? "bg-red-500" : s.activeLeads > 5 ? "bg-orange-500" : "bg-emerald-500";
+                                const convColor = s.convPct >= workloadInsights.teamAvgConv ? "text-emerald-700" : "text-amber-700";
+                                return (
+                                  <TableRow key={s.user.id}>
+                                    <TableCell className="text-xs">
+                                      <div className="font-medium text-slate-900">{s.user.name}</div>
+                                      <div className="text-[10px] text-slate-400">{s.user.role}</div>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-slate-600">{s.sucursalName}</TableCell>
+                                    <TableCell className="text-right text-xs">
+                                      <div className={`font-bold ${loadColor}`}>{s.activeLeads}</div>
+                                      <div className="h-1 w-16 ml-auto bg-slate-100 rounded-full overflow-hidden mt-0.5">
+                                        <div className={`h-full ${loadBar}`} style={{ width: `${Math.min((s.activeLeads / 15) * 100, 100)}%` }} />
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-right text-xs font-mono">${s.pipelineValue.toLocaleString()}</TableCell>
+                                    <TableCell className="text-right text-xs">
+                                      <span className={s.stuckCount > 0 ? "font-bold text-red-600" : "text-slate-400"}>{s.stuckCount}</span>
+                                    </TableCell>
+                                    <TableCell className="text-right text-xs font-semibold text-slate-700">{s.closedThisMonth}</TableCell>
+                                    <TableCell className={`text-right text-xs font-bold ${convColor}`}>{s.convPct}%</TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-orange-500" />
+                        <h3 className="text-lg font-bold">Necesita intervención</h3>
+                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                          {workloadInsights.stuckLeads.length} {workloadInsights.stuckLeads.length === 1 ? "lead" : "leads"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-slate-500 -mt-1">Leads activos sin actualización en más de 24 h. Críticos rojos: sin movimiento en más de 3 días.</p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {workloadInsights.stuckLeads.length === 0 ? (
+                          <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border-2 border-dashed border-slate-100">
+                            <CheckCircle2 className="w-8 h-8 mb-2 opacity-30 text-emerald-500" />
+                            <p className="text-sm">Sin leads atascados en el filtro actual.</p>
+                          </div>
+                        ) : (
+                          workloadInsights.stuckLeads.map((lead: Lead) => {
+                            const stuckLevel = getStuckLevel(lead.updatedAt);
+                            return (
+                              <Card key={lead.id} className={cn(
+                                "bg-white hover:bg-slate-50 transition-colors cursor-pointer relative overflow-hidden",
+                                stuckLevel === "critical" && "border-red-300 bg-red-50/40",
+                                stuckLevel === "warning" && "border-orange-300 bg-orange-50/40"
+                              )} onClick={() => openStatusUpdate(lead)}>
                                 <div className={cn(
                                   "absolute top-0 right-0 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white rounded-bl-lg",
                                   stuckLevel === "critical" ? "bg-red-500" : "bg-orange-500"
                                 )}>
                                   {stuckLevel === "critical" ? "Retraso Crítico" : "Retrasado"}
                                 </div>
-                              )}
-                              <CardHeader className="p-4 pb-2">
-                                <div className="flex items-center justify-between mb-1">
-                                  {getStatusBadge(lead.status)}
-                                  <span className="text-xs font-medium text-brand-gray">ID: {lead.id}</span>
-                                </div>
-                                <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
-                                <CardDescription className="text-xs">{lead.company}</CardDescription>
-                              </CardHeader>
-                              <CardContent className="p-4 pt-2 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs text-slate-500">Valor</span>
-                                  <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
-                                </div>
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                <CardHeader className="p-4 pb-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    {getStatusBadge(lead.status)}
+                                    <span className="text-xs font-medium text-brand-gray">ID: {lead.id}</span>
+                                  </div>
+                                  <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
+                                  <CardDescription className="text-xs">{lead.company}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="p-4 pt-2 space-y-3">
                                   <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold">
-                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name.charAt(0) : "?"}
+                                    <span className="text-xs text-slate-500">Valor</span>
+                                    <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
+                                  </div>
+                                  <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold">
+                                          {lead.assignedTo ? users.find((u: User) => u.id === lead.assignedTo)?.name.charAt(0) : "?"}
+                                        </div>
+                                        <span className="text-xs text-slate-600">
+                                          {lead.assignedTo ? users.find((u: User) => u.id === lead.assignedTo)?.name : "Sin asignar"}
+                                        </span>
                                       </div>
-                                      <span className="text-xs text-slate-600">
-                                        {lead.assignedTo ? users.find(u => u.id === lead.assignedTo)?.name : "Sin asignar"}
-                                      </span>
+                                      <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                        <Clock className="w-3 h-3" />
+                                        <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                                      <Clock className="w-3 h-3" />
-                                      <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between bg-slate-50/50 p-2 rounded-lg">
-                                    <span className="text-[10px] font-medium text-slate-500">Tiempo de la última actualización:</span>
-                                    <div className="flex items-center gap-1">
-                                      {stuckLevel !== "normal" && <AlertTriangle className={cn("w-3 h-3", stuckLevel === "critical" ? "text-red-500" : "text-orange-500")} />}
-                                      <span className={cn(
-                                        "text-[10px] font-bold",
-                                        stuckLevel === "critical" ? "text-red-600" : 
-                                        stuckLevel === "warning" ? "text-orange-600" : "text-slate-600"
-                                      )}>
-                                        {getTimeStuck(lead.updatedAt)}
-                                      </span>
+                                    <div className="flex items-center justify-between bg-slate-50/50 p-2 rounded-lg">
+                                      <span className="text-[10px] font-medium text-slate-500">Tiempo sin actualizar:</span>
+                                      <div className="flex items-center gap-1">
+                                        <AlertTriangle className={cn("w-3 h-3", stuckLevel === "critical" ? "text-red-500" : "text-orange-500")} />
+                                        <span className={cn(
+                                          "text-[10px] font-bold",
+                                          stuckLevel === "critical" ? "text-red-600" : "text-orange-600"
+                                        )}>
+                                          {getTimeStuck(lead.updatedAt)}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      {leads.filter(l => {
-                          const matchesSeller = adminFilterSeller === "all" || 
-                                              (adminFilterSeller === "unassigned" && !l.assignedTo) || 
-                                              l.assignedTo === adminFilterSeller;
-                          const matchesStatus = adminFilterStatus === "all" || l.status === adminFilterStatus;
-                          const matchesSearch = l.name.toLowerCase().includes(adminSearch.toLowerCase()) || 
-                                              l.company.toLowerCase().includes(adminSearch.toLowerCase());
-                          return matchesSeller && matchesStatus && matchesSearch;
-                        }).length === 0 && (
-                        <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border-2 border-dashed border-slate-100">
-                          <Filter className="w-8 h-8 mb-2 opacity-20" />
-                          <p className="text-sm">No hay leads que coincidan con los filtros actuales.</p>
-                        </div>
-                      )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
