@@ -186,8 +186,13 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBad
           </span>
         </div>
 
-        {(lead.segmento || lead.sucursal) && (
+        {(lead.segmento || lead.sucursal || lead.mostrador) && (
           <div className="flex flex-wrap gap-1.5 mb-3">
+            {lead.mostrador && (
+              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                Mostrador
+              </span>
+            )}
             {lead.segmento && (
               <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
                 {lead.segmento}
@@ -395,6 +400,7 @@ export default function App() {
     clientId: "",
     assignedTo: "",
     clientInitiated: false,
+    mostrador: false,
   });
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Seller" as "Admin" | "Seller", salesGoal: 50000, sucursal: "" });
   const [loginEmail, setLoginEmail] = useState("");
@@ -1061,6 +1067,7 @@ export default function App() {
           clientId: "",
           assignedTo: "",
           clientInitiated: false,
+          mostrador: false,
         });
         fetchData();
       } else {
@@ -1548,7 +1555,20 @@ export default function App() {
                         <span className="text-[11px] text-slate-500">Marcar si fue el cliente quien inició el contacto.</span>
                       </div>
                     </label>
-                    
+
+                    <label className="flex items-center gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={newLead.mostrador}
+                        onChange={(e) => setNewLead({ ...newLead, mostrador: e.target.checked })}
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">Mostrador</span>
+                        <span className="text-[11px] text-slate-500">Marcar si el lead empezó como una consulta de mostrador (cliente caminó a sucursal).</span>
+                      </div>
+                    </label>
+
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Segmento</label>
                       <Select value={newLead.segmento} onValueChange={(val) => setNewLead({...newLead, segmento: val})}>
@@ -1674,9 +1694,12 @@ export default function App() {
                             <Users className="w-6 h-6 text-slate-600" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h3 className="font-bold text-lg">{lead.name}</h3>
                               {getStatusBadge(lead.status)}
+                              {lead.mostrador && (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] uppercase tracking-wide">Mostrador</Badge>
+                              )}
                             </div>
                             <p className="text-slate-500 text-sm">{lead.company} • {lead.email}</p>
                             <p className="text-primary font-mono font-bold mt-2">${lead.value.toLocaleString()}</p>
@@ -3515,7 +3538,12 @@ export default function App() {
                                 </div>
                                 <CardHeader className="p-4 pb-2">
                                   <div className="flex items-center justify-between mb-1">
-                                    {getStatusBadge(lead.status)}
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {getStatusBadge(lead.status)}
+                                      {lead.mostrador && (
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] uppercase tracking-wide">Mostrador</Badge>
+                                      )}
+                                    </div>
                                     <span className="text-xs font-medium text-brand-gray">ID: {lead.id}</span>
                                   </div>
                                   <CardTitle className="text-base font-bold">{lead.name}</CardTitle>
