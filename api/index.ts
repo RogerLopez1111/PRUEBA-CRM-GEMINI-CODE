@@ -816,10 +816,24 @@ app.post("/api/productos-faltantes", async (req, res) => {
 
 app.patch("/api/productos-faltantes/:id", async (req, res) => {
   const { id } = req.params;
-  const { estado, comentario } = req.body;
+  const { estado, comentario, productoId, productoDescripcion, cantidad, clienteId } = req.body;
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
   if (estado === "pendiente" || estado === "resuelto") updates.estado = estado;
   if (typeof comentario === "string") updates.comentario = comentario.trim();
+  if (productoId !== undefined) updates.Pr_Cve_Producto = productoId || null;
+  if (typeof productoDescripcion === "string") {
+    if (!productoDescripcion.trim()) {
+      return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
+    }
+    updates.producto_descripcion = productoDescripcion.trim();
+  }
+  if (cantidad !== undefined) {
+    if (!cantidad || Number(cantidad) <= 0) {
+      return res.status(400).json({ error: "La cantidad debe ser mayor a 0." });
+    }
+    updates.cantidad = Number(cantidad);
+  }
+  if (clienteId !== undefined) updates.Cl_Cve_Cliente = clienteId || null;
 
   const { error } = await supabase.from("productos_faltantes").update(updates).eq("id", id);
   if (error) return res.status(400).json({ error: error.message });

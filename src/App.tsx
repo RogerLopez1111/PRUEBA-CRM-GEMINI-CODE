@@ -352,6 +352,7 @@ export default function App() {
     clienteId: string;
     clienteName: string;
   }>({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
+  const [editingFaltanteId, setEditingFaltanteId] = useState<string | null>(null);
   const [faltantesFilterSucursal, setFaltantesFilterSucursal] = useState<string>("all");
   const [faltantesFilterMonth, setFaltantesFilterMonth] = useState<string>("all");
   const [faltantesFilterEstado, setFaltantesFilterEstado] = useState<"all" | "pendiente" | "resuelto">("all");
@@ -709,7 +710,29 @@ export default function App() {
     }
   };
 
-  const handleCreateFaltante = async () => {
+  const startEditFaltante = (f: ProductoFaltante) => {
+    setEditingFaltanteId(f.id);
+    setNewFaltante({
+      productoId: f.productoId || "",
+      productoDescripcion: f.productoDescripcion,
+      cantidad: f.cantidad,
+      comentario: f.comentario || "",
+      clienteId: f.clienteId || "",
+      clienteName: f.clienteName || "",
+    });
+    setProductoSearch("");
+    setFaltanteClientSearch("");
+    setIsFaltanteOpen(true);
+  };
+
+  const resetFaltanteForm = () => {
+    setEditingFaltanteId(null);
+    setNewFaltante({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
+    setProductoSearch("");
+    setFaltanteClientSearch("");
+  };
+
+  const handleSubmitFaltante = async () => {
     if (!currentUser) return;
     if (!newFaltante.productoDescripcion.trim()) {
       toast.error("Selecciona un producto o escribe una descripción");
@@ -719,35 +742,49 @@ export default function App() {
       toast.error("Captura una cantidad válida");
       return;
     }
+    const isEdit = !!editingFaltanteId;
     try {
-      const res = await fetch("/api/productos-faltantes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          productoId: newFaltante.productoId || undefined,
-          productoDescripcion: newFaltante.productoDescripcion,
-          cantidad: newFaltante.cantidad,
-          comentario: newFaltante.comentario,
-          clienteId: newFaltante.clienteId || undefined,
-        }),
-      });
+      const res = await fetch(
+        isEdit ? `/api/productos-faltantes/${editingFaltanteId}` : "/api/productos-faltantes",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isEdit
+              ? {
+                  productoId: newFaltante.productoId || null,
+                  productoDescripcion: newFaltante.productoDescripcion,
+                  cantidad: newFaltante.cantidad,
+                  comentario: newFaltante.comentario,
+                  clienteId: newFaltante.clienteId || null,
+                }
+              : {
+                  userId: currentUser.id,
+                  productoId: newFaltante.productoId || undefined,
+                  productoDescripcion: newFaltante.productoDescripcion,
+                  cantidad: newFaltante.cantidad,
+                  comentario: newFaltante.comentario,
+                  clienteId: newFaltante.clienteId || undefined,
+                }
+          ),
+        }
+      );
       if (res.ok) {
-        toast.success("Faltante registrado");
+        toast.success(isEdit ? "Faltante actualizado" : "Faltante registrado");
         setIsFaltanteOpen(false);
-        setNewFaltante({ productoId: "", productoDescripcion: "", cantidad: 0, comentario: "", clienteId: "", clienteName: "" });
-        setProductoSearch("");
-        setFaltanteClientSearch("");
+        resetFaltanteForm();
         const r = await fetch("/api/productos-faltantes");
         if (r.ok) setFaltantes(await r.json());
       } else {
         const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Error al registrar faltante");
+        toast.error(data.error || (isEdit ? "Error al actualizar faltante" : "Error al registrar faltante"));
       }
     } catch {
-      toast.error("Error al registrar faltante");
+      toast.error(isEdit ? "Error al actualizar faltante" : "Error al registrar faltante");
     }
   };
+
+  const handleCreateFaltante = handleSubmitFaltante;
 
   const toggleFaltanteEstado = async (f: ProductoFaltante) => {
     const next = f.estado === "pendiente" ? "resuelto" : "pendiente";
@@ -2290,21 +2327,24 @@ export default function App() {
                 <h2 className="text-2xl font-bold tracking-tight">Productos Faltantes</h2>
                 <p className="text-slate-500">Registra ventas perdidas porque no había el producto que el cliente pedía.</p>
               </div>
-              <Dialog open={isFaltanteOpen} onOpenChange={setIsFaltanteOpen}>
+              <Dialog open={isFaltanteOpen} onOpenChange={(open) => { setIsFaltanteOpen(open); if (!open) resetFaltanteForm(); }}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
                   Registrar Faltante
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[520px]">
                   <DialogHeader>
-                    <DialogTitle>Registrar Producto Faltante</DialogTitle>
+                    <DialogTitle>{editingFaltanteId ? "Editar Producto Faltante" : "Registrar Producto Faltante"}</DialogTitle>
                     <DialogDescription>
-                      Captura el producto que no estaba disponible y la razón que te dió el área de compras o logística.
+                      Un registro por producto. Si el producto existe en el catálogo ERP, búscalo con el ícono de búsqueda; si no existe, escribe la descripción manualmente.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-2">
                     <div className="grid gap-2">
                       <label className="text-sm font-medium">Producto</label>
+                      <p className="text-[10px] text-slate-500 -mt-1">
+                        Solo un producto por registro. Usa el ícono <Search className="inline w-3 h-3 -mt-0.5" /> para buscarlo en el catálogo, o escribe la descripción si no existe.
+                      </p>
                       <div className="flex gap-2">
                         <Input
                           placeholder="Descripción del producto"
@@ -2490,7 +2530,7 @@ export default function App() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsFaltanteOpen(false)}>Cancelar</Button>
-                    <Button onClick={handleCreateFaltante}>Registrar</Button>
+                    <Button onClick={handleSubmitFaltante}>{editingFaltanteId ? "Guardar cambios" : "Registrar"}</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -2677,16 +2717,26 @@ export default function App() {
                           <p className="text-xs text-slate-600 italic mt-2 leading-snug">{f.comentario}</p>
                         )}
                       </div>
-                      {(currentUser.role === "Admin" || f.vendedorId === currentUser.id) && (
-                        <Button
-                          size="sm"
-                          variant={f.estado === "pendiente" ? "outline" : "ghost"}
-                          onClick={() => toggleFaltanteEstado(f)}
-                          className="shrink-0"
-                        >
-                          {f.estado === "pendiente" ? "Marcar resuelto" : "Reabrir"}
-                        </Button>
-                      )}
+                      <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                        {currentUser.role === "Admin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startEditFaltante(f)}
+                          >
+                            Editar
+                          </Button>
+                        )}
+                        {(currentUser.role === "Admin" || f.vendedorId === currentUser.id) && (
+                          <Button
+                            size="sm"
+                            variant={f.estado === "pendiente" ? "outline" : "ghost"}
+                            onClick={() => toggleFaltanteEstado(f)}
+                          >
+                            {f.estado === "pendiente" ? "Marcar resuelto" : "Reabrir"}
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ));
