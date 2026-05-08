@@ -2098,6 +2098,32 @@ export default function App() {
                   </Select>
                 </div>
                 <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Cliente contactó</p>
+                  <Select value={kanbanFilterClientInitiated} onValueChange={(v) => setKanbanFilterClientInitiated(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Mostrador</p>
+                  <Select value={kanbanFilterMostrador} onValueChange={(v) => setKanbanFilterMostrador(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
                   <p className="text-xs font-medium text-brand-gray ml-1">Mes</p>
                   <Select value={kanbanFilterMonth} onValueChange={setKanbanFilterMonth}>
                     <SelectTrigger className="w-[160px] h-9">
@@ -2132,32 +2158,6 @@ export default function App() {
                     </Select>
                   </div>
                 )}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-brand-gray ml-1">Cliente contactó</p>
-                  <Select value={kanbanFilterClientInitiated} onValueChange={(v) => setKanbanFilterClientInitiated(v as "all" | "yes" | "no")}>
-                    <SelectTrigger className="w-[140px] h-9">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="yes">Sí</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-brand-gray ml-1">Mostrador</p>
-                  <Select value={kanbanFilterMostrador} onValueChange={(v) => setKanbanFilterMostrador(v as "all" | "yes" | "no")}>
-                    <SelectTrigger className="w-[140px] h-9">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="yes">Sí</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             </div>
 
