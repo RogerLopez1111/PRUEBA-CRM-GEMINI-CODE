@@ -850,7 +850,7 @@ app.patch("/api/productos-faltantes/:id", async (req, res) => {
 // regular buy windows. Lifecycle: solicitado → aprobado | rechazado | cancelado.
 // ────────────────────────────────────────────────────────────────────────────
 
-const PEDIDO_ESTADOS = new Set(["solicitado", "aprobado", "rechazado", "cancelado"]);
+const PEDIDO_ESTADOS = new Set(["solicitado", "aprobado", "pedido", "rechazado", "cancelado"]);
 
 async function fetchPedidosExtraordinarios(filters: { vendedorId?: string } = {}) {
   let query = supabase
@@ -990,12 +990,16 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
 
   // Permission check.
   if (!isAdmin && !isCompras && !isOwner) return res.status(403).json({ error: "No autorizado." });
-  // Compras can only resolve a pending pedido as aprobado or rechazado.
+  // Compras can transition to aprobado / rechazado / pedido. Allowed source
+  // states: solicitado (any of the three) or aprobado (advance to pedido or
+  // rechazado). pedido / rechazado / cancelado are terminal for Compras.
   if (isCompras && !isAdmin) {
-    if (estado !== "aprobado" && estado !== "rechazado") {
-      return res.status(403).json({ error: "Compras solo puede aprobar o rechazar pedidos." });
+    if (!["aprobado", "rechazado", "pedido"].includes(estado)) {
+      return res.status(403).json({ error: "Compras solo puede aprobar, rechazar o marcar como pedido." });
     }
-    if (existing.estado !== "solicitado") return res.status(409).json({ error: "Pedido ya resuelto." });
+    if (!["solicitado", "aprobado"].includes(String(existing.estado))) {
+      return res.status(409).json({ error: "Pedido ya resuelto." });
+    }
   }
   // Sellers (non-admin, non-compras) can only cancel their own pending request.
   if (!isAdmin && !isCompras) {
@@ -1003,7 +1007,8 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
     if (existing.estado !== "solicitado") return res.status(409).json({ error: "Solo se puede cancelar un pedido pendiente." });
   }
   // Once a pedido reaches a terminal state, only admins can rewind it.
-  if (!isAdmin && ["aprobado", "rechazado", "cancelado"].includes(String(existing.estado))) {
+  // (aprobado is no longer terminal — Compras can advance it to pedido.)
+  if (!isAdmin && ["pedido", "rechazado", "cancelado"].includes(String(existing.estado))) {
     return res.status(409).json({ error: "Pedido ya resuelto." });
   }
 

@@ -398,11 +398,11 @@ export default function App() {
     valorEstimado: number;
     compromisoDias: number;
     justificacion: string;
-  }>({ leadId: "", leadLabel: "", productoId: "", productoDescripcion: "", cantidad: 0, valorEstimado: 0, compromisoDias: 7, justificacion: "" });
+  }>({ leadId: "", leadLabel: "", productoId: "", productoDescripcion: "", cantidad: 0, valorEstimado: 0, compromisoDias: 10, justificacion: "" });
   const [pedidosFilterSucursal, setPedidosFilterSucursal] = useState<string>("all");
   const [pedidosFilterMonth, setPedidosFilterMonth] = useState<string>("all");
   const [pedidosFilterEstado, setPedidosFilterEstado] = useState<"all" | PedidoExtraordinarioEstado>("all");
-  const [resolvePedido, setResolvePedido] = useState<{ id: string; action: "aprobar" | "rechazar"; comment: string } | null>(null);
+  const [resolvePedido, setResolvePedido] = useState<{ id: string; action: "aprobar" | "rechazar" | "pedido"; comment: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -1108,7 +1108,7 @@ export default function App() {
   // ─── Pedidos extraordinarios handlers ────────────────────────────────────
   const resetPedidoForm = () => {
     setEditingPedidoId(null);
-    setNewPedido({ leadId: "", leadLabel: "", productoId: "", productoDescripcion: "", cantidad: 0, valorEstimado: 0, compromisoDias: 7, justificacion: "" });
+    setNewPedido({ leadId: "", leadLabel: "", productoId: "", productoDescripcion: "", cantidad: 0, valorEstimado: 0, compromisoDias: 10, justificacion: "" });
     setProductoSearch("");
     setPedidoLeadSearch("");
   };
@@ -1141,7 +1141,6 @@ export default function App() {
     if (!newPedido.productoDescripcion.trim()) { toast.error("Selecciona un producto o escribe una descripción"); return; }
     if (!newPedido.cantidad || newPedido.cantidad <= 0) { toast.error("Captura una cantidad válida"); return; }
     if (!newPedido.valorEstimado || newPedido.valorEstimado <= 0) { toast.error("Captura el valor estimado de la venta"); return; }
-    if (!newPedido.compromisoDias || newPedido.compromisoDias < 1 || newPedido.compromisoDias > 10) { toast.error("El compromiso debe ser entre 1 y 10 días"); return; }
 
     const isEdit = !!editingPedidoId;
     try {
@@ -1212,7 +1211,7 @@ export default function App() {
 
   const submitResolvePedido = async () => {
     if (!currentUser || !resolvePedido) return;
-    const estado = resolvePedido.action === "aprobar" ? "aprobado" : "rechazado";
+    const estado = resolvePedido.action === "aprobar" ? "aprobado" : resolvePedido.action === "rechazar" ? "rechazado" : "pedido";
     try {
       const res = await fetch(`/api/pedidos-extraordinarios/${resolvePedido.id}`, {
         method: "PATCH",
@@ -1225,7 +1224,7 @@ export default function App() {
         }),
       });
       if (res.ok) {
-        toast.success(estado === "aprobado" ? "Pedido aprobado" : "Pedido rechazado");
+        toast.success(estado === "aprobado" ? "Pedido aprobado" : estado === "rechazado" ? "Pedido rechazado" : "Marcado como pedido");
         setResolvePedido(null);
         await refetchPedidos();
       } else {
@@ -3321,7 +3320,7 @@ export default function App() {
                   <DialogHeader>
                     <DialogTitle>{editingPedidoId ? "Editar Pedido Extraordinario" : "Solicitar Pedido Extraordinario"}</DialogTitle>
                     <DialogDescription>
-                      Antes de pedir: confirma que la venta justifica un pedido fuera de ventana. El compromiso máximo con el cliente es 10 días.
+                      Antes de pedir: confirma que la venta justifica un pedido fuera de ventana y que el cliente está dispuesto a esperar al menos 10 días para recibir el producto.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-2">
@@ -3471,27 +3470,14 @@ export default function App() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Cantidad</label>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={newPedido.cantidad || ""}
-                          onChange={(e) => setNewPedido({ ...newPedido, cantidad: Number(e.target.value) })}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Compromiso (días)</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={newPedido.compromisoDias || ""}
-                          onChange={(e) => setNewPedido({ ...newPedido, compromisoDias: Math.max(1, Math.min(10, Number(e.target.value))) })}
-                        />
-                        <p className="text-[10px] text-slate-500">Máximo que el cliente acepta esperar (1–10).</p>
-                      </div>
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Cantidad</label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={newPedido.cantidad || ""}
+                        onChange={(e) => setNewPedido({ ...newPedido, cantidad: Number(e.target.value) })}
+                      />
                     </div>
 
                     <div className="grid gap-2">
@@ -3565,6 +3551,7 @@ export default function App() {
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="solicitado">Solicitados</SelectItem>
                     <SelectItem value="aprobado">Aprobados</SelectItem>
+                    <SelectItem value="pedido">Pedidos</SelectItem>
                     <SelectItem value="rechazado">Rechazados</SelectItem>
                     <SelectItem value="cancelado">Cancelados</SelectItem>
                   </SelectContent>
@@ -3635,19 +3622,23 @@ export default function App() {
                   const estadoStyles: Record<string, string> = {
                     solicitado: "bg-amber-50 text-amber-700 border-amber-200",
                     aprobado: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    pedido: "bg-sky-50 text-sky-700 border-sky-200",
                     rechazado: "bg-red-50 text-red-700 border-red-200",
                     cancelado: "bg-slate-100 text-slate-600 border-slate-200",
                   };
                   const estadoLabel: Record<string, string> = {
                     solicitado: "Solicitado",
                     aprobado: "Aprobado",
+                    pedido: "Pedido",
                     rechazado: "Rechazado",
                     cancelado: "Cancelado",
                   };
                   const isOwner = p.vendedorId === currentUser.id;
                   const isAdmin = currentUser.role === "Admin";
                   const isCompras = currentUser.role === "Compras";
-                  const canResolve = (isAdmin || isCompras) && p.estado === "solicitado";
+                  const canApprove = (isAdmin || isCompras) && p.estado === "solicitado";
+                  const canReject = (isAdmin || isCompras) && (p.estado === "solicitado" || p.estado === "aprobado");
+                  const canMarkPedido = (isAdmin || isCompras) && (p.estado === "solicitado" || p.estado === "aprobado");
                   const canSellerCancel = isOwner && p.estado === "solicitado";
                   return (
                     <Card key={p.id} className="bg-white">
@@ -3661,7 +3652,6 @@ export default function App() {
                           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                             <span>Cantidad: <span className="font-semibold text-slate-700">{p.cantidad}</span></span>
                             <span>Valor: <span className="font-semibold text-slate-700">${p.valorEstimado.toLocaleString()}</span></span>
-                            <span>Compromiso: <span className="font-semibold text-slate-700">{p.compromisoDias}d</span></span>
                             <span>Lead: <span className="font-medium text-slate-700">{p.leadCompany || p.leadId}</span></span>
                             {(isAdmin || isCompras) && p.vendedorName && <span>Vendedor: <span className="font-medium text-slate-700">{p.vendedorName}</span></span>}
                             {p.sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{p.sucursalName}</span></span>}
@@ -3676,11 +3666,14 @@ export default function App() {
                           )}
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                          {canResolve && (
-                            <>
-                              <Button size="sm" variant="default" onClick={() => setResolvePedido({ id: p.id, action: "aprobar", comment: "" })}>Aprobar</Button>
-                              <Button size="sm" variant="outline" onClick={() => setResolvePedido({ id: p.id, action: "rechazar", comment: "" })}>Rechazar</Button>
-                            </>
+                          {canApprove && (
+                            <Button size="sm" variant="default" onClick={() => setResolvePedido({ id: p.id, action: "aprobar", comment: "" })}>Aprobar</Button>
+                          )}
+                          {canMarkPedido && (
+                            <Button size="sm" variant="default" onClick={() => setResolvePedido({ id: p.id, action: "pedido", comment: "" })}>Marcar como pedido</Button>
+                          )}
+                          {canReject && (
+                            <Button size="sm" variant="outline" onClick={() => setResolvePedido({ id: p.id, action: "rechazar", comment: "" })}>Rechazar</Button>
                           )}
                           {isAdmin && (
                             <Button size="sm" variant="outline" onClick={() => startEditPedido(p)}>Editar</Button>
@@ -3699,25 +3692,35 @@ export default function App() {
             <Dialog open={!!resolvePedido} onOpenChange={(open) => { if (!open) setResolvePedido(null); }}>
               <DialogContent className="sm:max-w-[460px]">
                 <DialogHeader>
-                  <DialogTitle>{resolvePedido?.action === "aprobar" ? "Aprobar pedido" : "Rechazar pedido"}</DialogTitle>
+                  <DialogTitle>
+                    {resolvePedido?.action === "aprobar" ? "Aprobar pedido" : resolvePedido?.action === "rechazar" ? "Rechazar pedido" : "Marcar como pedido"}
+                  </DialogTitle>
                   <DialogDescription>
                     {resolvePedido?.action === "aprobar"
                       ? "Confirma que el pedido se procurará fuera de ventana."
-                      : "Indica al vendedor por qué no procede esta solicitud."}
+                      : resolvePedido?.action === "rechazar"
+                        ? "Indica al vendedor por qué no procede esta solicitud."
+                        : "Confirma que el pedido ya fue colocado con el proveedor."}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-2 py-2">
                   <label className="text-sm font-medium">Comentario {resolvePedido?.action === "rechazar" ? "" : "(opcional)"}</label>
                   <Textarea
                     rows={3}
-                    placeholder={resolvePedido?.action === "aprobar" ? "Notas para compras o el vendedor..." : "Razón del rechazo..."}
+                    placeholder={
+                      resolvePedido?.action === "aprobar" ? "Notas para compras o el vendedor..." :
+                      resolvePedido?.action === "rechazar" ? "Razón del rechazo..." :
+                      "Folio de orden, proveedor, fecha estimada de llegada..."
+                    }
                     value={resolvePedido?.comment || ""}
                     onChange={(e) => resolvePedido && setResolvePedido({ ...resolvePedido, comment: e.target.value })}
                   />
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setResolvePedido(null)}>Cancelar</Button>
-                  <Button onClick={submitResolvePedido}>{resolvePedido?.action === "aprobar" ? "Aprobar" : "Rechazar"}</Button>
+                  <Button onClick={submitResolvePedido}>
+                    {resolvePedido?.action === "aprobar" ? "Aprobar" : resolvePedido?.action === "rechazar" ? "Rechazar" : "Marcar como pedido"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

@@ -109,7 +109,7 @@ export interface Product {
 // Maps to Supabase `pedidos_extraordinarios` (CRM-only) — formal request to procure
 // a product outside the regular buy windows because a client (tied to an active lead)
 // is willing to wait up to 10 days. Distinct from faltantes (which are *lost* sales).
-export type PedidoExtraordinarioEstado = 'solicitado' | 'aprobado' | 'rechazado' | 'cancelado';
+export type PedidoExtraordinarioEstado = 'solicitado' | 'aprobado' | 'pedido' | 'rechazado' | 'cancelado';
 export interface PedidoExtraordinario {
   id: string;
   vendedorId: string;
