@@ -37,16 +37,27 @@ export interface SendEmailInput {
   replyTo?: string;
 }
 
+// Default display name shown in the recipient's "From" field. Overridden if
+// SMTP_FROM is already in `"Name" <email>` form, or by SMTP_FROM_NAME.
+const DEFAULT_FROM_NAME = 'CRM Ecosistemas';
+
+function resolveFrom(): string {
+  const raw = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
+  if (!raw) throw new Error('SMTP_FROM (or SMTP_USER) is required');
+  // If the env var already includes a display name (e.g. `Name <a@b.c>`),
+  // pass it through unchanged so the user's explicit choice wins.
+  if (raw.includes('<') && raw.includes('>')) return raw;
+  const name = process.env.SMTP_FROM_NAME?.trim() || DEFAULT_FROM_NAME;
+  return `"${name}" <${raw}>`;
+}
+
 /**
  * Send a transactional email through the configured SMTP server.
  * Throws on error so the caller can decide whether to retry, log, or swallow.
  */
 export async function sendEmail(input: SendEmailInput): Promise<void> {
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  if (!from) throw new Error('SMTP_FROM (or SMTP_USER) is required');
-
   await getTransporter().sendMail({
-    from,
+    from: resolveFrom(),
     to: input.to,
     subject: input.subject,
     html: input.html,

@@ -127,6 +127,7 @@ function buildHtml(pedidos: PedidoRow[], generatedAt: Date): string {
       const provLabel = prov === 'Sin proveedor' ? 'Sin proveedor' : `Proveedor ${prov}`;
       const tableRows = rows.map((p) => {
         const vendedor = p.vendedor?.Vn_Descripcion?.trim() || p.Vn_Cve_Vendedor;
+        const sucursalRow = p.sucursales?.Sc_Descripcion?.trim() || 'Sin sucursal';
         const cliente = p.leads?.clientes?.Cl_Razon_Social?.trim()
           || p.leads?.clientes?.Cl_Descripcion?.trim()
           || '—';
@@ -147,7 +148,10 @@ function buildHtml(pedidos: PedidoRow[], generatedAt: Date): string {
             </td>
             <td style="padding:8px 6px;font-size:12px;text-align:right;vertical-align:top">${p.cantidad}</td>
             <td style="padding:8px 6px;font-size:12px;text-align:right;vertical-align:top;font-family:monospace">${escapeHtml(moneyMx(Number(p.valor_estimado) || 0))}</td>
-            <td style="padding:8px 6px;font-size:12px;vertical-align:top">${escapeHtml(vendedor)}</td>
+            <td style="padding:8px 6px;font-size:12px;vertical-align:top">
+              <div>${escapeHtml(vendedor)}</div>
+              <div style="color:#94a3b8;font-size:10px">${escapeHtml(sucursalRow)}</div>
+            </td>
             <td style="padding:8px 6px;font-size:12px;vertical-align:top">${escapeHtml(cliente)}</td>
             <td style="padding:8px 6px;font-size:12px;text-align:right;vertical-align:top">${days}d</td>
             <td style="padding:8px 6px;font-size:12px;vertical-align:top">${estadoBadge}</td>
