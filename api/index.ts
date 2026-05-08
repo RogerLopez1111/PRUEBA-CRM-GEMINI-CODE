@@ -495,7 +495,8 @@ app.post("/api/leads", async (req, res) => {
     Cl_Valor_CRM: leadData.value,
     Sc_Cve_Sucursal: sucursalId || null,
     Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
-    Cl_Client_Initiated_CRM: !!clientInitiated,
+    // Mostrador implies clientInitiated by definition (a walk-in is always client-initiated).
+    Cl_Client_Initiated_CRM: !!clientInitiated || !!mostrador,
     Cl_Mostrador_CRM: !!mostrador,
     Cl_New_Client_CRM: !isExistingClient,
     Cl_CreatedAt_CRM: now,

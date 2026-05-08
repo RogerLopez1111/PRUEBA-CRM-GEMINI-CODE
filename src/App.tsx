@@ -456,6 +456,14 @@ export default function App() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
+  // Origin filters (cliente me contactó / mostrador). Note: mostrador implies
+  // clientInitiated in the data, so combining them is harmless (intersection).
+  const [kanbanFilterClientInitiated, setKanbanFilterClientInitiated] = useState<"all" | "yes" | "no">("all");
+  const [kanbanFilterMostrador, setKanbanFilterMostrador] = useState<"all" | "yes" | "no">("all");
+  const [myLeadsFilterClientInitiated, setMyLeadsFilterClientInitiated] = useState<"all" | "yes" | "no">("all");
+  const [myLeadsFilterMostrador, setMyLeadsFilterMostrador] = useState<"all" | "yes" | "no">("all");
+  const [adminFilterClientInitiated, setAdminFilterClientInitiated] = useState<"all" | "yes" | "no">("all");
+  const [adminFilterMostrador, setAdminFilterMostrador] = useState<"all" | "yes" | "no">("all");
 
   // Performance Filters
   const [perfUserFilter, setPerfUserFilter] = useState<string>("all");
@@ -760,8 +768,15 @@ export default function App() {
       closedThisMonth: number;
       convPct: number;
     };
+    const matchesOrigin = (l: Lead) => {
+      if (adminFilterClientInitiated === "yes" && !l.clientInitiated) return false;
+      if (adminFilterClientInitiated === "no" && !!l.clientInitiated) return false;
+      if (adminFilterMostrador === "yes" && !l.mostrador) return false;
+      if (adminFilterMostrador === "no" && !!l.mostrador) return false;
+      return true;
+    };
     const stats: WorkloadStat[] = filteredUsers.map((u: User) => {
-      const userLeads: Lead[] = leads.filter((l: Lead) => l.assignedTo === u.id);
+      const userLeads: Lead[] = leads.filter((l: Lead) => l.assignedTo === u.id && matchesOrigin(l));
       const activeLeads: Lead[] = userLeads.filter((l: Lead) => isActive(l.status));
       const pipelineValue = activeLeads.reduce((acc: number, l: Lead) => acc + (l.value || 0), 0);
       const stuckCount = activeLeads.filter((l: Lead) => getStuckLevel(l.updatedAt) !== "normal").length;
@@ -797,6 +812,7 @@ export default function App() {
         if (!owner || owner.sucursalId !== sucursalIdFilter) return false;
       }
       if (q && !l.name.toLowerCase().includes(q) && !l.company.toLowerCase().includes(q)) return false;
+      if (!matchesOrigin(l)) return false;
       return true;
     }).sort((a: Lead, b: Lead) => {
       const la = getStuckLevel(a.updatedAt), lb = getStuckLevel(b.updatedAt);
@@ -805,7 +821,7 @@ export default function App() {
     });
 
     return { stats, teamAvgConv, stuckLeads };
-  }, [leads, users, sucursales, adminFilterSeller, adminFilterSucursal, adminSearch]);
+  }, [leads, users, sucursales, adminFilterSeller, adminFilterSucursal, adminSearch, adminFilterClientInitiated, adminFilterMostrador]);
 
   const kanbanMonthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1789,16 +1805,17 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+                      <label className={`flex items-start gap-2 p-3 rounded-md bg-slate-50 border select-none ${newLead.mostrador ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}>
                         <input
                           type="checkbox"
                           className="h-4 w-4 mt-0.5 accent-primary"
                           checked={newLead.clientInitiated}
+                          disabled={newLead.mostrador}
                           onChange={(e) => setNewLead({ ...newLead, clientInitiated: e.target.checked })}
                         />
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">Cliente me contactó</span>
-                          <span className="text-[11px] text-slate-500">El cliente inició el contacto.</span>
+                          <span className="text-[11px] text-slate-500">{newLead.mostrador ? "Implícito por Mostrador." : "El cliente inició el contacto."}</span>
                         </div>
                       </label>
 
@@ -1807,7 +1824,7 @@ export default function App() {
                           type="checkbox"
                           className="h-4 w-4 mt-0.5 accent-primary"
                           checked={newLead.mostrador}
-                          onChange={(e) => setNewLead({ ...newLead, mostrador: e.target.checked })}
+                          onChange={(e) => setNewLead({ ...newLead, mostrador: e.target.checked, clientInitiated: e.target.checked ? true : newLead.clientInitiated })}
                         />
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">Mostrador</span>
@@ -1893,20 +1910,45 @@ export default function App() {
 
 
           <TabsContent value="my-leads" className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight">Mis Leads Activos</h2>
                 <p className="text-slate-500">Gestiona y actualiza el estado de los leads asignados a ti.</p>
               </div>
-              <div className="w-full md:w-72">
-                <div className="relative">
-                  <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input 
-                    placeholder="Buscar cliente o empresa..." 
-                    className="pl-9 h-10 bg-white"
-                    value={myLeadsSearch}
-                    onChange={(e) => setMyLeadsSearch(e.target.value)}
-                  />
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1 w-full md:w-72">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Buscar</p>
+                  <div className="relative">
+                    <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      placeholder="Buscar cliente o empresa..."
+                      className="pl-9 h-9 bg-white"
+                      value={myLeadsSearch}
+                      onChange={(e) => setMyLeadsSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Cliente contactó</p>
+                  <Select value={myLeadsFilterClientInitiated} onValueChange={(v) => setMyLeadsFilterClientInitiated(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Mostrador</p>
+                  <Select value={myLeadsFilterMostrador} onValueChange={(v) => setMyLeadsFilterMostrador(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -1914,10 +1956,15 @@ export default function App() {
             <div className="grid grid-cols-1 gap-4">
               {leads.filter(l => {
                 const isAssigned = l.assignedTo === currentUser.id;
-                const matchesSearch = !myLeadsSearch || 
-                  l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) || 
+                const matchesSearch = !myLeadsSearch ||
+                  l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) ||
                   l.company.toLowerCase().includes(myLeadsSearch.toLowerCase());
-                return isAssigned && matchesSearch;
+                if (!isAssigned || !matchesSearch) return false;
+                if (myLeadsFilterClientInitiated === "yes" && !l.clientInitiated) return false;
+                if (myLeadsFilterClientInitiated === "no" && !!l.clientInitiated) return false;
+                if (myLeadsFilterMostrador === "yes" && !l.mostrador) return false;
+                if (myLeadsFilterMostrador === "no" && !!l.mostrador) return false;
+                return true;
               }).length === 0 ? (
                 <Card className="border-dashed border-2 bg-transparent">
                   <CardContent className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -1928,10 +1975,15 @@ export default function App() {
               ) : (
                 leads.filter(l => {
                   const isAssigned = l.assignedTo === currentUser.id;
-                  const matchesSearch = !myLeadsSearch || 
-                    l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) || 
+                  const matchesSearch = !myLeadsSearch ||
+                    l.name.toLowerCase().includes(myLeadsSearch.toLowerCase()) ||
                     l.company.toLowerCase().includes(myLeadsSearch.toLowerCase());
-                  return isAssigned && matchesSearch;
+                  if (!isAssigned || !matchesSearch) return false;
+                  if (myLeadsFilterClientInitiated === "yes" && !l.clientInitiated) return false;
+                  if (myLeadsFilterClientInitiated === "no" && !!l.clientInitiated) return false;
+                  if (myLeadsFilterMostrador === "yes" && !l.mostrador) return false;
+                  if (myLeadsFilterMostrador === "no" && !!l.mostrador) return false;
+                  return true;
                 }).map((lead) => (
                   <Card key={lead.id} className="bg-white overflow-hidden">
                     <CardContent className="p-0">
@@ -2080,6 +2132,32 @@ export default function App() {
                     </Select>
                   </div>
                 )}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Cliente contactó</p>
+                  <Select value={kanbanFilterClientInitiated} onValueChange={(v) => setKanbanFilterClientInitiated(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Mostrador</p>
+                  <Select value={kanbanFilterMostrador} onValueChange={(v) => setKanbanFilterMostrador(v as "all" | "yes" | "no")}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="yes">Sí</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -2133,6 +2211,12 @@ export default function App() {
                         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
                         if (ym !== kanbanFilterMonth) return false;
                       }
+
+                      // Origin filters (cliente me contactó / mostrador)
+                      if (kanbanFilterClientInitiated === "yes" && !l.clientInitiated) return false;
+                      if (kanbanFilterClientInitiated === "no" && !!l.clientInitiated) return false;
+                      if (kanbanFilterMostrador === "yes" && !l.mostrador) return false;
+                      if (kanbanFilterMostrador === "no" && !!l.mostrador) return false;
 
                       return true;
                     })}
@@ -4108,6 +4192,28 @@ export default function App() {
                               {sucursales.map(s => (
                                 <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                               ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-brand-gray ml-1">Cliente contactó</p>
+                          <Select value={adminFilterClientInitiated} onValueChange={(v) => setAdminFilterClientInitiated(v as "all" | "yes" | "no")}>
+                            <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos</SelectItem>
+                              <SelectItem value="yes">Sí</SelectItem>
+                              <SelectItem value="no">No</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-brand-gray ml-1">Mostrador</p>
+                          <Select value={adminFilterMostrador} onValueChange={(v) => setAdminFilterMostrador(v as "all" | "yes" | "no")}>
+                            <SelectTrigger className="w-[140px] h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todos</SelectItem>
+                              <SelectItem value="yes">Sí</SelectItem>
+                              <SelectItem value="no">No</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
