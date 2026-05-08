@@ -1927,15 +1927,18 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <div className="flex items-end gap-3 h-9">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterClientInitiated} onChange={(e) => setMyLeadsFilterClientInitiated(e.target.checked)} />
-                    <span className="text-xs font-medium text-brand-gray">Cliente contactó</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterMostrador} onChange={(e) => setMyLeadsFilterMostrador(e.target.checked)} />
-                    <span className="text-xs font-medium text-brand-gray">Mostrador</span>
-                  </label>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Origen</p>
+                  <div className="flex items-center gap-3 h-9 px-3 rounded-md border border-input bg-white">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterClientInitiated} onChange={(e) => setMyLeadsFilterClientInitiated(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Cliente contactó</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterMostrador} onChange={(e) => setMyLeadsFilterMostrador(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Mostrador</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2082,15 +2085,18 @@ export default function App() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-end gap-3 h-9">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterClientInitiated} onChange={(e) => setKanbanFilterClientInitiated(e.target.checked)} />
-                    <span className="text-xs font-medium text-brand-gray">Cliente contactó</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterMostrador} onChange={(e) => setKanbanFilterMostrador(e.target.checked)} />
-                    <span className="text-xs font-medium text-brand-gray">Mostrador</span>
-                  </label>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-brand-gray ml-1">Origen</p>
+                  <div className="flex items-center gap-3 h-9 px-3 rounded-md border border-input bg-white">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterClientInitiated} onChange={(e) => setKanbanFilterClientInitiated(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Cliente contactó</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterMostrador} onChange={(e) => setKanbanFilterMostrador(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Mostrador</span>
+                    </label>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-brand-gray ml-1">Mes</p>
@@ -4166,15 +4172,18 @@ export default function App() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="flex items-end gap-3 h-9">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" className="h-4 w-4 accent-primary" checked={adminFilterClientInitiated} onChange={(e) => setAdminFilterClientInitiated(e.target.checked)} />
-                            <span className="text-xs font-medium text-brand-gray">Cliente contactó</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" className="h-4 w-4 accent-primary" checked={adminFilterMostrador} onChange={(e) => setAdminFilterMostrador(e.target.checked)} />
-                            <span className="text-xs font-medium text-brand-gray">Mostrador</span>
-                          </label>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-brand-gray ml-1">Origen</p>
+                          <div className="flex items-center gap-3 h-9 px-3 rounded-md border border-input bg-white">
+                            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                              <input type="checkbox" className="h-4 w-4 accent-primary" checked={adminFilterClientInitiated} onChange={(e) => setAdminFilterClientInitiated(e.target.checked)} />
+                              <span className="text-xs text-slate-700">Cliente contactó</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                              <input type="checkbox" className="h-4 w-4 accent-primary" checked={adminFilterMostrador} onChange={(e) => setAdminFilterMostrador(e.target.checked)} />
+                              <span className="text-xs text-slate-700">Mostrador</span>
+                            </label>
+                          </div>
                         </div>
                       </div>
                     </div>

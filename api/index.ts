@@ -217,6 +217,9 @@ app.post("/api/users", async (req, res) => {
     Vn_Email: email,
     Vn_Perfil: role,
     Sc_Cve_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
+    // Mark active so /api/login (which filters Es_Cve_Estado = 'AC') will
+    // find the row. Without this, CRM-created users can never log in.
+    Es_Cve_Estado: "AC",
   });
 
   if (error) {
@@ -853,14 +856,17 @@ app.patch("/api/productos-faltantes/:id", async (req, res) => {
 const PEDIDO_ESTADOS = new Set(["solicitado", "aprobado", "pedido", "rechazado", "cancelado"]);
 
 async function fetchPedidosExtraordinarios(filters: { vendedorId?: string } = {}) {
+  // Two FKs from pedidos_extraordinarios → vendedores (Vn_Cve_Vendedor and
+  // resuelto_por) require disambiguation. Supabase resolves the embed via
+  // the source-column alias syntax: `<alias>:<column>(...)`.
   let query = supabase
     .from("pedidos_extraordinarios")
     .select(`
       id, Vn_Cve_Vendedor, Sc_Cve_Sucursal, Cl_Cve_Cliente, Pr_Cve_Producto, lead_id,
       producto_descripcion, cantidad, valor_estimado, compromiso_dias, justificacion,
       estado, resolucion_comentario, resuelto_por, resuelto_at, created_at, updated_at,
-      vendedores!Vn_Cve_Vendedor(Vn_Descripcion),
-      resolver:vendedores!resuelto_por(Vn_Descripcion),
+      vendedor:Vn_Cve_Vendedor(Vn_Descripcion),
+      resolver:resuelto_por(Vn_Descripcion),
       sucursales(Sc_Descripcion),
       clientes(Cl_Razon_Social, Cl_Descripcion),
       leads(Cl_Status_CRM, clientes(Cl_Razon_Social, Cl_Descripcion))
@@ -879,7 +885,7 @@ async function fetchPedidosExtraordinarios(filters: { vendedorId?: string } = {}
     return {
       id: r.id,
       vendedorId: String(r.Vn_Cve_Vendedor || ""),
-      vendedorName: r.vendedores?.Vn_Descripcion || undefined,
+      vendedorName: r.vendedor?.Vn_Descripcion || undefined,
       sucursalId: r.Sc_Cve_Sucursal ? String(r.Sc_Cve_Sucursal) : undefined,
       sucursalName: r.sucursales?.Sc_Descripcion || undefined,
       leadId: String(r.lead_id || ""),
