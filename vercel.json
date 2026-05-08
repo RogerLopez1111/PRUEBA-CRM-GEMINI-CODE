@@ -6,6 +6,6 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/cron/digest-compras", "schedule": "0 15 * * 3,5" }
+    { "path": "/api/cron/digest-compras", "schedule": "0 18 * * 4,5" }
   ]
 }
