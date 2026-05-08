@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
+import { runDigest } from "../src/digest-compras.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -1065,6 +1066,45 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
 
   const all = await fetchPedidosExtraordinarios();
   res.json(all.find((p) => p.id === id));
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Compras digest — manual admin trigger and Vercel Cron
+// ────────────────────────────────────────────────────────────────────────────
+
+// Manual trigger from the admin button on the Pedidos screen.
+app.post("/api/pedidos-extraordinarios/send-digest", async (req, res) => {
+  const { actorRole } = req.body || {};
+  if (actorRole !== "Admin") {
+    return res.status(403).json({ error: "Solo administradores pueden forzar el envío del resumen." });
+  }
+  try {
+    const result = await runDigest(supabase);
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[digest manual]", err);
+    return res.status(500).json({ error: err?.message || "Error al enviar el resumen." });
+  }
+});
+
+// Vercel Cron target. Vercel sends an Authorization header with CRON_SECRET
+// when the env var is configured; if it's set we require a match, otherwise
+// we accept any caller (useful while testing).
+app.get("/api/cron/digest-compras", async (req, res) => {
+  const expected = process.env.CRON_SECRET;
+  if (expected) {
+    const got = req.headers.authorization || "";
+    if (got !== `Bearer ${expected}`) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+  try {
+    const result = await runDigest(supabase);
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[digest cron]", err);
+    return res.status(500).json({ error: err?.message || "Cron failed." });
+  }
 });
 
 export default app;

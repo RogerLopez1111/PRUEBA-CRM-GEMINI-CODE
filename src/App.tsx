@@ -32,7 +32,8 @@ import {
   Target,
   Building2,
   Bell,
-  XCircle
+  XCircle,
+  Mail
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -403,6 +404,7 @@ export default function App() {
   const [pedidosFilterMonth, setPedidosFilterMonth] = useState<string>("all");
   const [pedidosFilterEstado, setPedidosFilterEstado] = useState<"all" | PedidoExtraordinarioEstado>("all");
   const [resolvePedido, setResolvePedido] = useState<{ id: string; action: "aprobar" | "rechazar" | "pedido"; comment: string } | null>(null);
+  const [sendingDigest, setSendingDigest] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
@@ -1233,6 +1235,39 @@ export default function App() {
       }
     } catch {
       toast.error("Error al resolver");
+    }
+  };
+
+  const handleSendDigestNow = async () => {
+    if (!currentUser || currentUser.role !== "Admin") return;
+    if (!window.confirm("¿Enviar ahora el resumen de pedidos extraordinarios a los usuarios de Compras?")) return;
+    setSendingDigest(true);
+    try {
+      const res = await fetch("/api/pedidos-extraordinarios/send-digest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: currentUser.id, actorRole: currentUser.role }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al enviar el resumen");
+        return;
+      }
+      const data = await res.json();
+      const sent = data.sentTo?.length || 0;
+      const failed = data.failedTo?.length || 0;
+      const total = data.recipientCount || 0;
+      if (total === 0) {
+        toast.warning("No hay usuarios de Compras con email registrado.");
+      } else if (failed === 0) {
+        toast.success(`Resumen enviado a ${sent} usuario(s) de Compras.`);
+      } else {
+        toast.warning(`Resumen enviado a ${sent} de ${total} (${failed} fallaron).`);
+      }
+    } catch {
+      toast.error("Error al enviar el resumen");
+    } finally {
+      setSendingDigest(false);
     }
   };
 
@@ -3316,6 +3351,13 @@ export default function App() {
                 <h2 className="text-2xl font-bold tracking-tight">Pedidos Extraordinarios</h2>
                 <p className="text-slate-500">Solicita la compra de un producto fuera de las ventanas regulares cuando el cliente está dispuesto a esperar (máx. 10 días).</p>
               </div>
+              <div className="flex items-center gap-2">
+                {currentUser.role === "Admin" && (
+                  <Button variant="outline" className="gap-2" onClick={handleSendDigestNow} disabled={sendingDigest}>
+                    <Mail className="w-4 h-4" />
+                    {sendingDigest ? "Enviando…" : "Enviar resumen ahora"}
+                  </Button>
+                )}
               {currentUser.role !== "Compras" && (
               <Dialog open={isPedidoOpen} onOpenChange={(open) => { setIsPedidoOpen(open); if (!open) resetPedidoForm(); }}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
@@ -3514,6 +3556,7 @@ export default function App() {
                 </DialogContent>
               </Dialog>
               )}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">

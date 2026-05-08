@@ -199,6 +199,7 @@ export async function getProductosRaw(): Promise<Record<string, any>[]> {
       SELECT
         Pr_Cve_Producto, Pr_Clave_Corta, Pr_Numero_Parte, Pr_Barras,
         Pr_Descripcion, Pr_Descripcion_Corta, Pr_Unidad_Venta,
+        Pv_Cve_Proveedor,
         Es_Cve_Estado, Fecha_Alta, Fecha_Ult_Modif, Fecha_Baja
       FROM Producto
       ORDER BY Pr_Descripcion
