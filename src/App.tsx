@@ -49,6 +49,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Lead, User, LeadStatus, Client, SalesGoal, Product, ProductoFaltante, PedidoExtraordinario, PedidoExtraordinarioEstado } from "./types";
+import { useAppData } from "./state/AppDataContext";
 import {
   MESES,
   isCrmClientId,
@@ -246,14 +247,14 @@ function SortableLeadCard({ lead, users, onUpdate, getStatusBadge: _getStatusBad
 }
 
 export default function App() {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [sucursales, setSucursales] = useState<{id: string, name: string}[]>([]);
-  const [segmentos, setSegmentos] = useState<{id: string, name: string}[]>([]);
-  const [rechazoMotivos, setRechazoMotivos] = useState<{ id: number; descripcion: string }[]>([]);
-  const [productos, setProductos] = useState<Product[]>([]);
-  const [faltantes, setFaltantes] = useState<ProductoFaltante[]>([]);
+  // Server data + auth + lifecycle live in AppDataContext (see src/state/AppDataContext.tsx).
+  // Component-local state (filters, dialogs, forms) stays here until each tab is extracted.
+  const {
+    leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, rechazoMotivos,
+    currentUser, setCurrentUser, loading,
+    refetchAll, refetchFaltantes, refetchPedidos,
+  } = useAppData();
+
   const [isFaltanteOpen, setIsFaltanteOpen] = useState(false);
   const [isProductoSearchOpen, setIsProductoSearchOpen] = useState(false);
   const [productoSearch, setProductoSearch] = useState("");
@@ -273,7 +274,6 @@ export default function App() {
   const [faltantesFilterEstado, setFaltantesFilterEstado] = useState<"all" | "pendiente" | "resuelto">("all");
 
   // Pedidos extraordinarios (formal requests to procure outside normal buy windows)
-  const [pedidos, setPedidos] = useState<PedidoExtraordinario[]>([]);
   const [isPedidoOpen, setIsPedidoOpen] = useState(false);
   const [isPedidoLeadSearchOpen, setIsPedidoLeadSearchOpen] = useState(false);
   const [pedidoLeadSearch, setPedidoLeadSearch] = useState("");
@@ -293,8 +293,6 @@ export default function App() {
   const [pedidosFilterEstado, setPedidosFilterEstado] = useState<"all" | PedidoExtraordinarioEstado>("all");
   const [resolvePedido, setResolvePedido] = useState<{ id: string; action: "aprobar" | "rechazar" | "pedido"; comment: string } | null>(null);
   const [sendingDigest, setSendingDigest] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
   const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
@@ -747,72 +745,32 @@ export default function App() {
     return out.sort((a, b) => b.days - a.days);
   }, [leads, users, currentUser]);
 
+  // Apply seller/segmento defaults to the create-lead form once context data
+  // arrives, or when the current user changes. Preserves the previous
+  // post-fetch behavior that lived inside the old fetchData().
   useEffect(() => {
-    const savedUser = localStorage.getItem("ecosistemas_crm_user");
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      setCurrentUser(user);
-      if (user.role === "Seller") {
-        setPerfUserFilter(user.id);
-        fetchGoalsTimeline(user.id, setMyGoalsTimeline);
-      }
+    setNewLead(prev => ({
+      ...prev,
+      sucursal: prev.sucursal
+        || (currentUser?.role === "Seller" ? sucursales.find(s => s.id === currentUser.sucursalId)?.name : "")
+        || (sucursales.length > 0 ? sucursales[0].name : ""),
+      segmento: prev.segmento || (segmentos.length > 0 ? segmentos[0].name : ""),
+    }));
+  }, [sucursales, segmentos, currentUser]);
+
+  // Seller-scoped side-effects when the session is restored or login happens.
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === "Seller") {
+      setPerfUserFilter(currentUser.id);
+      fetchGoalsTimeline(currentUser.id, setMyGoalsTimeline);
+    } else {
+      setPerfUserFilter("all");
     }
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes, motivosRes, productosRes, faltantesRes, pedidosRes] = await Promise.all([
-        fetch("/api/leads"),
-        fetch("/api/users"),
-        fetch("/api/clients"),
-        fetch("/api/lookups/sucursales"),
-        fetch("/api/lookups/segmentos"),
-        fetch("/api/lookups/rechazo-motivos"),
-        fetch("/api/productos"),
-        fetch("/api/productos-faltantes"),
-        fetch("/api/pedidos-extraordinarios")
-      ]);
-
-      const safeJson = async (res: Response, fallback: any) => {
-        try { return res.ok ? await res.json() : fallback; }
-        catch { return fallback; }
-      };
-
-      const leadsData = await safeJson(leadsRes, []);
-      const usersData = await safeJson(usersRes, []);
-      const clientsData = await safeJson(clientsRes, []);
-      const sucursalesData = await safeJson(sucursalesRes, []);
-      const segmentosData = await safeJson(segmentosRes, []);
-      const motivosData = await safeJson(motivosRes, []);
-      const productosData = await safeJson(productosRes, []);
-      const faltantesData = await safeJson(faltantesRes, []);
-      const pedidosData = await safeJson(pedidosRes, []);
-
-      setLeads(leadsData);
-      setUsers(usersData);
-      setClients(clientsData);
-      setSucursales(sucursalesData);
-      setSegmentos(segmentosData);
-      setRechazoMotivos(motivosData);
-      setProductos(productosData);
-      setFaltantes(faltantesData);
-      setPedidos(pedidosData);
-
-      // Set defaults for new lead if not already set
-      setNewLead(prev => ({
-        ...prev,
-        sucursal: prev.sucursal || (currentUser?.role === "Seller" ? sucursalesData.find((s: any) => s.id === currentUser.sucursalId)?.name : "") || (sucursalesData.length > 0 ? sucursalesData[0].name : ""),
-        segmento: prev.segmento || (segmentosData.length > 0 ? segmentosData[0].name : "")
-      }));
-
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error("Error al cargar los datos");
-      setLoading(false);
-    }
-  };
+    // We intentionally omit fetchGoalsTimeline / setMyGoalsTimeline from deps —
+    // they're stable identities defined later in this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -824,13 +782,11 @@ export default function App() {
       });
       if (res.ok) {
         const user = await res.json();
+        // setCurrentUser persists to localStorage; the role-based useEffect
+        // above handles perf filter + goals timeline. Just refresh data.
         setCurrentUser(user);
-        if (user.role === "Seller") setPerfUserFilter(user.id);
-        else setPerfUserFilter("all");
-        localStorage.setItem("ecosistemas_crm_user", JSON.stringify(user));
         toast.success(`Bienvenido de nuevo, ${user.name}`);
-        if (user.role === "Seller") fetchGoalsTimeline(user.id, setMyGoalsTimeline);
-        fetchData();
+        refetchAll();
       } else {
         const data = await res.json();
         toast.error(data.error || "Correo o contraseña incorrectos");
@@ -842,7 +798,6 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem("ecosistemas_crm_user");
     toast.info("Sesión cerrada exitosamente");
   };
 
@@ -889,7 +844,7 @@ export default function App() {
           erpClientId: "",
         });
         setErpClientSearch("");
-        fetchData();
+        refetchAll();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Failed to update status");
@@ -962,8 +917,7 @@ export default function App() {
         toast.success(isEdit ? "Faltante actualizado" : "Faltante registrado");
         setIsFaltanteOpen(false);
         resetFaltanteForm();
-        const r = await fetch("/api/productos-faltantes");
-        if (r.ok) setFaltantes(await r.json());
+        await refetchFaltantes();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || (isEdit ? "Error al actualizar faltante" : "Error al registrar faltante"));
@@ -984,8 +938,7 @@ export default function App() {
         body: JSON.stringify({ estado: next }),
       });
       if (res.ok) {
-        const r = await fetch("/api/productos-faltantes");
-        if (r.ok) setFaltantes(await r.json());
+        await refetchFaltantes();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Error al actualizar");
@@ -1018,11 +971,6 @@ export default function App() {
     setProductoSearch("");
     setPedidoLeadSearch("");
     setIsPedidoOpen(true);
-  };
-
-  const refetchPedidos = async () => {
-    const r = await fetch("/api/pedidos-extraordinarios");
-    if (r.ok) setPedidos(await r.json());
   };
 
   const handleSubmitPedido = async () => {
@@ -1243,7 +1191,7 @@ export default function App() {
           clientInitiated: false,
           mostrador: false,
         });
-        fetchData();
+        refetchAll();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Error al crear lead");
@@ -1281,7 +1229,7 @@ export default function App() {
       });
       if (res.ok) {
         toast.success("Correo actualizado");
-        fetchData();
+        refetchAll();
         setSelectedUserDetail(prev => prev ? { ...prev, email: userDetailEmail } : null);
       } else {
         const data = await res.json();
@@ -1321,7 +1269,7 @@ export default function App() {
       });
       if (res.ok) {
         toast.success("Rol de usuario actualizado");
-        fetchData();
+        refetchAll();
       }
     } catch (error) {
       toast.error("Error al actualizar rol");
@@ -1337,7 +1285,7 @@ export default function App() {
       });
       if (res.ok) {
         toast.success("Meta de ventas actualizada");
-        fetchData();
+        refetchAll();
       }
     } catch (error) {
       toast.error("Error al actualizar meta");
@@ -1355,7 +1303,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         toast.success(`Meta aplicada a ${data.updated} vendedor(es)`);
-        fetchData();
+        refetchAll();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Error al establecer meta");
@@ -1376,7 +1324,7 @@ export default function App() {
         toast.success("Nuevo usuario creado exitosamente");
         setIsNewUserOpen(false);
         setNewUser({ name: "", email: "", role: "Seller", salesGoal: 50000, sucursal: "" });
-        fetchData();
+        refetchAll();
       } else {
         const data = await res.json();
         toast.error(data.error || "Error al crear usuario");
