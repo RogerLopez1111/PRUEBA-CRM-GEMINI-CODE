@@ -50,6 +50,10 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
   const [filterClientInitiated, setFilterClientInitiated] = useState(false);
   const [filterMostrador, setFilterMostrador] = useState(false);
 
+  // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">)
+  const [activityFrom, setActivityFrom] = useState<string>("");
+  const [activityTo, setActivityTo] = useState<string>("");
+
   // New-user dialog
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [newUser, setNewUser] = useState(NEW_USER_BLANK);
@@ -742,7 +746,37 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
                   </CardTitle>
                   <CardDescription>Un historial completo de todas las actualizaciones del equipo.</CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-medium text-brand-gray ml-1">Desde</p>
+                    <Input
+                      type="date"
+                      value={activityFrom}
+                      max={activityTo || undefined}
+                      onChange={(e) => setActivityFrom(e.target.value)}
+                      className="h-8 text-xs w-[140px]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-medium text-brand-gray ml-1">Hasta</p>
+                    <Input
+                      type="date"
+                      value={activityTo}
+                      min={activityFrom || undefined}
+                      onChange={(e) => setActivityTo(e.target.value)}
+                      className="h-8 text-xs w-[140px]"
+                    />
+                  </div>
+                  {(activityFrom || activityTo) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => { setActivityFrom(""); setActivityTo(""); }}
+                    >
+                      Limpiar
+                    </Button>
+                  )}
                   <Select value={filterSeller} onValueChange={setFilterSeller}>
                     <SelectTrigger className="w-[150px] h-8 text-xs"><SelectValue placeholder="Filtrar por Vendedor" /></SelectTrigger>
                     <SelectContent>
@@ -770,6 +804,22 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
                     {leads
                       .flatMap((l) => l.history.map((h) => ({ ...h, leadName: l.name, leadCompany: l.company, leadId: l.id, assignedTo: l.assignedTo })))
                       .filter((h) => filterSeller === "all" || h.updatedBy === filterSeller)
+                      .filter((h) => {
+                        // Date interval filter — inclusive on both ends.
+                        // activityTo is end-of-day so the chosen day is fully included.
+                        if (!activityFrom && !activityTo) return true;
+                        const t = new Date(h.timestamp).getTime();
+                        if (Number.isNaN(t)) return false;
+                        if (activityFrom) {
+                          const from = new Date(activityFrom + "T00:00:00").getTime();
+                          if (t < from) return false;
+                        }
+                        if (activityTo) {
+                          const to = new Date(activityTo + "T23:59:59.999").getTime();
+                          if (t > to) return false;
+                        }
+                        return true;
+                      })
                       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                       .map((update) => (
                         <TableRow key={update.id} className="group hover:bg-slate-50/50 transition-colors">

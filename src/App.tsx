@@ -308,8 +308,10 @@ export default function App() {
   // (intersection collapses to mostrador).
   const [kanbanFilterClientInitiated, setKanbanFilterClientInitiated] = useState(false);
   const [kanbanFilterMostrador, setKanbanFilterMostrador] = useState(false);
+  const [kanbanFilterNewClient, setKanbanFilterNewClient] = useState(false);
   const [myLeadsFilterClientInitiated, setMyLeadsFilterClientInitiated] = useState(false);
   const [myLeadsFilterMostrador, setMyLeadsFilterMostrador] = useState(false);
+  const [myLeadsFilterNewClient, setMyLeadsFilterNewClient] = useState(false);
 
   // Performance Filters
   const [perfUserFilter, setPerfUserFilter] = useState<string>("all");
@@ -1054,6 +1056,10 @@ export default function App() {
                       <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterMostrador} onChange={(e) => setMyLeadsFilterMostrador(e.target.checked)} />
                       <span className="text-xs text-slate-700">Mostrador</span>
                     </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={myLeadsFilterNewClient} onChange={(e) => setMyLeadsFilterNewClient(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Cliente nuevo</span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1068,6 +1074,7 @@ export default function App() {
                 if (!isAssigned || !matchesSearch) return false;
                 if (myLeadsFilterClientInitiated && !l.clientInitiated) return false;
                 if (myLeadsFilterMostrador && !l.mostrador) return false;
+                if (myLeadsFilterNewClient && !l.newClient) return false;
                 return true;
               }).length === 0 ? (
                 <Card className="border-dashed border-2 bg-transparent">
@@ -1087,6 +1094,7 @@ export default function App() {
                   if (myLeadsFilterClientInitiated === "no" && !!l.clientInitiated) return false;
                   if (myLeadsFilterMostrador === "yes" && !l.mostrador) return false;
                   if (myLeadsFilterMostrador === "no" && !!l.mostrador) return false;
+                  if (myLeadsFilterNewClient && !l.newClient) return false;
                   return true;
                 }).map((lead) => (
                   <Card key={lead.id} className="bg-white overflow-hidden">
@@ -1212,6 +1220,10 @@ export default function App() {
                       <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterMostrador} onChange={(e) => setKanbanFilterMostrador(e.target.checked)} />
                       <span className="text-xs text-slate-700">Mostrador</span>
                     </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={kanbanFilterNewClient} onChange={(e) => setKanbanFilterNewClient(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Cliente nuevo</span>
+                    </label>
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -1303,9 +1315,10 @@ export default function App() {
                         if (ym !== kanbanFilterMonth) return false;
                       }
 
-                      // Origin filters (cliente me contactó / mostrador)
+                      // Origin filters (cliente me contactó / mostrador / cliente nuevo)
                       if (kanbanFilterClientInitiated && !l.clientInitiated) return false;
                       if (kanbanFilterMostrador && !l.mostrador) return false;
+                      if (kanbanFilterNewClient && !l.newClient) return false;
 
                       return true;
                     })}
