@@ -525,6 +525,34 @@ app.post("/api/leads", async (req, res) => {
   res.status(201).json(leads.find((l) => l.id === leadId));
 });
 
+// Admin-only delete: removes the lead and its history. Refuses if any
+// pedido extraordinario still references the lead so we don't orphan
+// procurement records — admin must resolve those first.
+app.delete("/api/leads/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const { data: lead } = await supabase.from("leads").select("id").eq("id", id).maybeSingle();
+  if (!lead) return res.status(404).json({ error: "Lead no encontrado." });
+
+  const { count: pedidosCount } = await supabase
+    .from("pedidos_extraordinarios")
+    .select("*", { count: "exact", head: true })
+    .eq("lead_id", id);
+  if (pedidosCount && pedidosCount > 0) {
+    return res.status(409).json({
+      error: `Este lead tiene ${pedidosCount} pedido(s) extraordinario(s) asociados. Resuélvelos antes de eliminar el lead.`,
+    });
+  }
+
+  const { error: histErr } = await supabase.from("lead_history").delete().eq("lead_id", id);
+  if (histErr) return res.status(400).json({ error: histErr.message });
+
+  const { error: delErr } = await supabase.from("leads").delete().eq("id", id);
+  if (delErr) return res.status(400).json({ error: delErr.message });
+
+  res.status(204).end();
+});
+
 app.post("/api/leads/:id/assign", async (req, res) => {
   const { id } = req.params;
   const { userId } = req.body;

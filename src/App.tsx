@@ -30,6 +30,7 @@ import {
   Building2,
   Bell,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -485,6 +486,26 @@ export default function App() {
   };
 
 
+
+  const handleDeleteLead = async (lead: Lead) => {
+    if (currentUser?.role !== "Admin") return;
+    const label = lead.company || lead.name || lead.id;
+    if (!window.confirm(`¿Eliminar el lead "${label}" y todo su historial? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/api/leads/${lead.id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) {
+        const body = await res.json().catch(() => ({} as { error?: string }));
+        toast.error(body.error || "No se pudo eliminar el lead");
+        return;
+      }
+      toast.success("Lead eliminado");
+      setIsStatusUpdateOpen(false);
+      setSelectedLead(null);
+      refetchAll();
+    } catch (e) {
+      toast.error("No se pudo eliminar el lead");
+    }
+  };
 
   const openStatusUpdate = (lead: Lead, newStatus?: LeadStatus) => {
     setSelectedLead(lead);
@@ -2032,21 +2053,34 @@ export default function App() {
                     value={statusUpdate.comment}
                     onChange={(e) => setStatusUpdate({ ...statusUpdate, comment: e.target.value })}
                   />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cerrar</Button>
-                    <Button
-                      size="sm"
-                      disabled={!statusUpdate.comment.trim()}
-                      onClick={() => handleStatusChange(
-                        selectedLead!.id,
-                        selectedLead!.status,
-                        statusUpdate.comment
-                      )}
-                      className="gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Agregar
-                    </Button>
+                  <div className="flex items-center justify-between gap-2">
+                    {currentUser?.role === "Admin" && selectedLead && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 gap-1"
+                        onClick={() => handleDeleteLead(selectedLead)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Eliminar lead
+                      </Button>
+                    )}
+                    <div className="flex justify-end gap-2 ml-auto">
+                      <Button variant="outline" size="sm" onClick={() => setIsStatusUpdateOpen(false)}>Cerrar</Button>
+                      <Button
+                        size="sm"
+                        disabled={!statusUpdate.comment.trim()}
+                        onClick={() => handleStatusChange(
+                          selectedLead!.id,
+                          selectedLead!.status,
+                          statusUpdate.comment
+                        )}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Agregar
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
