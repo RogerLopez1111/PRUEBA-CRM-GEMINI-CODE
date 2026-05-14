@@ -17,6 +17,7 @@ export interface WorkloadFilterState {
   search: string;
   clientInitiated: boolean;
   mostrador: boolean;
+  newClient: boolean;
 }
 
 export interface WorkloadStat {
@@ -66,6 +67,7 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
     const matchesOrigin = (l: Lead) => {
       if (filter.clientInitiated && !l.clientInitiated) return false;
       if (filter.mostrador && !l.mostrador) return false;
+      if (filter.newClient && !l.newClient) return false;
       return true;
     };
 
@@ -123,6 +125,6 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
     return { stats, teamAvgConv, stuckLeads };
   }, [
     leads, users, sucursales,
-    filter.vendedor, filter.sucursal, filter.search, filter.clientInitiated, filter.mostrador,
+    filter.vendedor, filter.sucursal, filter.search, filter.clientInitiated, filter.mostrador, filter.newClient,
   ]);
 }
