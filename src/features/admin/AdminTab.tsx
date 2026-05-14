@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   Settings, UserPlus, Users, Filter, AlertTriangle, CheckCircle2, Clock, History, Target, Building2, TrendingUp,
 } from "lucide-react";
@@ -20,11 +20,11 @@ import {
 
 import { MESES, getStuckLevel, getTimeStuck } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
-import type { Lead, LeadStatus, SalesGoal, User } from "../../types";
+import type { Lead, SalesGoal, User } from "../../types";
 import { useWorkloadInsights } from "./useWorkloadInsights";
+import { getStatusBadge } from "../leads/getStatusBadge";
 
 export interface AdminTabProps {
-  getStatusBadge: (status: LeadStatus) => ReactNode;
   openStatusUpdate: (lead: Lead) => void;
 }
 
@@ -36,7 +36,7 @@ const BRANCH_GOAL_BLANK = () => ({
   amount: 0,
 });
 
-export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
+export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const { leads, users, sucursales, segmentos, refetchAll } = useAppData();
 
   // Sub-tab routing
@@ -49,6 +49,7 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
   const [search, setSearch] = useState<string>("");
   const [filterClientInitiated, setFilterClientInitiated] = useState(false);
   const [filterMostrador, setFilterMostrador] = useState(false);
+  const [filterNewClient, setFilterNewClient] = useState(false);
 
   // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">)
   const [activityFrom, setActivityFrom] = useState<string>("");
@@ -74,6 +75,7 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
     search,
     clientInitiated: filterClientInitiated,
     mostrador: filterMostrador,
+    newClient: filterNewClient,
   });
 
   const fetchGoalsTimeline = async (userId: string) => {
@@ -577,6 +579,10 @@ export function AdminTab({ getStatusBadge, openStatusUpdate }: AdminTabProps) {
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterMostrador} onChange={(e) => setFilterMostrador(e.target.checked)} />
                       <span className="text-xs text-slate-700">Mostrador</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterNewClient} onChange={(e) => setFilterNewClient(e.target.checked)} />
+                      <span className="text-xs text-slate-700">Cliente nuevo</span>
                     </label>
                   </div>
                 </div>
