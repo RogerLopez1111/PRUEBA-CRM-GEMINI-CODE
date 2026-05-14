@@ -31,6 +31,7 @@ import {
   Bell,
   XCircle,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -259,6 +260,7 @@ export default function App() {
   // Pedidos extraordinarios state now lives inside features/pedidos/PedidosTab.
 
   const [isNewLeadOpen, setIsNewLeadOpen] = useState(false);
+  const [isCreatingLead, setIsCreatingLead] = useState(false);
   const [isClientSearchOpen, setIsClientSearchOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
   const [isSellerSearchOpen, setIsSellerSearchOpen] = useState(false);
@@ -558,6 +560,7 @@ export default function App() {
   };
 
   const handleCreateLead = async () => {
+    if (isCreatingLead) return;
     if (!newLead.company.trim()) {
       toast.error("Selecciona o escribe una empresa");
       return;
@@ -566,6 +569,7 @@ export default function App() {
       toast.error("Asigna el lead a un vendedor");
       return;
     }
+    setIsCreatingLead(true);
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
@@ -598,6 +602,8 @@ export default function App() {
       }
     } catch (error) {
       toast.error("Error al crear lead");
+    } finally {
+      setIsCreatingLead(false);
     }
   };
 
@@ -818,7 +824,7 @@ export default function App() {
 
             <div className="flex items-center gap-2">
               {currentUser.role !== "Compras" && (
-              <Dialog open={isNewLeadOpen} onOpenChange={setIsNewLeadOpen}>
+              <Dialog open={isNewLeadOpen} onOpenChange={(open) => { if (!isCreatingLead) setIsNewLeadOpen(open); }}>
                 <DialogTrigger nativeButton={true} render={<Button className="gap-2" />}>
                   <Plus className="w-4 h-4" />
                   Nuevo Lead
@@ -1037,8 +1043,17 @@ export default function App() {
                     )}
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsNewLeadOpen(false)}>Cancelar</Button>
-                    <Button onClick={handleCreateLead}>Crear Lead</Button>
+                    <Button variant="outline" onClick={() => setIsNewLeadOpen(false)} disabled={isCreatingLead}>Cancelar</Button>
+                    <Button onClick={handleCreateLead} disabled={isCreatingLead} className="gap-2">
+                      {isCreatingLead ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Creando...
+                        </>
+                      ) : (
+                        "Crear Lead"
+                      )}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
