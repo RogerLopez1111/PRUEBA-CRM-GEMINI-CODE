@@ -92,13 +92,15 @@ async function syncVendedores() {
   if (error) { console.error('✗ vendedores:', error.message); return; }
   console.log(`✓ vendedores upserted: ${rows.length}`);
 
-  // Remove vendedores in Supabase that are no longer active in ERP,
+  // Remove ERP-style vendedores in Supabase that are no longer active in ERP,
   // skipping any still referenced by leads or goals (FK constraints).
+  // CRM-created users (alphanumeric IDs) are never touched — they're created
+  // for CRM-only roles like Compras and have no ERP counterpart.
   const activeIds = new Set(rows.map((r) => r.id));
   const { data: existing } = await supabase.from('vendedores').select('Vn_Cve_Vendedor');
   const orphans = (existing || [])
     .map((r) => String(r.Vn_Cve_Vendedor))
-    .filter((id) => !activeIds.has(id));
+    .filter((id) => isErpId(id) && !activeIds.has(id));
   if (!orphans.length) return;
 
   const [{ data: leadRefs }, { data: goalRefs }] = await Promise.all([

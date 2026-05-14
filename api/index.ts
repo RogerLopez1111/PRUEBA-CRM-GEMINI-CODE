@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
+import { runDigest } from "../src/digest-compras.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -217,6 +218,9 @@ app.post("/api/users", async (req, res) => {
     Vn_Email: email,
     Vn_Perfil: role,
     Sc_Cve_Sucursal: sucursalRow?.Sc_Cve_Sucursal || "",
+    // Mark active so /api/login (which filters Es_Cve_Estado = 'AC') will
+    // find the row. Without this, CRM-created users can never log in.
+    Es_Cve_Estado: "AC",
   });
 
   if (error) {
@@ -495,7 +499,8 @@ app.post("/api/leads", async (req, res) => {
     Cl_Valor_CRM: leadData.value,
     Sc_Cve_Sucursal: sucursalId || null,
     Sg_Cve_Segmento: segmentoRow?.Sg_Cve_Segmento || null,
-    Cl_Client_Initiated_CRM: !!clientInitiated,
+    // Mostrador implies clientInitiated by definition (a walk-in is always client-initiated).
+    Cl_Client_Initiated_CRM: !!clientInitiated || !!mostrador,
     Cl_Mostrador_CRM: !!mostrador,
     Cl_New_Client_CRM: !isExistingClient,
     Cl_CreatedAt_CRM: now,
@@ -518,6 +523,34 @@ app.post("/api/leads", async (req, res) => {
 
   const leads = await getLeadsWithHistory();
   res.status(201).json(leads.find((l) => l.id === leadId));
+});
+
+// Admin-only delete: removes the lead and its history. Refuses if any
+// pedido extraordinario still references the lead so we don't orphan
+// procurement records — admin must resolve those first.
+app.delete("/api/leads/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const { data: lead } = await supabase.from("leads").select("id").eq("id", id).maybeSingle();
+  if (!lead) return res.status(404).json({ error: "Lead no encontrado." });
+
+  const { count: pedidosCount } = await supabase
+    .from("pedidos_extraordinarios")
+    .select("*", { count: "exact", head: true })
+    .eq("lead_id", id);
+  if (pedidosCount && pedidosCount > 0) {
+    return res.status(409).json({
+      error: `Este lead tiene ${pedidosCount} pedido(s) extraordinario(s) asociados. Resuélvelos antes de eliminar el lead.`,
+    });
+  }
+
+  const { error: histErr } = await supabase.from("lead_history").delete().eq("lead_id", id);
+  if (histErr) return res.status(400).json({ error: histErr.message });
+
+  const { error: delErr } = await supabase.from("leads").delete().eq("id", id);
+  if (delErr) return res.status(400).json({ error: delErr.message });
+
+  res.status(204).end();
 });
 
 app.post("/api/leads/:id/assign", async (req, res) => {
@@ -842,6 +875,264 @@ app.patch("/api/productos-faltantes/:id", async (req, res) => {
 
   const all = await fetchFaltantes();
   res.json(all.find((f) => f.id === id));
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pedidos Extraordinarios — formal requests to procure stock outside the
+// regular buy windows. Lifecycle: solicitado → aprobado | rechazado | cancelado.
+// ────────────────────────────────────────────────────────────────────────────
+
+const PEDIDO_ESTADOS = new Set(["solicitado", "aprobado", "pedido", "rechazado", "cancelado"]);
+
+async function fetchPedidosExtraordinarios(filters: { vendedorId?: string } = {}) {
+  // Two FKs from pedidos_extraordinarios → vendedores (Vn_Cve_Vendedor and
+  // resuelto_por) require disambiguation. Supabase resolves the embed via
+  // the source-column alias syntax: `<alias>:<column>(...)`.
+  let query = supabase
+    .from("pedidos_extraordinarios")
+    .select(`
+      id, Vn_Cve_Vendedor, Sc_Cve_Sucursal, Cl_Cve_Cliente, Pr_Cve_Producto, lead_id,
+      producto_descripcion, cantidad, valor_estimado, compromiso_dias, justificacion,
+      estado, resolucion_comentario, resuelto_por, resuelto_at, created_at, updated_at,
+      vendedor:Vn_Cve_Vendedor(Vn_Descripcion),
+      resolver:resuelto_por(Vn_Descripcion),
+      sucursales(Sc_Descripcion),
+      clientes(Cl_Razon_Social, Cl_Descripcion),
+      leads(Cl_Status_CRM, clientes(Cl_Razon_Social, Cl_Descripcion))
+    `)
+    .order("created_at", { ascending: false });
+  if (filters.vendedorId) query = query.eq("Vn_Cve_Vendedor", filters.vendedorId);
+  const { data, error } = await query;
+  if (error) { console.error("[pedidos_extraordinarios]", error.message); return []; }
+  return (data || []).map((r: any) => {
+    const leadCompany = r.leads?.clientes
+      ? String(r.leads.clientes.Cl_Razon_Social || r.leads.clientes.Cl_Descripcion || "").trim() || undefined
+      : undefined;
+    const clienteName = r.clientes
+      ? (String(r.clientes.Cl_Descripcion || r.clientes.Cl_Razon_Social || "").trim() || null)
+      : null;
+    return {
+      id: r.id,
+      vendedorId: String(r.Vn_Cve_Vendedor || ""),
+      vendedorName: r.vendedor?.Vn_Descripcion || undefined,
+      sucursalId: r.Sc_Cve_Sucursal ? String(r.Sc_Cve_Sucursal) : undefined,
+      sucursalName: r.sucursales?.Sc_Descripcion || undefined,
+      leadId: String(r.lead_id || ""),
+      leadCompany,
+      leadStatus: r.leads?.Cl_Status_CRM || undefined,
+      clienteId: r.Cl_Cve_Cliente ? String(r.Cl_Cve_Cliente) : null,
+      clienteName,
+      productoId: r.Pr_Cve_Producto ? String(r.Pr_Cve_Producto) : null,
+      productoDescripcion: r.producto_descripcion || "",
+      cantidad: Number(r.cantidad || 0),
+      valorEstimado: Number(r.valor_estimado || 0),
+      compromisoDias: Number(r.compromiso_dias || 0),
+      justificacion: r.justificacion || "",
+      estado: r.estado,
+      resolucionComentario: r.resolucion_comentario || undefined,
+      resueltoPor: r.resuelto_por || undefined,
+      resueltoPorName: r.resolver?.Vn_Descripcion || undefined,
+      resueltoAt: r.resuelto_at || undefined,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  });
+}
+
+app.get("/api/pedidos-extraordinarios", async (req, res) => {
+  const vendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+  res.json(await fetchPedidosExtraordinarios({ vendedorId }));
+});
+
+app.post("/api/pedidos-extraordinarios", async (req, res) => {
+  const { userId, leadId, productoId, productoDescripcion, cantidad, valorEstimado, compromisoDias, justificacion } = req.body;
+  if (!userId) return res.status(400).json({ error: "Falta el id del vendedor." });
+  if (!leadId) return res.status(400).json({ error: "Selecciona un lead activo." });
+  if (!productoDescripcion || !String(productoDescripcion).trim()) {
+    return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
+  }
+  if (!cantidad || Number(cantidad) <= 0) {
+    return res.status(400).json({ error: "La cantidad debe ser mayor a 0." });
+  }
+  if (!valorEstimado || Number(valorEstimado) <= 0) {
+    return res.status(400).json({ error: "Captura el valor estimado de la venta." });
+  }
+  const dias = Number(compromisoDias);
+  if (!dias || dias < 1 || dias > 10) {
+    return res.status(400).json({ error: "El compromiso debe ser entre 1 y 10 días." });
+  }
+
+  const { data: lead, error: leadErr } = await supabase
+    .from("leads")
+    .select("Cl_Cve_Cliente, Cl_Status_CRM")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (leadErr || !lead) return res.status(400).json({ error: "Lead no encontrado." });
+  if (["FACTURADO", "ENTREGADO", "RECHAZADO"].includes(String(lead.Cl_Status_CRM))) {
+    return res.status(400).json({ error: "Solo puedes pedir productos para leads activos." });
+  }
+
+  const { data: seller } = await supabase
+    .from("vendedores")
+    .select("Sc_Cve_Sucursal")
+    .eq("Vn_Cve_Vendedor", userId)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const id = Math.random().toString(36).substr(2, 12);
+
+  const { error } = await supabase.from("pedidos_extraordinarios").insert({
+    id,
+    Vn_Cve_Vendedor: userId,
+    Sc_Cve_Sucursal: seller?.Sc_Cve_Sucursal || null,
+    Cl_Cve_Cliente: lead.Cl_Cve_Cliente || null,
+    lead_id: leadId,
+    Pr_Cve_Producto: productoId || null,
+    producto_descripcion: String(productoDescripcion).trim(),
+    cantidad: Number(cantidad),
+    valor_estimado: Number(valorEstimado),
+    compromiso_dias: dias,
+    justificacion: justificacion ? String(justificacion).trim() : "",
+    estado: "solicitado",
+    created_at: now,
+    updated_at: now,
+  });
+  if (error) return res.status(400).json({ error: error.message });
+
+  const all = await fetchPedidosExtraordinarios();
+  res.status(201).json(all.find((p) => p.id === id));
+});
+
+app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    actorId, actorRole,
+    estado,
+    productoId, productoDescripcion, cantidad, valorEstimado, compromisoDias,
+    justificacion, resolucionComentario,
+  } = req.body;
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from("pedidos_extraordinarios")
+    .select("Vn_Cve_Vendedor, estado")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchErr || !existing) return res.status(404).json({ error: "Pedido no encontrado." });
+
+  const isAdmin = actorRole === "Admin";
+  const isCompras = actorRole === "Compras";
+  const isOwner = actorId && actorId === existing.Vn_Cve_Vendedor;
+
+  // Permission check.
+  if (!isAdmin && !isCompras && !isOwner) return res.status(403).json({ error: "No autorizado." });
+  // Compras can transition to aprobado / rechazado / pedido. Allowed source
+  // states: solicitado (any of the three) or aprobado (advance to pedido or
+  // rechazado). pedido / rechazado / cancelado are terminal for Compras.
+  if (isCompras && !isAdmin) {
+    if (!["aprobado", "rechazado", "pedido"].includes(estado)) {
+      return res.status(403).json({ error: "Compras solo puede aprobar, rechazar o marcar como pedido." });
+    }
+    if (!["solicitado", "aprobado"].includes(String(existing.estado))) {
+      return res.status(409).json({ error: "Pedido ya resuelto." });
+    }
+  }
+  // Sellers (non-admin, non-compras) can only cancel their own pending request.
+  if (!isAdmin && !isCompras) {
+    if (estado !== "cancelado") return res.status(403).json({ error: "Como vendedor solo puedes cancelar tu propio pedido." });
+    if (existing.estado !== "solicitado") return res.status(409).json({ error: "Solo se puede cancelar un pedido pendiente." });
+  }
+  // Once a pedido reaches a terminal state, only admins can rewind it.
+  // (aprobado is no longer terminal — Compras can advance it to pedido.)
+  if (!isAdmin && ["pedido", "rechazado", "cancelado"].includes(String(existing.estado))) {
+    return res.status(409).json({ error: "Pedido ya resuelto." });
+  }
+
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+
+  if (estado !== undefined) {
+    if (!PEDIDO_ESTADOS.has(estado)) return res.status(400).json({ error: "Estado inválido." });
+    updates.estado = estado;
+    if (["aprobado", "rechazado", "cancelado"].includes(estado)) {
+      updates.resuelto_por = actorId || null;
+      updates.resuelto_at = new Date().toISOString();
+    } else {
+      // Returning to solicitado clears prior resolution.
+      updates.resuelto_por = null;
+      updates.resuelto_at = null;
+    }
+  }
+
+  // Field edits — admin only.
+  if (isAdmin) {
+    if (productoId !== undefined) updates.Pr_Cve_Producto = productoId || null;
+    if (typeof productoDescripcion === "string") {
+      if (!productoDescripcion.trim()) return res.status(400).json({ error: "La descripción del producto no puede estar vacía." });
+      updates.producto_descripcion = productoDescripcion.trim();
+    }
+    if (cantidad !== undefined) {
+      if (!cantidad || Number(cantidad) <= 0) return res.status(400).json({ error: "La cantidad debe ser mayor a 0." });
+      updates.cantidad = Number(cantidad);
+    }
+    if (valorEstimado !== undefined) {
+      if (!valorEstimado || Number(valorEstimado) <= 0) return res.status(400).json({ error: "Valor estimado inválido." });
+      updates.valor_estimado = Number(valorEstimado);
+    }
+    if (compromisoDias !== undefined) {
+      const dias = Number(compromisoDias);
+      if (!dias || dias < 1 || dias > 10) return res.status(400).json({ error: "El compromiso debe ser entre 1 y 10 días." });
+      updates.compromiso_dias = dias;
+    }
+    if (typeof justificacion === "string") updates.justificacion = justificacion.trim();
+    if (typeof resolucionComentario === "string") updates.resolucion_comentario = resolucionComentario.trim();
+  } else if (typeof resolucionComentario === "string") {
+    // Compras attaches the approve/reject comment; sellers attach a cancel comment.
+    updates.resolucion_comentario = resolucionComentario.trim();
+  }
+
+  const { error } = await supabase.from("pedidos_extraordinarios").update(updates).eq("id", id);
+  if (error) return res.status(400).json({ error: error.message });
+
+  const all = await fetchPedidosExtraordinarios();
+  res.json(all.find((p) => p.id === id));
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Compras digest — manual admin trigger and Vercel Cron
+// ────────────────────────────────────────────────────────────────────────────
+
+// Manual trigger from the admin button on the Pedidos screen.
+app.post("/api/pedidos-extraordinarios/send-digest", async (req, res) => {
+  const { actorRole } = req.body || {};
+  if (actorRole !== "Admin") {
+    return res.status(403).json({ error: "Solo administradores pueden forzar el envío del resumen." });
+  }
+  try {
+    const result = await runDigest(supabase);
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[digest manual]", err);
+    return res.status(500).json({ error: err?.message || "Error al enviar el resumen." });
+  }
+});
+
+// Vercel Cron target. Vercel sends an Authorization header with CRON_SECRET
+// when the env var is configured; if it's set we require a match, otherwise
+// we accept any caller (useful while testing).
+app.get("/api/cron/digest-compras", async (req, res) => {
+  const expected = process.env.CRON_SECRET;
+  if (expected) {
+    const got = req.headers.authorization || "";
+    if (got !== `Bearer ${expected}`) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+  try {
+    const result = await runDigest(supabase);
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[digest cron]", err);
+    return res.status(500).json({ error: err?.message || "Cron failed." });
+  }
 });
 
 export default app;
