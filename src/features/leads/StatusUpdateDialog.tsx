@@ -146,10 +146,14 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col p-0">
-        <div className="flex flex-col md:flex-row h-full">
+        {/* min-h-0 on the row and each column lets the inner overflow-y-auto
+            actually scroll. Without it, a tall history forces the columns
+            past 90vh and the right-column footer (Confirmar button) gets
+            clipped below the viewport. */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0">
           {/* Left Side: Timeline History */}
           <div className={cn(
-            "flex flex-col border-slate-100",
+            "flex flex-col border-slate-100 min-h-0",
             sameStatus ? "w-full" : "w-full md:w-1/2 border-r"
           )}>
             <DialogHeader className="p-6 pb-2">
@@ -263,7 +267,7 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
 
           {/* Right Side: Update Form */}
           {!sameStatus && (
-            <div className="w-full md:w-1/2 flex flex-col bg-slate-50/30">
+            <div className="w-full md:w-1/2 flex flex-col min-h-0 bg-slate-50/30">
               <DialogHeader className="p-6 pb-2">
                 <DialogTitle className="flex items-center gap-2">
                   <Plus className="w-5 h-5 text-primary" />
