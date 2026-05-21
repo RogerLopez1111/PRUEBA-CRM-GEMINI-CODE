@@ -38,6 +38,7 @@ import {
   formatDays,
 } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { SalesGoal, User } from "../../types";
 
 const STAGE_COLOR: Record<string, string> = {
@@ -505,7 +506,7 @@ export function PerformanceTab() {
       return;
     }
     let aborted = false;
-    fetch(`/api/users/${viewedUserId}/goals`)
+    apiFetch(`/api/users/${viewedUserId}/goals`)
       .then(r => (r.ok ? r.json() : []))
       .then((data: SalesGoal[]) => { if (!aborted) setGoalsTimeline(data); })
       .catch(() => { if (!aborted) setGoalsTimeline([]); });

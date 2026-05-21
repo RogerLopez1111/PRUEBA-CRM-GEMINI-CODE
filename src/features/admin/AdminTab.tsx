@@ -20,6 +20,7 @@ import {
 
 import { MESES, getStuckLevel, getTimeStuck } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { Lead, SalesGoal, User } from "../../types";
 import { useWorkloadInsights } from "./useWorkloadInsights";
 import { getStatusBadge } from "../leads/getStatusBadge";
@@ -81,7 +82,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const fetchGoalsTimeline = async (userId: string) => {
     setGoalsLoading(true);
     try {
-      const res = await fetch(`/api/users/${userId}/goals`);
+      const res = await apiFetch(`/api/users/${userId}/goals`);
       if (res.ok) setUserGoalsTimeline(await res.json());
     } finally {
       setGoalsLoading(false);
@@ -98,9 +99,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleUpdateUserEmail = async () => {
     if (!selectedUserDetail) return;
     try {
-      const res = await fetch(`/api/users/${selectedUserDetail.id}/email`, {
+      const res = await apiFetch(`/api/users/${selectedUserDetail.id}/email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: userDetailEmail }),
       });
       if (res.ok) {
@@ -119,9 +119,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleResetPassword = async () => {
     if (!selectedUserDetail || !userDetailPassword) return;
     try {
-      const res = await fetch(`/api/users/${selectedUserDetail.id}/reset-password`, {
+      const res = await apiFetch(`/api/users/${selectedUserDetail.id}/reset-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: userDetailPassword }),
       });
       if (res.ok) {
@@ -138,9 +137,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleUpdateRole = async (userId: string, role: "Admin" | "Seller" | "Compras") => {
     try {
-      const res = await fetch(`/api/users/${userId}/role`, {
+      const res = await apiFetch(`/api/users/${userId}/role`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
       if (res.ok) {
@@ -154,9 +152,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleUpdateGoal = async (userId: string, goal: number) => {
     try {
-      const res = await fetch(`/api/users/${userId}/goal`, {
+      const res = await apiFetch(`/api/users/${userId}/goal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal }),
       });
       if (res.ok) {
@@ -171,9 +168,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleSetBranchGoal = async () => {
     if (!branchGoal.sucursalId || !branchGoal.amount) return;
     try {
-      const res = await fetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
+      const res = await apiFetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal: branchGoal.amount, year: branchGoal.year, month: branchGoal.month }),
       });
       if (res.ok) {
@@ -191,9 +187,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleCreateUser = async () => {
     try {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newUser),
       });
       if (res.ok) {

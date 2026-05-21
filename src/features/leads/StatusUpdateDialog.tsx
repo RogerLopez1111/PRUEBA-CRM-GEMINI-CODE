@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { isCrmClientId } from "../../lib/helpers";
+import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Client, Lead, LeadStatus } from "../../types";
 import { getStatusBadge } from "./getStatusBadge";
@@ -90,9 +91,8 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
     if (!selectedLead) return;
     const f = { ...form, ...overrides };
     try {
-      const res = await fetch(`/api/leads/${selectedLead.id}/status`, {
+      const res = await apiFetch(`/api/leads/${selectedLead.id}/status`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: f.status,
           comment: f.comment,
@@ -126,7 +126,7 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
     const label = selectedLead.company || selectedLead.name || selectedLead.id;
     if (!window.confirm(`¿Eliminar el lead "${label}" y todo su historial? Esta acción no se puede deshacer.`)) return;
     try {
-      const res = await fetch(`/api/leads/${selectedLead.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/leads/${selectedLead.id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const body = await res.json().catch(() => ({} as { error?: string }));
         toast.error(body.error || "No se pudo eliminar el lead");

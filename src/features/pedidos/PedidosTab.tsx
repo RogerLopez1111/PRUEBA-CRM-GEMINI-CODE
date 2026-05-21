@@ -20,6 +20,7 @@ import {
 
 import { MESES } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { Lead, Product, PedidoExtraordinario, PedidoExtraordinarioEstado } from "../../types";
 import { usePedidosRollup } from "./usePedidosRollup";
 
@@ -117,11 +118,10 @@ export function PedidosTab() {
 
     const isEdit = !!editingPedidoId;
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         isEdit ? `/api/pedidos-extraordinarios/${editingPedidoId}` : "/api/pedidos-extraordinarios",
         {
           method: isEdit ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             isEdit
               ? {
@@ -165,9 +165,8 @@ export function PedidosTab() {
     if (!currentUser) return;
     if (!window.confirm("¿Cancelar este pedido extraordinario?")) return;
     try {
-      const res = await fetch(`/api/pedidos-extraordinarios/${p.id}`, {
+      const res = await apiFetch(`/api/pedidos-extraordinarios/${p.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actorId: currentUser.id, actorRole: currentUser.role, estado: "cancelado" }),
       });
       if (res.ok) {
@@ -189,9 +188,8 @@ export function PedidosTab() {
       resolvePedido.action === "rechazar" ? "rechazado" :
       "pedido";
     try {
-      const res = await fetch(`/api/pedidos-extraordinarios/${resolvePedido.id}`, {
+      const res = await apiFetch(`/api/pedidos-extraordinarios/${resolvePedido.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actorId: currentUser.id,
           actorRole: currentUser.role,
@@ -217,9 +215,8 @@ export function PedidosTab() {
     if (!window.confirm("¿Enviar ahora el resumen de pedidos extraordinarios a los usuarios de Compras?")) return;
     setSendingDigest(true);
     try {
-      const res = await fetch("/api/pedidos-extraordinarios/send-digest", {
+      const res = await apiFetch("/api/pedidos-extraordinarios/send-digest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actorId: currentUser.id, actorRole: currentUser.role }),
       });
       if (!res.ok) {
