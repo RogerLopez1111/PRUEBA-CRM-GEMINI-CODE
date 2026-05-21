@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
 import { useAppData } from "../../state/AppDataContext";
+import { setStoredToken } from "../../lib/api";
 
 export function LoginScreen() {
   const { setCurrentUser, refetchAll } = useAppData();
@@ -29,7 +30,8 @@ export function LoginScreen() {
         body: JSON.stringify({ email, password }),
       });
       if (res.ok) {
-        const user = await res.json();
+        const { token, user } = await res.json();
+        setStoredToken(token);
         setCurrentUser(user);
         toast.success(`Bienvenido de nuevo, ${user.name}`);
         refetchAll();

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
+import { signToken, requireAuth, requireAdmin, requireRole, type Role } from "./auth.js";
 import { runDigest } from "../src/digest-compras.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
@@ -177,7 +178,7 @@ app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
   const { data: vendor } = await supabase
     .from("vendedores")
-    .select("Vn_Cve_Vendedor, Vn_Password")
+    .select("Vn_Cve_Vendedor, Vn_Password, Vn_Perfil")
     .eq("Vn_Email", email)
     .eq("Es_Cve_Estado", "AC")
     .maybeSingle();
@@ -191,7 +192,25 @@ app.post("/api/login", async (req, res) => {
   }
 
   const users = await getUsersWithPerformance();
-  res.json(users.find((u) => u.id === vendor.Vn_Cve_Vendedor));
+  const user = users.find((u) => u.id === vendor.Vn_Cve_Vendedor);
+  if (!user) {
+    res.status(500).json({ error: "User record not found after login" });
+    return;
+  }
+  const token = signToken({ id: vendor.Vn_Cve_Vendedor, role: vendor.Vn_Perfil as Role });
+  res.json({ token, user });
+});
+
+// Used by the frontend on page load to rehydrate `currentUser` from the
+// stored token without trusting localStorage state.
+app.get("/api/me", requireAuth, async (req, res) => {
+  const users = await getUsersWithPerformance();
+  const user = users.find((u) => u.id === req.user!.sub);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(user);
 });
 
 // ---------------------------------------------------------------------------
