@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
-import { signToken, requireAuth, requireAdmin, requireRole, type Role } from "./auth.js";
+import { signToken, requireAuth, requireAdmin, type Role } from "./auth.js";
 import { runDigest } from "../src/digest-compras.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
@@ -217,11 +217,11 @@ app.get("/api/me", requireAuth, async (req, res) => {
 // Users / Vendedores
 // ---------------------------------------------------------------------------
 
-app.get("/api/users", async (_req, res) => {
+app.get("/api/users", requireAuth, async (_req, res) => {
   res.json(await getUsersWithPerformance());
 });
 
-app.post("/api/users", async (req, res) => {
+app.post("/api/users", requireAdmin, async (req, res) => {
   const { name, email, role, salesGoal, sucursal } = req.body;
   const id = Math.random().toString(36).substr(2, 9);
 
@@ -262,7 +262,7 @@ app.post("/api/users", async (req, res) => {
   res.status(201).json(users.find((u) => u.id === id));
 });
 
-app.post("/api/users/:id/role", async (req, res) => {
+app.post("/api/users/:id/role", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
   const { error } = await supabase
@@ -278,7 +278,7 @@ app.post("/api/users/:id/role", async (req, res) => {
   }
 });
 
-app.post("/api/users/:id/email", async (req, res) => {
+app.post("/api/users/:id/email", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { email } = req.body;
   if (!email) {
@@ -298,7 +298,7 @@ app.post("/api/users/:id/email", async (req, res) => {
   res.json(users.find((u) => u.id === id));
 });
 
-app.post("/api/users/:id/reset-password", async (req, res) => {
+app.post("/api/users/:id/reset-password", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
   if (!password) {
@@ -317,7 +317,7 @@ app.post("/api/users/:id/reset-password", async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/users/:id/goal", async (req, res) => {
+app.post("/api/users/:id/goal", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { goal, year, month } = req.body;
   const now = new Date();
@@ -357,7 +357,7 @@ app.post("/api/users/:id/goal", async (req, res) => {
   res.json(users.find((u) => u.id === id));
 });
 
-app.post("/api/sucursales/:id/goal", async (req, res) => {
+app.post("/api/sucursales/:id/goal", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { goal, year, month } = req.body;
   const now = new Date();
@@ -394,8 +394,13 @@ app.post("/api/sucursales/:id/goal", async (req, res) => {
   res.json({ success: true, updated: sellers.length });
 });
 
-app.get("/api/users/:id/goals", async (req, res) => {
+app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
   const { id } = req.params;
+  // Sellers can only view their own goals; Admins can view anyone's.
+  if (req.user!.role !== "Admin" && req.user!.sub !== id) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const { data, error } = await supabase
     .from("vendedor_metas")
     .select("id, Vn_Cve_Vendedor, year, month, meta, created_at")
@@ -450,12 +455,18 @@ app.get("/api/users/:id/goals", async (req, res) => {
 // Leads (CRM-only table)
 // ---------------------------------------------------------------------------
 
-app.get("/api/leads", async (_req, res) => {
+app.get("/api/leads", requireAuth, async (_req, res) => {
   res.json(await getLeadsWithHistory());
 });
 
-app.post("/api/leads", async (req, res) => {
-  const { userId, isExistingClient, clientId: existingClientId, clientInitiated, mostrador, ...leadData } = req.body;
+app.post("/api/leads", requireAuth, async (req, res) => {
+  const { isExistingClient, clientId: existingClientId, clientInitiated, mostrador, ...leadData } = req.body;
+  // Identity comes from the token, not the request body. For sellers the
+  // lead is self-assigned; admins may pass assignedTo in the leadData
+  // body (handled below by the original code path).
+  const userId = req.user!.role === "Admin"
+    ? (leadData.assignedTo || req.user!.sub)
+    : req.user!.sub;
   const now = new Date().toISOString();
   const status = "ASIGNADO";
 
@@ -547,7 +558,7 @@ app.post("/api/leads", async (req, res) => {
 // Admin-only delete: removes the lead and its history. Refuses if any
 // pedido extraordinario still references the lead so we don't orphan
 // procurement records — admin must resolve those first.
-app.delete("/api/leads/:id", async (req, res) => {
+app.delete("/api/leads/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
 
   const { data: lead } = await supabase.from("leads").select("id").eq("id", id).maybeSingle();
@@ -572,7 +583,7 @@ app.delete("/api/leads/:id", async (req, res) => {
   res.status(204).end();
 });
 
-app.post("/api/leads/:id/assign", async (req, res) => {
+app.post("/api/leads/:id/assign", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { userId } = req.body;
   const now = new Date().toISOString();
@@ -602,18 +613,24 @@ app.post("/api/leads/:id/assign", async (req, res) => {
   }
 });
 
-app.post("/api/leads/:id/status", async (req, res) => {
+app.post("/api/leads/:id/status", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { status, comment, evidenceUrl, userId, quotedAmount, invoicedAmount, rechazoMotivoId, erpClientId } = req.body;
+  const { status, comment, evidenceUrl, quotedAmount, invoicedAmount, rechazoMotivoId, erpClientId } = req.body;
+  const userId = req.user!.sub;
   const now = new Date().toISOString();
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("Cl_Cve_Cliente, Cl_Valor_CRM, Cl_QuotedAmount_CRM, Cl_InvoicedAmount_CRM, clientes(Cl_Razon_Social)")
+    .select("Cl_Cve_Cliente, Cl_Valor_CRM, Cl_QuotedAmount_CRM, Cl_InvoicedAmount_CRM, Vn_Cve_Vendedor, clientes(Cl_Razon_Social)")
     .eq("id", id)
     .maybeSingle();
 
   if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  // Sellers can only update leads assigned to them; Admins can update any.
+  if (req.user!.role !== "Admin" && lead.Vn_Cve_Vendedor !== req.user!.sub) {
+    return res.status(403).json({ error: "Only the assigned seller or an admin can update this lead." });
+  }
 
   const updates: Record<string, any> = { Cl_Status_CRM: status, Cl_UpdatedAt_CRM: now };
   const effectiveQuotedAmount = status === "COTIZADO"
@@ -679,7 +696,7 @@ app.post("/api/leads/:id/status", async (req, res) => {
 // Clients catalogue (mirrors ERP Cliente table)
 // ---------------------------------------------------------------------------
 
-app.get("/api/clients", async (_req, res) => {
+app.get("/api/clients", requireAuth, async (_req, res) => {
   // Paginate: PostgREST caps responses (often 1000 rows), so we fetch in pages until exhausted
   const PAGE_SIZE = 1000;
   const allRows: any[] = [];
@@ -727,7 +744,7 @@ app.get("/api/clients", async (_req, res) => {
 // Lookups
 // ---------------------------------------------------------------------------
 
-app.get("/api/lookups/sucursales", async (_req, res) => {
+app.get("/api/lookups/sucursales", requireAuth, async (_req, res) => {
   // neq alone excludes NULL rows (PostgREST inherits SQL 3-valued logic),
   // so explicitly allow NULL to mean "active by default"
   const { data } = await supabase
@@ -737,7 +754,7 @@ app.get("/api/lookups/sucursales", async (_req, res) => {
   res.json((data || []).map((s) => ({ id: String(s.Sc_Cve_Sucursal), name: s.Sc_Descripcion })));
 });
 
-app.get("/api/lookups/segmentos", async (_req, res) => {
+app.get("/api/lookups/segmentos", requireAuth, async (_req, res) => {
   const { data } = await supabase
     .from("segmentos")
     .select("Sg_Cve_Segmento, Sg_Descripcion, Es_Cve_Estado")
@@ -745,7 +762,7 @@ app.get("/api/lookups/segmentos", async (_req, res) => {
   res.json((data || []).map((s) => ({ id: String(s.Sg_Cve_Segmento), name: s.Sg_Descripcion })));
 });
 
-app.get("/api/lookups/rechazo-motivos", async (_req, res) => {
+app.get("/api/lookups/rechazo-motivos", requireAuth, async (_req, res) => {
   const { data, error } = await supabase
     .from("rechazo_motivos")
     .select("id, descripcion")
@@ -757,7 +774,7 @@ app.get("/api/lookups/rechazo-motivos", async (_req, res) => {
 // ---------------------------------------------------------------------------
 // Productos (active only, paginated like /api/clients)
 // ---------------------------------------------------------------------------
-app.get("/api/productos", async (_req, res) => {
+app.get("/api/productos", requireAuth, async (_req, res) => {
   const PAGE_SIZE = 1000;
   const allRows: any[] = [];
   let from = 0;
@@ -825,14 +842,17 @@ async function fetchFaltantes(filters: { vendedorId?: string } = {}) {
   }));
 }
 
-app.get("/api/productos-faltantes", async (req, res) => {
-  const vendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+app.get("/api/productos-faltantes", requireAuth, async (req, res) => {
+  // Sellers always see only their own; Admin/Compras can pass ?vendedorId
+  // to filter, or omit to see everyone's.
+  const queryVendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+  const vendedorId = req.user!.role === "Seller" ? req.user!.sub : queryVendedorId;
   res.json(await fetchFaltantes({ vendedorId }));
 });
 
-app.post("/api/productos-faltantes", async (req, res) => {
-  const { userId, productoId, productoDescripcion, cantidad, comentario, clienteId } = req.body;
-  if (!userId) return res.status(400).json({ error: "Falta el id del vendedor." });
+app.post("/api/productos-faltantes", requireAuth, async (req, res) => {
+  const { productoId, productoDescripcion, cantidad, comentario, clienteId } = req.body;
+  const userId = req.user!.sub;
   if (!productoDescripcion || !String(productoDescripcion).trim()) {
     return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
   }
@@ -868,9 +888,23 @@ app.post("/api/productos-faltantes", async (req, res) => {
   res.status(201).json(all.find((f) => f.id === id));
 });
 
-app.patch("/api/productos-faltantes/:id", async (req, res) => {
+app.patch("/api/productos-faltantes/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   const { estado, comentario, productoId, productoDescripcion, cantidad, clienteId } = req.body;
+
+  // Sellers can only mutate their own faltantes; Admin/Compras can touch any.
+  if (req.user!.role === "Seller") {
+    const { data: existing } = await supabase
+      .from("productos_faltantes")
+      .select("Vn_Cve_Vendedor")
+      .eq("id", id)
+      .maybeSingle();
+    if (!existing) return res.status(404).json({ error: "Faltante no encontrado." });
+    if (existing.Vn_Cve_Vendedor !== req.user!.sub) {
+      return res.status(403).json({ error: "Solo el dueño del faltante puede modificarlo." });
+    }
+  }
+
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
   if (estado === "pendiente" || estado === "resuelto") updates.estado = estado;
   if (typeof comentario === "string") updates.comentario = comentario.trim();
@@ -958,14 +992,17 @@ async function fetchPedidosExtraordinarios(filters: { vendedorId?: string } = {}
   });
 }
 
-app.get("/api/pedidos-extraordinarios", async (req, res) => {
-  const vendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+app.get("/api/pedidos-extraordinarios", requireAuth, async (req, res) => {
+  // Sellers always see only their own; Admin/Compras can pass ?vendedorId
+  // to filter, or omit to see everyone's.
+  const queryVendedorId = typeof req.query.vendedorId === "string" ? req.query.vendedorId : undefined;
+  const vendedorId = req.user!.role === "Seller" ? req.user!.sub : queryVendedorId;
   res.json(await fetchPedidosExtraordinarios({ vendedorId }));
 });
 
-app.post("/api/pedidos-extraordinarios", async (req, res) => {
-  const { userId, leadId, productoId, productoDescripcion, cantidad, valorEstimado, compromisoDias, justificacion } = req.body;
-  if (!userId) return res.status(400).json({ error: "Falta el id del vendedor." });
+app.post("/api/pedidos-extraordinarios", requireAuth, async (req, res) => {
+  const { leadId, productoId, productoDescripcion, cantidad, valorEstimado, compromisoDias, justificacion } = req.body;
+  const userId = req.user!.sub;
   if (!leadId) return res.status(400).json({ error: "Selecciona un lead activo." });
   if (!productoDescripcion || !String(productoDescripcion).trim()) {
     return res.status(400).json({ error: "Selecciona un producto o escribe una descripción." });
@@ -1022,14 +1059,15 @@ app.post("/api/pedidos-extraordinarios", async (req, res) => {
   res.status(201).json(all.find((p) => p.id === id));
 });
 
-app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
+app.patch("/api/pedidos-extraordinarios/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   const {
-    actorId, actorRole,
     estado,
     productoId, productoDescripcion, cantidad, valorEstimado, compromisoDias,
     justificacion, resolucionComentario,
   } = req.body;
+  const actorId = req.user!.sub;
+  const actorRole = req.user!.role;
 
   const { data: existing, error: fetchErr } = await supabase
     .from("pedidos_extraordinarios")
@@ -1120,11 +1158,7 @@ app.patch("/api/pedidos-extraordinarios/:id", async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 // Manual trigger from the admin button on the Pedidos screen.
-app.post("/api/pedidos-extraordinarios/send-digest", async (req, res) => {
-  const { actorRole } = req.body || {};
-  if (actorRole !== "Admin") {
-    return res.status(403).json({ error: "Solo administradores pueden forzar el envío del resumen." });
-  }
+app.post("/api/pedidos-extraordinarios/send-digest", requireAdmin, async (_req, res) => {
   try {
     const result = await runDigest(supabase);
     return res.json(result);

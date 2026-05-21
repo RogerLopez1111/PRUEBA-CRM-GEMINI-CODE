@@ -101,7 +101,6 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
           invoicedAmount: f.invoicedAmount,
           rechazoMotivoId: f.rechazoMotivoId || undefined,
           erpClientId: f.erpClientId || undefined,
-          userId: currentUser?.id,
         }),
       });
       if (res.ok) {

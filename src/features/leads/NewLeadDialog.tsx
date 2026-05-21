@@ -96,10 +96,7 @@ export function NewLeadDialog() {
     try {
       const res = await apiFetch("/api/leads", {
         method: "POST",
-        body: JSON.stringify({
-          ...form,
-          userId: currentUser?.role === "Seller" ? currentUser.id : form.assignedTo,
-        }),
+        body: JSON.stringify(form),
       });
       if (res.ok) {
         toast.success(currentUser?.role === "Seller" ? "Lead creado y asignado a ti" : "Nuevo lead creado");

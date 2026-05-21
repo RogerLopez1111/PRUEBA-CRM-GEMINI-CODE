@@ -116,7 +116,6 @@ export function FaltantesTab() {
                   clienteId: newFaltante.clienteId || null,
                 }
               : {
-                  userId: currentUser.id,
                   productoId: newFaltante.productoId || undefined,
                   productoDescripcion: newFaltante.productoDescripcion,
                   cantidad: newFaltante.cantidad,

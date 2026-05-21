@@ -125,8 +125,6 @@ export function PedidosTab() {
           body: JSON.stringify(
             isEdit
               ? {
-                  actorId: currentUser.id,
-                  actorRole: currentUser.role,
                   productoId: newPedido.productoId || null,
                   productoDescripcion: newPedido.productoDescripcion,
                   cantidad: newPedido.cantidad,
@@ -135,7 +133,6 @@ export function PedidosTab() {
                   justificacion: newPedido.justificacion,
                 }
               : {
-                  userId: currentUser.id,
                   leadId: newPedido.leadId,
                   productoId: newPedido.productoId || undefined,
                   productoDescripcion: newPedido.productoDescripcion,
@@ -167,7 +164,7 @@ export function PedidosTab() {
     try {
       const res = await apiFetch(`/api/pedidos-extraordinarios/${p.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ actorId: currentUser.id, actorRole: currentUser.role, estado: "cancelado" }),
+        body: JSON.stringify({ estado: "cancelado" }),
       });
       if (res.ok) {
         toast.success("Pedido cancelado");
@@ -191,8 +188,6 @@ export function PedidosTab() {
       const res = await apiFetch(`/api/pedidos-extraordinarios/${resolvePedido.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          actorId: currentUser.id,
-          actorRole: currentUser.role,
           estado,
           resolucionComentario: resolvePedido.comment,
         }),
@@ -217,7 +212,6 @@ export function PedidosTab() {
     try {
       const res = await apiFetch("/api/pedidos-extraordinarios/send-digest", {
         method: "POST",
-        body: JSON.stringify({ actorId: currentUser.id, actorRole: currentUser.role }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
