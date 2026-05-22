@@ -57,8 +57,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
+// Always returns the auth check + role check together — never use a bare
+// role check, or req.user will be undefined and you'll 401 every request.
+// Express flattens middleware arrays, so callers pass this in a single
+// position: app.post(path, requireAdmin, handler).
 export function requireRole(...roles: Role[]) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  const check = (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: "Not authenticated" });
       return;
@@ -69,6 +73,7 @@ export function requireRole(...roles: Role[]) {
     }
     next();
   };
+  return [requireAuth, check];
 }
 
 export const requireAdmin = requireRole("Admin");
