@@ -1,10 +1,12 @@
 /**
- * App header — logo, current user, notifications popover (stale leads), and
- * account/logout dialog. Notifications cards open the status-update dialog
- * so the host App's ref-callback flows through here as a prop.
+ * App header — logo, current user, notifications popover (stale leads +
+ * pedido-aprobado events), and account/logout dialog. Stale-lead cards open
+ * the status-update dialog (passed in as a ref-callback by the host App);
+ * pedido cards are informational. Pedido "seen" state is per-user in
+ * localStorage and committed on popover close.
  */
-import { useMemo } from "react";
-import { Bell, LogOut, Users, AlertTriangle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bell, LogOut, Users, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,23 +18,44 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAppData } from "../../state/AppDataContext";
-import type { Lead, LeadStatus } from "../../types";
+import type { Lead, LeadStatus, PedidoExtraordinario } from "../../types";
 
 interface AppHeaderProps {
   openStatusUpdate: (lead: Lead, newStatus?: LeadStatus) => void;
 }
 
-interface Notification {
-  id: string;
-  leadId: string;
-  kind: "stale-assignment" | "stale-quote";
-  lead: Lead;
-  days: number;
-  sellerName: string;
-}
+type Notification =
+  | {
+      kind: "stale-assignment" | "stale-quote";
+      id: string;
+      leadId: string;
+      lead: Lead;
+      days: number;
+      sellerName: string;
+      sortKey: number;
+    }
+  | {
+      kind: "pedido-aprobado";
+      id: string;
+      pedido: PedidoExtraordinario;
+      sortKey: number;
+    };
+
+const pedidoSeenKey = (userId: string) => `pedido_aprobado_seen:${userId}`;
+
+const readPedidoSeenAt = (userId: string | undefined): string => {
+  if (!userId) return new Date(0).toISOString();
+  try {
+    return localStorage.getItem(pedidoSeenKey(userId)) || new Date(0).toISOString();
+  } catch {
+    return new Date(0).toISOString();
+  }
+};
 
 export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
-  const { leads, users, currentUser, setCurrentUser } = useAppData();
+  const { leads, users, pedidos, currentUser, setCurrentUser } = useAppData();
+
+  const [pedidoSeenAt, setPedidoSeenAt] = useState<string>(() => readPedidoSeenAt(currentUser?.id));
 
   const notifications = useMemo<Notification[]>(() => {
     if (!currentUser) return [];
@@ -47,13 +70,34 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
       const days = Math.floor((now - new Date(lead.updatedAt).getTime()) / DAY);
       const sellerName = users.find(u => u.id === lead.assignedTo)?.name || "Sin asignar";
       if (lead.status === "ASIGNADO" && days >= 3) {
-        out.push({ id: `assign-${lead.id}`, leadId: lead.id, kind: "stale-assignment", lead, days, sellerName });
+        out.push({ kind: "stale-assignment", id: `assign-${lead.id}`, leadId: lead.id, lead, days, sellerName, sortKey: -days });
       } else if (lead.status === "COTIZADO" && days >= 5) {
-        out.push({ id: `quote-${lead.id}`, leadId: lead.id, kind: "stale-quote", lead, days, sellerName });
+        out.push({ kind: "stale-quote", id: `quote-${lead.id}`, leadId: lead.id, lead, days, sellerName, sortKey: -days });
       }
     }
-    return out.sort((a, b) => b.days - a.days);
-  }, [leads, users, currentUser]);
+    // Pedido-aprobado: only for the vendor who requested it, only unseen ones.
+    const seenAtMs = new Date(pedidoSeenAt).getTime();
+    for (const p of pedidos) {
+      if (p.estado !== "aprobado") continue;
+      if (p.vendedorId !== currentUser.id) continue;
+      if (!p.resueltoAt) continue;
+      const resueltoMs = new Date(p.resueltoAt).getTime();
+      if (!(resueltoMs > seenAtMs)) continue;
+      // Pedido events sort newest-first, ahead of stale-lead alerts.
+      out.push({ kind: "pedido-aprobado", id: `pedido-${p.id}`, pedido: p, sortKey: -resueltoMs - 1e15 });
+    }
+    return out.sort((a, b) => a.sortKey - b.sortKey);
+  }, [leads, users, pedidos, pedidoSeenAt, currentUser]);
+
+  const handleNotifOpenChange = (open: boolean) => {
+    // Commit "seen" on close so the items stay visible while the popover is open.
+    if (open || !currentUser) return;
+    const hasUnseen = notifications.some(n => n.kind === "pedido-aprobado");
+    if (!hasUnseen) return;
+    const now = new Date().toISOString();
+    try { localStorage.setItem(pedidoSeenKey(currentUser.id), now); } catch { /* noop */ }
+    setPedidoSeenAt(now);
+  };
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -76,7 +120,7 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
             <span className="text-sm font-semibold text-brand-navy">{currentUser.name}</span>
             <span className="text-xs text-brand-gray">{currentUser.role}</span>
           </div>
-          <Popover>
+          <Popover onOpenChange={handleNotifOpenChange}>
             <PopoverTrigger nativeButton={false} render={
               <div className="relative w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center border border-slate-200 cursor-pointer hover:bg-slate-300 transition-colors">
                 <Bell className="w-5 h-5 text-slate-600" />
@@ -98,29 +142,55 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                     Sin alertas pendientes
                   </div>
                 ) : (
-                  notifications.map(n => (
-                    <button
-                      key={n.id}
-                      onClick={() => openStatusUpdate(n.lead)}
-                      className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className={cn("w-4 h-4 mt-0.5 flex-shrink-0", n.kind === "stale-quote" ? "text-red-500" : "text-amber-500")} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold truncate">{n.lead.name}</p>
-                          <p className="text-xs text-slate-500 truncate">{n.lead.company}</p>
-                          <p className="text-xs mt-1" style={{ color: "#141456" }}>
-                            {n.kind === "stale-quote"
-                              ? `Cotización sin actualizar hace ${n.days} días`
-                              : `Lead asignado sin actualizar hace ${n.days} días`}
-                          </p>
-                          {currentUser.role === "Admin" && (
-                            <p className="text-[10px] text-slate-400 mt-0.5">Vendedor: {n.sellerName}</p>
-                          )}
+                  notifications.map(n => {
+                    if (n.kind === "pedido-aprobado") {
+                      const p = n.pedido;
+                      return (
+                        <div
+                          key={n.id}
+                          className="w-full text-left px-4 py-3 border-b last:border-b-0"
+                        >
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-600" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate">Pedido aprobado</p>
+                              <p className="text-xs text-slate-500 truncate">{p.productoDescripcion}</p>
+                              <p className="text-xs mt-1" style={{ color: "#141456" }}>
+                                Cantidad: {p.cantidad}
+                                {p.resueltoPorName ? ` · por ${p.resueltoPorName}` : ""}
+                              </p>
+                              {p.resolucionComentario && (
+                                <p className="text-[11px] italic text-slate-500 mt-0.5 truncate">"{p.resolucionComentario}"</p>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))
+                      );
+                    }
+                    return (
+                      <button
+                        key={n.id}
+                        onClick={() => openStatusUpdate(n.lead)}
+                        className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className={cn("w-4 h-4 mt-0.5 flex-shrink-0", n.kind === "stale-quote" ? "text-red-500" : "text-amber-500")} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{n.lead.name}</p>
+                            <p className="text-xs text-slate-500 truncate">{n.lead.company}</p>
+                            <p className="text-xs mt-1" style={{ color: "#141456" }}>
+                              {n.kind === "stale-quote"
+                                ? `Cotización sin actualizar hace ${n.days} días`
+                                : `Lead asignado sin actualizar hace ${n.days} días`}
+                            </p>
+                            {currentUser.role === "Admin" && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">Vendedor: {n.sellerName}</p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </PopoverContent>
