@@ -24,6 +24,7 @@ import type {
   ProductoFaltante,
   PedidoExtraordinario,
 } from "../types";
+import { AUTH_EXPIRED_EVENT, apiFetch, getStoredToken, setStoredToken } from "../lib/api";
 
 interface AppData {
   // Server data
@@ -78,33 +79,38 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // Auth setter persists to localStorage so refresh keeps the session.
+  // Clearing the user also clears the stored token — they're a unit.
   const setCurrentUser = useCallback((u: User | null) => {
     setCurrentUserState(u);
     try {
-      if (u) localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-      else localStorage.removeItem(STORAGE_KEY);
+      if (u) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+        setStoredToken(null);
+      }
     } catch {
       /* localStorage can throw in private-mode Safari; non-fatal */
     }
   }, []);
 
   const refetchLeads = useCallback(async () => {
-    const res = await fetch("/api/leads");
+    const res = await apiFetch("/api/leads");
     setLeads(await safeJson<Lead[]>(res, []));
   }, []);
 
   const refetchUsers = useCallback(async () => {
-    const res = await fetch("/api/users");
+    const res = await apiFetch("/api/users");
     setUsers(await safeJson<User[]>(res, []));
   }, []);
 
   const refetchFaltantes = useCallback(async () => {
-    const res = await fetch("/api/productos-faltantes");
+    const res = await apiFetch("/api/productos-faltantes");
     setFaltantes(await safeJson<ProductoFaltante[]>(res, []));
   }, []);
 
   const refetchPedidos = useCallback(async () => {
-    const res = await fetch("/api/pedidos-extraordinarios");
+    const res = await apiFetch("/api/pedidos-extraordinarios");
     setPedidos(await safeJson<PedidoExtraordinario[]>(res, []));
   }, []);
 
@@ -114,15 +120,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes,
         motivosRes, productosRes, faltantesRes, pedidosRes,
       ] = await Promise.all([
-        fetch("/api/leads"),
-        fetch("/api/users"),
-        fetch("/api/clients"),
-        fetch("/api/lookups/sucursales"),
-        fetch("/api/lookups/segmentos"),
-        fetch("/api/lookups/rechazo-motivos"),
-        fetch("/api/productos"),
-        fetch("/api/productos-faltantes"),
-        fetch("/api/pedidos-extraordinarios"),
+        apiFetch("/api/leads"),
+        apiFetch("/api/users"),
+        apiFetch("/api/clients"),
+        apiFetch("/api/lookups/sucursales"),
+        apiFetch("/api/lookups/segmentos"),
+        apiFetch("/api/lookups/rechazo-motivos"),
+        apiFetch("/api/productos"),
+        apiFetch("/api/productos-faltantes"),
+        apiFetch("/api/pedidos-extraordinarios"),
       ]);
 
       setLeads(await safeJson<Lead[]>(leadsRes, []));
@@ -142,16 +148,44 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Initial mount: restore session, then fetch data.
+  // Initial mount: if we have a token, rehydrate currentUser from /api/me
+  // (don't trust the localStorage user record on its own — token is the
+  // source of truth). Without a token we stay on the LoginScreen.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setCurrentUserState(JSON.parse(saved));
-    } catch {
-      /* ignore corrupted localStorage */
+    const token = getStoredToken();
+    if (!token) {
+      // Clean up any orphaned user record from before tokens existed.
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
+      setLoading(false);
+      return;
     }
-    refetchAll();
+    (async () => {
+      const res = await apiFetch("/api/me");
+      if (res.ok) {
+        const user = await res.json();
+        setCurrentUserState(user);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(user)); } catch { /* noop */ }
+        await refetchAll();
+      } else {
+        // Token rejected — clear and show login.
+        setStoredToken(null);
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
+        setLoading(false);
+      }
+    })();
   }, [refetchAll]);
+
+  // Global 401 handler: any apiFetch that returns 401 fires this event.
+  // Clear local state so the next render shows the LoginScreen.
+  useEffect(() => {
+    const handler = () => {
+      setCurrentUserState(null);
+      setStoredToken(null);
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
+  }, []);
 
   const value = useMemo<AppData>(
     () => ({

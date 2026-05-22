@@ -20,7 +20,8 @@ import {
 
 import { MESES, getStuckLevel, getTimeStuck } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
-import type { Lead, SalesGoal, User } from "../../types";
+import { apiFetch } from "../../lib/api";
+import type { Lead, LeadStatus, SalesGoal, User } from "../../types";
 import { useWorkloadInsights } from "./useWorkloadInsights";
 import { getStatusBadge } from "../leads/getStatusBadge";
 
@@ -29,6 +30,15 @@ export interface AdminTabProps {
 }
 
 const NEW_USER_BLANK = { name: "", email: "", role: "Seller" as "Admin" | "Seller" | "Compras", salesGoal: 50000, sucursal: "" };
+const STAGE_OPTIONS: { value: LeadStatus; label: string }[] = [
+  { value: "ASIGNADO", label: "Asignado" },
+  { value: "CONTACTADO", label: "Contactado" },
+  { value: "NEGOCIACION", label: "Negociación" },
+  { value: "COTIZADO", label: "Cotizado" },
+  { value: "FACTURADO", label: "Facturado" },
+  { value: "ENTREGADO", label: "Entregado" },
+  { value: "RECHAZADO", label: "Rechazado" },
+];
 const BRANCH_GOAL_BLANK = () => ({
   sucursalId: "",
   month: new Date().getMonth() + 1,
@@ -54,6 +64,16 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">)
   const [activityFrom, setActivityFrom] = useState<string>("");
   const [activityTo, setActivityTo] = useState<string>("");
+  // Actividad Global pipeline-stage filter — empty set = show all stages
+  const [filterStages, setFilterStages] = useState<Set<LeadStatus>>(new Set());
+
+  const toggleStage = (stage: LeadStatus) => {
+    setFilterStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage); else next.add(stage);
+      return next;
+    });
+  };
 
   // New-user dialog
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
@@ -81,7 +101,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const fetchGoalsTimeline = async (userId: string) => {
     setGoalsLoading(true);
     try {
-      const res = await fetch(`/api/users/${userId}/goals`);
+      const res = await apiFetch(`/api/users/${userId}/goals`);
       if (res.ok) setUserGoalsTimeline(await res.json());
     } finally {
       setGoalsLoading(false);
@@ -98,9 +118,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleUpdateUserEmail = async () => {
     if (!selectedUserDetail) return;
     try {
-      const res = await fetch(`/api/users/${selectedUserDetail.id}/email`, {
+      const res = await apiFetch(`/api/users/${selectedUserDetail.id}/email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: userDetailEmail }),
       });
       if (res.ok) {
@@ -119,9 +138,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleResetPassword = async () => {
     if (!selectedUserDetail || !userDetailPassword) return;
     try {
-      const res = await fetch(`/api/users/${selectedUserDetail.id}/reset-password`, {
+      const res = await apiFetch(`/api/users/${selectedUserDetail.id}/reset-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: userDetailPassword }),
       });
       if (res.ok) {
@@ -138,9 +156,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleUpdateRole = async (userId: string, role: "Admin" | "Seller" | "Compras") => {
     try {
-      const res = await fetch(`/api/users/${userId}/role`, {
+      const res = await apiFetch(`/api/users/${userId}/role`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
       if (res.ok) {
@@ -154,9 +171,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleUpdateGoal = async (userId: string, goal: number) => {
     try {
-      const res = await fetch(`/api/users/${userId}/goal`, {
+      const res = await apiFetch(`/api/users/${userId}/goal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal }),
       });
       if (res.ok) {
@@ -171,9 +187,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const handleSetBranchGoal = async () => {
     if (!branchGoal.sucursalId || !branchGoal.amount) return;
     try {
-      const res = await fetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
+      const res = await apiFetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal: branchGoal.amount, year: branchGoal.year, month: branchGoal.month }),
       });
       if (res.ok) {
@@ -191,9 +206,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
   const handleCreateUser = async () => {
     try {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newUser),
       });
       if (res.ok) {
@@ -773,12 +787,12 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       className="h-8 text-xs w-[140px]"
                     />
                   </div>
-                  {(activityFrom || activityTo) && (
+                  {(activityFrom || activityTo || filterStages.size > 0) && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-8 text-xs"
-                      onClick={() => { setActivityFrom(""); setActivityTo(""); }}
+                      onClick={() => { setActivityFrom(""); setActivityTo(""); setFilterStages(new Set()); }}
                     >
                       Limpiar
                     </Button>
@@ -790,6 +804,25 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       {users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1">
+                <p className="text-[10px] font-medium text-brand-gray ml-1">Etapas del pipeline</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 rounded-md border border-input bg-white">
+                  {STAGE_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={filterStages.has(opt.value)}
+                        onChange={() => toggleStage(opt.value)}
+                      />
+                      <span className="text-xs text-slate-700">{opt.label}</span>
+                    </label>
+                  ))}
+                  {filterStages.size === 0 && (
+                    <span className="text-[10px] text-slate-400 italic ml-auto">Sin filtro: mostrando todas las etapas</span>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -810,6 +843,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                     {leads
                       .flatMap((l) => l.history.map((h) => ({ ...h, leadName: l.name, leadCompany: l.company, leadId: l.id, assignedTo: l.assignedTo })))
                       .filter((h) => filterSeller === "all" || h.updatedBy === filterSeller)
+                      .filter((h) => filterStages.size === 0 || filterStages.has(h.status))
                       .filter((h) => {
                         // Date interval filter — inclusive on both ends.
                         // activityTo is end-of-day so the chosen day is fully included.

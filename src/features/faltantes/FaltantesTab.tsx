@@ -21,6 +21,7 @@ import {
 
 import { MESES } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { Client, Product, ProductoFaltante } from "../../types";
 import { useFaltantesRollup } from "./useFaltantesRollup";
 
@@ -101,11 +102,10 @@ export function FaltantesTab() {
     }
     const isEdit = !!editingFaltanteId;
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         isEdit ? `/api/productos-faltantes/${editingFaltanteId}` : "/api/productos-faltantes",
         {
           method: isEdit ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             isEdit
               ? {
@@ -116,7 +116,6 @@ export function FaltantesTab() {
                   clienteId: newFaltante.clienteId || null,
                 }
               : {
-                  userId: currentUser.id,
                   productoId: newFaltante.productoId || undefined,
                   productoDescripcion: newFaltante.productoDescripcion,
                   cantidad: newFaltante.cantidad,
@@ -143,9 +142,8 @@ export function FaltantesTab() {
   const toggleFaltanteEstado = async (f: ProductoFaltante) => {
     const next = f.estado === "pendiente" ? "resuelto" : "pendiente";
     try {
-      const res = await fetch(`/api/productos-faltantes/${f.id}`, {
+      const res = await apiFetch(`/api/productos-faltantes/${f.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ estado: next }),
       });
       if (res.ok) {

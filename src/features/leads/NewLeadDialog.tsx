@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { Client } from "../../types";
 
 const norm = (v?: string) => (/^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim());
@@ -93,13 +94,9 @@ export function NewLeadDialog() {
     }
     setIsCreating(true);
     try {
-      const res = await fetch("/api/leads", {
+      const res = await apiFetch("/api/leads", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          userId: currentUser?.role === "Seller" ? currentUser.id : form.assignedTo,
-        }),
+        body: JSON.stringify(form),
       });
       if (res.ok) {
         toast.success(currentUser?.role === "Seller" ? "Lead creado y asignado a ti" : "Nuevo lead creado");

@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import {
   MESES,
   newClientsByMonth,
+  newClientsConvertedByMonth,
   currentYearMonth,
   timeToFirstContact,
   rechazoMotivosPareto,
@@ -38,6 +39,7 @@ import {
   formatDays,
 } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
+import { apiFetch } from "../../lib/api";
 import type { SalesGoal, User } from "../../types";
 
 const STAGE_COLOR: Record<string, string> = {
@@ -92,8 +94,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
   const faltantesPendientes = userFaltantes.filter(f => f.estado === "pendiente").length;
 
   const newClientCounts = newClientsByMonth(userLeads);
+  const convertedCounts = newClientsConvertedByMonth(userLeads);
   const recentMonthsForUser = (() => {
-    const out: { ym: string; label: string; count: number }[] = [];
+    const out: { ym: string; label: string; count: number; converted: number }[] = [];
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -102,12 +105,16 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
         ym,
         label: `${MESES[d.getMonth()].slice(0, 3)} ${String(d.getFullYear()).slice(2)}`,
         count: newClientCounts.get(ym) || 0,
+        converted: convertedCounts.get(ym) || 0,
       });
     }
     return out;
   })();
   const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
   const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
+  const convertedThisMonth = convertedCounts.get(currentYearMonth()) || 0;
+  const convertedTotal = [...convertedCounts.values()].reduce((a, b) => a + b, 0);
+  const convertedPct = newClientsTotal > 0 ? Math.round((convertedTotal / newClientsTotal) * 100) : 0;
   const maxBar = Math.max(1, ...recentMonthsForUser.map(m => m.count));
 
   const userTtfc = timeToFirstContact(userLeads);
@@ -261,27 +268,50 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
                 <span className="text-sm font-semibold text-brand-navy">Nuevos Clientes</span>
                 <span className="text-[10px] text-slate-400">{newClientsTotal} total</span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-emerald-600 leading-none">{newClientsThisMonth}</span>
-                <span className="text-[10px] text-slate-500">este mes</span>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
+                  <p className="text-xs font-semibold text-emerald-700">Nuevos</p>
+                  <p className="text-lg font-bold text-emerald-700 leading-tight">{newClientsThisMonth}</p>
+                  <p className="text-[10px] text-emerald-600/70">este mes</p>
+                </div>
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-2">
+                  <p className="text-xs font-semibold text-indigo-700">Convertidos</p>
+                  <p className="text-lg font-bold text-indigo-700 leading-tight">{convertedThisMonth}</p>
+                  <p className="text-[10px] text-indigo-600/70">{convertedTotal} total · {convertedPct}%</p>
+                </div>
               </div>
               <div className="flex items-end gap-1 h-12 pt-1">
                 {recentMonthsForUser.map(m => {
                   const isCurrent = m.ym === currentYearMonth();
                   const heightPct = (m.count / maxBar) * 100;
+                  const convertedHeightPct = m.count > 0 ? (m.converted / m.count) * heightPct : 0;
+                  const tooltip = `${m.label}: ${m.converted}/${m.count} convertidos`;
                   return (
-                    <div key={m.ym} className="flex-1 flex flex-col items-center gap-0.5">
-                      <span className="text-[9px] font-semibold text-slate-600">{m.count || ""}</span>
-                      <div className="w-full bg-slate-100 rounded-t flex items-end" style={{ height: "100%" }}>
+                    <div key={m.ym} className="flex-1 flex flex-col items-center gap-0.5" title={tooltip}>
+                      <span className="text-[9px] font-semibold text-slate-600">
+                        {m.count ? `${m.converted}/${m.count}` : ""}
+                      </span>
+                      <div className="w-full bg-slate-100 rounded-t flex items-end relative" style={{ height: "100%" }}>
                         <div
-                          className={`w-full rounded-t ${isCurrent ? "bg-emerald-500" : "bg-emerald-300"}`}
+                          className={`w-full rounded-t ${isCurrent ? "bg-emerald-500" : "bg-emerald-300"} relative`}
                           style={{ height: `${m.count === 0 ? 0 : Math.max(8, heightPct)}%` }}
-                        />
+                        >
+                          {m.converted > 0 && (
+                            <div
+                              className={`absolute bottom-0 left-0 w-full ${isCurrent ? "bg-indigo-600" : "bg-indigo-400"} rounded-t`}
+                              style={{ height: `${(m.converted / m.count) * 100}%` }}
+                            />
+                          )}
+                        </div>
                       </div>
                       <span className="text-[9px] text-slate-400">{m.label}</span>
                     </div>
                   );
                 })}
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-slate-500 pt-0.5">
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-emerald-400" />Nuevos</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm bg-indigo-500" />Convertidos</span>
               </div>
             </div>
           </CardContent>
@@ -505,7 +535,7 @@ export function PerformanceTab() {
       return;
     }
     let aborted = false;
-    fetch(`/api/users/${viewedUserId}/goals`)
+    apiFetch(`/api/users/${viewedUserId}/goals`)
       .then(r => (r.ok ? r.json() : []))
       .then((data: SalesGoal[]) => { if (!aborted) setGoalsTimeline(data); })
       .catch(() => { if (!aborted) setGoalsTimeline([]); });
@@ -571,6 +601,7 @@ export function PerformanceTab() {
                     <TableHead className="font-semibold">Perdido ($)</TableHead>
                     <TableHead className="font-semibold">Origen</TableHead>
                     <TableHead className="font-semibold">Nuevos Clientes</TableHead>
+                    <TableHead className="font-semibold">Convertidos</TableHead>
                     <TableHead className="font-semibold">1er Contacto</TableHead>
                     <TableHead className="font-semibold">COT→FACT</TableHead>
                     <TableHead className="font-semibold">Progreso Meta</TableHead>
@@ -588,6 +619,10 @@ export function PerformanceTab() {
                     const newClientCounts = newClientsByMonth(userLeads);
                     const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
                     const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
+                    const convertedCounts = newClientsConvertedByMonth(userLeads);
+                    const convertedThisMonth = convertedCounts.get(currentYearMonth()) || 0;
+                    const convertedTotal = [...convertedCounts.values()].reduce((a, b) => a + b, 0);
+                    const convertedPct = newClientsTotal > 0 ? Math.round((convertedTotal / newClientsTotal) * 100) : 0;
                     const ttfc = timeToFirstContact(userLeads);
                     const userFunnel = funnelByStage(userLeads);
                     const cotToFact = userFunnel.find(s => s.stage === "FACTURADO")?.stepConversion ?? null;
@@ -616,6 +651,12 @@ export function PerformanceTab() {
                           <div className="flex flex-col gap-0.5 leading-tight">
                             <span className="text-sm font-bold text-emerald-700">{newClientsThisMonth}</span>
                             <span className="text-[10px] text-slate-500">este mes · {newClientsTotal} total</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5 leading-tight">
+                            <span className="text-sm font-bold text-indigo-700">{convertedThisMonth}</span>
+                            <span className="text-[10px] text-slate-500">{convertedTotal} total · {convertedPct}%</span>
                           </div>
                         </TableCell>
                         <TableCell>

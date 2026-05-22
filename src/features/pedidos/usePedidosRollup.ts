@@ -65,12 +65,17 @@ export function usePedidosRollup(filter: PedidosFilterState) {
     let valorPendienteTotal = 0;
     const resolutionDays: number[] = [];
 
+    // "aprobado" and "pedido" both represent items that cleared approval —
+    // pedido is just the downstream "order placed" state and keeps the
+    // original resueltoAt from the approval transition.
+    const approvedStates: PedidoExtraordinarioEstado[] = ["aprobado", "pedido"];
+
     for (const p of filtered) {
       if (p.estado === "solicitado") {
         pendientes += 1;
         valorPendienteTotal += p.valorEstimado || 0;
       }
-      if (p.estado === "aprobado") {
+      if (approvedStates.includes(p.estado)) {
         aprobados += 1;
         if (p.resueltoAt) {
           const d = new Date(p.resueltoAt);
@@ -80,7 +85,7 @@ export function usePedidosRollup(filter: PedidosFilterState) {
         }
       }
       if (p.estado === "rechazado") rechazados += 1;
-      if (p.resueltoAt && (p.estado === "aprobado" || p.estado === "rechazado")) {
+      if (p.resueltoAt && (approvedStates.includes(p.estado) || p.estado === "rechazado")) {
         const ms = new Date(p.resueltoAt).getTime() - new Date(p.createdAt).getTime();
         if (!isNaN(ms) && ms >= 0) resolutionDays.push(ms / (1000 * 60 * 60 * 24));
       }
