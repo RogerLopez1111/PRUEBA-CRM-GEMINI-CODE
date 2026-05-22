@@ -6,7 +6,7 @@
  * localStorage and committed on popover close.
  */
 import { useMemo, useState } from "react";
-import { Bell, LogOut, Users, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Bell, LogOut, Users, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +35,7 @@ type Notification =
       sortKey: number;
     }
   | {
-      kind: "pedido-aprobado";
+      kind: "pedido-aprobado" | "pedido-rechazado";
       id: string;
       pedido: PedidoExtraordinario;
       sortKey: number;
@@ -75,16 +75,17 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
         out.push({ kind: "stale-quote", id: `quote-${lead.id}`, leadId: lead.id, lead, days, sellerName, sortKey: -days });
       }
     }
-    // Pedido-aprobado: only for the vendor who requested it, only unseen ones.
+    // Pedido events: only for the vendor who requested it, only unseen ones.
     const seenAtMs = new Date(pedidoSeenAt).getTime();
     for (const p of pedidos) {
-      if (p.estado !== "aprobado") continue;
+      if (p.estado !== "aprobado" && p.estado !== "rechazado") continue;
       if (p.vendedorId !== currentUser.id) continue;
       if (!p.resueltoAt) continue;
       const resueltoMs = new Date(p.resueltoAt).getTime();
       if (!(resueltoMs > seenAtMs)) continue;
       // Pedido events sort newest-first, ahead of stale-lead alerts.
-      out.push({ kind: "pedido-aprobado", id: `pedido-${p.id}`, pedido: p, sortKey: -resueltoMs - 1e15 });
+      const kind = p.estado === "aprobado" ? "pedido-aprobado" : "pedido-rechazado";
+      out.push({ kind, id: `pedido-${p.id}`, pedido: p, sortKey: -resueltoMs - 1e15 });
     }
     return out.sort((a, b) => a.sortKey - b.sortKey);
   }, [leads, users, pedidos, pedidoSeenAt, currentUser]);
@@ -92,7 +93,7 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
   const handleNotifOpenChange = (open: boolean) => {
     // Commit "seen" on close so the items stay visible while the popover is open.
     if (open || !currentUser) return;
-    const hasUnseen = notifications.some(n => n.kind === "pedido-aprobado");
+    const hasUnseen = notifications.some(n => n.kind === "pedido-aprobado" || n.kind === "pedido-rechazado");
     if (!hasUnseen) return;
     const now = new Date().toISOString();
     try { localStorage.setItem(pedidoSeenKey(currentUser.id), now); } catch { /* noop */ }
@@ -143,24 +144,30 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                   </div>
                 ) : (
                   notifications.map(n => {
-                    if (n.kind === "pedido-aprobado") {
+                    if (n.kind === "pedido-aprobado" || n.kind === "pedido-rechazado") {
                       const p = n.pedido;
+                      const isAprobado = n.kind === "pedido-aprobado";
+                      const Icon = isAprobado ? CheckCircle2 : XCircle;
+                      const iconColor = isAprobado ? "text-emerald-600" : "text-red-600";
+                      const title = isAprobado ? "Pedido aprobado" : "Pedido rechazado";
+                      const verbBy = isAprobado ? "aprobado" : "rechazado";
+                      const commentLabel = isAprobado ? "" : "Motivo: ";
                       return (
                         <div
                           key={n.id}
                           className="w-full text-left px-4 py-3 border-b last:border-b-0"
                         >
                           <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-600" />
+                            <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", iconColor)} />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate">Pedido aprobado</p>
+                              <p className="text-sm font-semibold truncate">{title}</p>
                               <p className="text-xs text-slate-500 truncate">{p.productoDescripcion}</p>
                               <p className="text-xs mt-1" style={{ color: "#141456" }}>
                                 Cantidad: {p.cantidad}
-                                {p.resueltoPorName ? ` · por ${p.resueltoPorName}` : ""}
+                                {p.resueltoPorName ? ` · ${verbBy} por ${p.resueltoPorName}` : ""}
                               </p>
                               {p.resolucionComentario && (
-                                <p className="text-[11px] italic text-slate-500 mt-0.5 truncate">"{p.resolucionComentario}"</p>
+                                <p className="text-[11px] italic text-slate-500 mt-0.5 truncate">{commentLabel}"{p.resolucionComentario}"</p>
                               )}
                             </div>
                           </div>

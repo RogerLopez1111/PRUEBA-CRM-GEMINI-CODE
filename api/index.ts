@@ -942,9 +942,11 @@ const PEDIDO_ESTADOS = new Set(["solicitado", "aprobado", "pedido", "rechazado",
 const escapePedidoHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// Fire-and-forget: emails the requesting vendor that their pedido was approved.
-// Never throws — failures are logged so the approval response stays clean.
-async function notifyPedidoAprobado(pedidoId: string): Promise<void> {
+// Fire-and-forget: emails the requesting vendor when Compras resolves their
+// pedido (approved or rejected). Never throws — failures are logged so the
+// API response stays clean.
+async function notifyPedidoResuelto(pedidoId: string, kind: "aprobado" | "rechazado"): Promise<void> {
+  const tag = `[pedido-${kind}-email]`;
   try {
     const { data: row, error } = await supabase
       .from("pedidos_extraordinarios")
@@ -958,13 +960,13 @@ async function notifyPedidoAprobado(pedidoId: string): Promise<void> {
       .eq("id", pedidoId)
       .maybeSingle();
     if (error || !row) {
-      console.error("[pedido-aprobado-email] lookup failed:", error?.message || "no row");
+      console.error(`${tag} lookup failed:`, error?.message || "no row");
       return;
     }
     const vendedor = (row as any).vendedor || {};
     const to = (vendedor.Vn_Email || "").trim();
     if (!to) {
-      console.warn(`[pedido-aprobado-email] vendor for pedido ${pedidoId} has no email — skipping`);
+      console.warn(`${tag} vendor for pedido ${pedidoId} has no email — skipping`);
       return;
     }
     const vendedorName = (vendedor.Vn_Descripcion || "").trim() || "Vendedor";
@@ -976,34 +978,39 @@ async function notifyPedidoAprobado(pedidoId: string): Promise<void> {
     const valor = Number(row.valor_estimado || 0).toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
     const comentario = (row.resolucion_comentario || "").trim();
 
-    const subject = `Pedido extraordinario aprobado — ${row.producto_descripcion || ""}`.trim();
+    const isAprobado = kind === "aprobado";
+    const verb = isAprobado ? "aprobado" : "rechazado";
+    const verbPast = isAprobado ? "aprobó" : "rechazó";
+    const headlineColor = isAprobado ? "#141456" : "#991b1b";
+
+    const subject = `Pedido extraordinario ${verb} — ${row.producto_descripcion || ""}`.trim();
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fff;color:#0f172a">
-        <h2 style="color:#141456;margin:0 0 4px 0">Tu pedido extraordinario fue aprobado</h2>
-        <p style="color:#475569;font-size:13px;margin:0 0 16px 0">Hola ${escapePedidoHtml(vendedorName)}, ${escapePedidoHtml(resolverName)} aprobó tu solicitud.</p>
+        <h2 style="color:${headlineColor};margin:0 0 4px 0">Tu pedido extraordinario fue ${escapePedidoHtml(verb)}</h2>
+        <p style="color:#475569;font-size:13px;margin:0 0 16px 0">Hola ${escapePedidoHtml(vendedorName)}, ${escapePedidoHtml(resolverName)} ${escapePedidoHtml(verbPast)} tu solicitud.</p>
         <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">
           <tr><td style="padding:8px 10px;background:#f8fafc;color:#475569;width:140px">Producto</td><td style="padding:8px 10px">${escapePedidoHtml(row.producto_descripcion || "")}</td></tr>
           <tr><td style="padding:8px 10px;background:#f8fafc;color:#475569">Cantidad</td><td style="padding:8px 10px">${cantidad}</td></tr>
           <tr><td style="padding:8px 10px;background:#f8fafc;color:#475569">Valor estimado</td><td style="padding:8px 10px;font-family:monospace">${escapePedidoHtml(valor)}</td></tr>
           ${cliente ? `<tr><td style="padding:8px 10px;background:#f8fafc;color:#475569">Cliente</td><td style="padding:8px 10px">${escapePedidoHtml(cliente)}</td></tr>` : ""}
-          ${comentario ? `<tr><td style="padding:8px 10px;background:#f8fafc;color:#475569;vertical-align:top">Comentario</td><td style="padding:8px 10px;font-style:italic;color:#334155">${escapePedidoHtml(comentario)}</td></tr>` : ""}
+          ${comentario ? `<tr><td style="padding:8px 10px;background:#f8fafc;color:#475569;vertical-align:top">${isAprobado ? "Comentario" : "Motivo"}</td><td style="padding:8px 10px;font-style:italic;color:#334155">${escapePedidoHtml(comentario)}</td></tr>` : ""}
         </table>
         <p style="color:#94a3b8;font-size:11px;margin-top:20px">Notificación automática del CRM Ecosistemas.</p>
       </div>
     `;
     const text = [
-      "Tu pedido extraordinario fue aprobado.",
-      `Aprobado por: ${resolverName}`,
+      `Tu pedido extraordinario fue ${verb}.`,
+      `${isAprobado ? "Aprobado" : "Rechazado"} por: ${resolverName}`,
       `Producto: ${row.producto_descripcion || ""}`,
       `Cantidad: ${cantidad}`,
       `Valor estimado: ${valor}`,
       cliente ? `Cliente: ${cliente}` : "",
-      comentario ? `Comentario: ${comentario}` : "",
+      comentario ? `${isAprobado ? "Comentario" : "Motivo"}: ${comentario}` : "",
     ].filter(Boolean).join("\n");
 
     await sendEmail({ to, subject, html, text });
   } catch (err) {
-    console.error("[pedido-aprobado-email] send failed:", err);
+    console.error(`${tag} send failed:`, err);
   }
 }
 
@@ -1221,10 +1228,13 @@ app.patch("/api/pedidos-extraordinarios/:id", requireAuth, async (req, res) => {
   const { error } = await supabase.from("pedidos_extraordinarios").update(updates).eq("id", id);
   if (error) return res.status(400).json({ error: error.message });
 
-  // Notify the requesting vendor by email when their pedido is freshly approved.
-  // Fire-and-forget so SMTP latency / failure never blocks the API response.
+  // Notify the requesting vendor by email when Compras freshly resolves their
+  // pedido (approved or rejected). Fire-and-forget so SMTP latency / failure
+  // never blocks the API response.
   if (estado === "aprobado" && existing.estado !== "aprobado") {
-    void notifyPedidoAprobado(id);
+    void notifyPedidoResuelto(id, "aprobado");
+  } else if (estado === "rechazado" && existing.estado !== "rechazado") {
+    void notifyPedidoResuelto(id, "rechazado");
   }
 
   const all = await fetchPedidosExtraordinarios();
