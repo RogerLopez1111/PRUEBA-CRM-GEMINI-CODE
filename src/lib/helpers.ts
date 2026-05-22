@@ -33,6 +33,22 @@ export function newClientsByMonth(sellerLeads: Lead[]): Map<string, number> {
   return counts;
 }
 
+// Subset of newClientsByMonth: brand-new-client leads that actually reached
+// FACTURADO (or downstream ENTREGADO). Bucketed by createdAt so the count is
+// directly comparable to newClientsByMonth for a conversion rate.
+export function newClientsConvertedByMonth(sellerLeads: Lead[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const l of sellerLeads) {
+    if (!l.newClient) continue;
+    if (l.status !== "FACTURADO" && l.status !== "ENTREGADO") continue;
+    const d = new Date(l.createdAt);
+    if (isNaN(d.getTime())) continue;
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    counts.set(ym, (counts.get(ym) || 0) + 1);
+  }
+  return counts;
+}
+
 export const currentYearMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
