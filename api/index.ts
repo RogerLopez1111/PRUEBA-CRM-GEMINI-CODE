@@ -1182,11 +1182,13 @@ app.patch("/api/pedidos-extraordinarios/:id", requireAuth, async (req, res) => {
     if (["aprobado", "rechazado", "cancelado"].includes(estado)) {
       updates.resuelto_por = actorId || null;
       updates.resuelto_at = new Date().toISOString();
-    } else {
-      // Returning to solicitado clears prior resolution.
+    } else if (estado === "solicitado") {
+      // Reverted back to pending: clear prior resolution.
       updates.resuelto_por = null;
       updates.resuelto_at = null;
     }
+    // estado === "pedido": preserve resuelto_at/resuelto_por from the
+    // approval step (this is a downstream advance, not a new resolution).
   }
 
   // Field edits — admin only.
