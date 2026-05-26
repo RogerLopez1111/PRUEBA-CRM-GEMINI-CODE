@@ -1,12 +1,15 @@
 /**
- * App header — logo, current user, notifications popover (stale leads +
- * pedido-aprobado events), and account/logout dialog. Stale-lead cards open
- * the status-update dialog (passed in as a ref-callback by the host App);
- * pedido cards are informational. Pedido "seen" state is per-user in
- * localStorage and committed on popover close.
+ * App header — logo, current user, notifications popover, and account/logout
+ * dialog. Notification kinds:
+ *   stale-assignment / stale-quote      — leads without activity (all roles)
+ *   pedido-aprobado / pedido-rechazado  — pedido resolution (vendor only)
+ *   lead-supervisor-comment             — admin updated seller's lead (seller only)
+ *
+ * Event-based notifications (pedido + lead-comment) share a single
+ * localStorage cursor committed on popover close.
  */
 import { useMemo, useState } from "react";
-import { Bell, LogOut, Users, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Bell, LogOut, Users, AlertTriangle, CheckCircle2, XCircle, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +31,6 @@ type Notification =
   | {
       kind: "stale-assignment" | "stale-quote";
       id: string;
-      leadId: string;
       lead: Lead;
       days: number;
       sellerName: string;
@@ -39,65 +41,113 @@ type Notification =
       id: string;
       pedido: PedidoExtraordinario;
       sortKey: number;
+    }
+  | {
+      kind: "lead-supervisor-comment";
+      id: string;
+      lead: Lead;
+      adminName: string;
+      comment: string;
+      newStatus: string;
+      sortKey: number;
     };
 
-const pedidoSeenKey = (userId: string) => `pedido_aprobado_seen:${userId}`;
+const notifSeenKey = (userId: string) => `notifications_seen:${userId}`;
 
-const readPedidoSeenAt = (userId: string | undefined): string => {
+const readNotifSeenAt = (userId: string | undefined): string => {
   if (!userId) return new Date(0).toISOString();
   try {
-    return localStorage.getItem(pedidoSeenKey(userId)) || new Date(0).toISOString();
+    // Fall back to the old pedido-only key so existing users don't re-see old events.
+    return (
+      localStorage.getItem(notifSeenKey(userId)) ||
+      localStorage.getItem(`pedido_aprobado_seen:${userId}`) ||
+      new Date(0).toISOString()
+    );
   } catch {
     return new Date(0).toISOString();
   }
 };
 
+const EVENT_KINDS = new Set(["pedido-aprobado", "pedido-rechazado", "lead-supervisor-comment"]);
+
 export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
   const { leads, users, pedidos, currentUser, setCurrentUser } = useAppData();
 
-  const [pedidoSeenAt, setPedidoSeenAt] = useState<string>(() => readPedidoSeenAt(currentUser?.id));
+  const [notifSeenAt, setNotifSeenAt] = useState<string>(() => readNotifSeenAt(currentUser?.id));
 
   const notifications = useMemo<Notification[]>(() => {
     if (!currentUser) return [];
     const now = Date.now();
     const DAY = 1000 * 60 * 60 * 24;
-    const visible = currentUser.role === "Admin"
+    const out: Notification[] = [];
+
+    // ── Stale-lead alerts (visible to admins + the assigned seller) ──────────
+    const visibleLeads = currentUser.role === "Admin"
       ? leads
       : leads.filter(l => l.assignedTo === currentUser.id);
-    const out: Notification[] = [];
-    for (const lead of visible) {
+
+    for (const lead of visibleLeads) {
       if (!lead.assignedTo) continue;
       const days = Math.floor((now - new Date(lead.updatedAt).getTime()) / DAY);
       const sellerName = users.find(u => u.id === lead.assignedTo)?.name || "Sin asignar";
       if (lead.status === "ASIGNADO" && days >= 3) {
-        out.push({ kind: "stale-assignment", id: `assign-${lead.id}`, leadId: lead.id, lead, days, sellerName, sortKey: -days });
+        out.push({ kind: "stale-assignment", id: `assign-${lead.id}`, lead, days, sellerName, sortKey: -days });
       } else if (lead.status === "COTIZADO" && days >= 5) {
-        out.push({ kind: "stale-quote", id: `quote-${lead.id}`, leadId: lead.id, lead, days, sellerName, sortKey: -days });
+        out.push({ kind: "stale-quote", id: `quote-${lead.id}`, lead, days, sellerName, sortKey: -days });
       }
     }
-    // Pedido events: only for the vendor who requested it, only unseen ones.
-    const seenAtMs = new Date(pedidoSeenAt).getTime();
+
+    const seenAtMs = new Date(notifSeenAt).getTime();
+
+    // ── Pedido resolution events (vendor only) ───────────────────────────────
     for (const p of pedidos) {
       if (p.estado !== "aprobado" && p.estado !== "rechazado") continue;
       if (p.vendedorId !== currentUser.id) continue;
       if (!p.resueltoAt) continue;
       const resueltoMs = new Date(p.resueltoAt).getTime();
       if (!(resueltoMs > seenAtMs)) continue;
-      // Pedido events sort newest-first, ahead of stale-lead alerts.
       const kind = p.estado === "aprobado" ? "pedido-aprobado" : "pedido-rechazado";
       out.push({ kind, id: `pedido-${p.id}`, pedido: p, sortKey: -resueltoMs - 1e15 });
     }
+
+    // ── Admin/supervisor comments on seller's leads (seller only) ────────────
+    if (currentUser.role === "Seller") {
+      const adminIds = new Set(users.filter(u => u.role === "Admin").map(u => u.id));
+      for (const lead of leads) {
+        if (lead.assignedTo !== currentUser.id) continue;
+        // Find the most recent admin history entry after the seen cursor.
+        let bestTs = seenAtMs;
+        let bestEntry: Lead["history"][number] | null = null;
+        for (const entry of lead.history) {
+          if (!adminIds.has(entry.updatedBy)) continue;
+          const entryMs = new Date(entry.timestamp).getTime();
+          if (entryMs <= seenAtMs) continue;
+          if (entryMs > bestTs) { bestTs = entryMs; bestEntry = entry; }
+        }
+        if (!bestEntry) continue;
+        const adminName = users.find(u => u.id === bestEntry!.updatedBy)?.name || "Supervisor";
+        out.push({
+          kind: "lead-supervisor-comment",
+          id: `lead-comment-${lead.id}`,
+          lead,
+          adminName,
+          comment: bestEntry.comment,
+          newStatus: bestEntry.status,
+          sortKey: -bestTs - 1e15,
+        });
+      }
+    }
+
     return out.sort((a, b) => a.sortKey - b.sortKey);
-  }, [leads, users, pedidos, pedidoSeenAt, currentUser]);
+  }, [leads, users, pedidos, notifSeenAt, currentUser]);
 
   const handleNotifOpenChange = (open: boolean) => {
-    // Commit "seen" on close so the items stay visible while the popover is open.
     if (open || !currentUser) return;
-    const hasUnseen = notifications.some(n => n.kind === "pedido-aprobado" || n.kind === "pedido-rechazado");
+    const hasUnseen = notifications.some(n => EVENT_KINDS.has(n.kind));
     if (!hasUnseen) return;
     const now = new Date().toISOString();
-    try { localStorage.setItem(pedidoSeenKey(currentUser.id), now); } catch { /* noop */ }
-    setPedidoSeenAt(now);
+    try { localStorage.setItem(notifSeenKey(currentUser.id), now); } catch { /* noop */ }
+    setNotifSeenAt(now);
   };
 
   const handleLogout = () => {
@@ -144,6 +194,27 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                   </div>
                 ) : (
                   notifications.map(n => {
+                    if (n.kind === "lead-supervisor-comment") {
+                      return (
+                        <button
+                          key={n.id}
+                          onClick={() => openStatusUpdate(n.lead)}
+                          className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex items-start gap-2">
+                            <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-brand-navy" style={{ color: "#141456" }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate">{n.lead.name || n.lead.company}</p>
+                              <p className="text-xs text-slate-500 truncate">Actualizado por {n.adminName}</p>
+                              {n.comment && (
+                                <p className="text-[11px] italic text-slate-500 mt-0.5 truncate">"{n.comment}"</p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    }
+
                     if (n.kind === "pedido-aprobado" || n.kind === "pedido-rechazado") {
                       const p = n.pedido;
                       const isAprobado = n.kind === "pedido-aprobado";
@@ -153,10 +224,7 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                       const verbBy = isAprobado ? "aprobado" : "rechazado";
                       const commentLabel = isAprobado ? "" : "Motivo: ";
                       return (
-                        <div
-                          key={n.id}
-                          className="w-full text-left px-4 py-3 border-b last:border-b-0"
-                        >
+                        <div key={n.id} className="w-full text-left px-4 py-3 border-b last:border-b-0">
                           <div className="flex items-start gap-2">
                             <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", iconColor)} />
                             <div className="flex-1 min-w-0">
@@ -174,6 +242,8 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                         </div>
                       );
                     }
+
+                    // stale-assignment / stale-quote
                     return (
                       <button
                         key={n.id}
