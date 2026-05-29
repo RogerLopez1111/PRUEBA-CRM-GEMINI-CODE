@@ -12,7 +12,7 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import {
   History, MessageSquare, Plus, Trash2, TrendingUp, FileText, XCircle,
-  CheckCircle2, Search, Building2, Paperclip,
+  CheckCircle2, Search, Building2, Paperclip, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 

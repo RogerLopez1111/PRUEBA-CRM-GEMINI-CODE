@@ -4,13 +4,7 @@
  * persists to localStorage) and triggers a full data refetch.
  */
 import { useState, type FormEvent } from "react";
-import { LogIn } from "lucide-react";
-import { motion } from "motion/react";
 import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
 import { useAppData } from "../../state/AppDataContext";
@@ -20,9 +14,13 @@ export function LoginScreen() {
   const { setCurrentUser, refetchAll } = useAppData();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setBusy(true);
     try {
       const res = await fetch("/api/login", {
         method: "POST",
@@ -37,64 +35,65 @@ export function LoginScreen() {
         refetchAll();
       } else {
         const data = await res.json().catch(() => ({} as { error?: string }));
-        toast.error(data.error || "Correo o contraseña incorrectos");
+        setError(data.error || "Correo o contraseña incorrectos");
       }
     } catch {
-      toast.error("Error al iniciar sesión");
+      setError("Error al iniciar sesión");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-brand-navy">
-      <div className="absolute top-0 inset-x-0 h-1 bg-brand-red" />
+    <main className="min-h-screen bg-brand-navy flex items-center justify-center px-4">
       <Toaster position="top-right" />
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <Card className="bg-white overflow-hidden pt-0">
-          <div className="h-2 bg-white" />
-          <CardHeader className="text-center space-y-2 pt-8">
-            <img src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260" alt="Ecosistemas" className="h-14 object-contain mx-auto mb-2" />
-            <p className="text-sm font-semibold text-brand-navy">Panel de ventas</p>
-            <CardDescription>Ingresa tus credenciales para continuar</CardDescription>
-          </CardHeader>
-          <CardContent className="pb-8">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-brand-navy ml-1">Correo Electrónico</label>
-                  <Input
-                    type="email"
-                    placeholder="nombre@empresa.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="h-12"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-brand-navy ml-1">Contraseña</label>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-12"
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full h-12 gap-2 text-base font-semibold">
-                <LogIn className="w-5 h-5" />
-                Iniciar sesión
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        <p className="text-center text-xs text-white/70 mt-4">Ecosistemas · Soluciones Innovadoras</p>
-      </motion.div>
-    </div>
+      <div className="w-full max-w-sm bg-white border border-neutral-200 border-t-4 border-t-brand-red">
+        <div className="p-8 pb-6 border-b border-neutral-100">
+          <img
+            src="https://ecosistemas.com.mx/cdn/shop/files/logoeco.png?v=1758568786&width=260"
+            alt="Ecosistemas"
+            className="h-9 mb-4"
+          />
+          <h1 className="text-lg font-semibold text-brand-navy leading-tight">Panel de ventas</h1>
+          <p className="text-xs text-brand-gray mt-0.5">Ingresa tus credenciales para continuar</p>
+        </div>
+        <div className="p-8 pt-6">
+          <form onSubmit={handleLogin} className="space-y-4">
+            <label className="block">
+              <span className="text-xs font-medium text-brand-navy uppercase tracking-wide">Correo Electrónico</span>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nombre@ecosistemas.com.mx"
+                className="mt-1.5 w-full border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-brand-navy uppercase tracking-wide">Contraseña</span>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1.5 w-full border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full bg-brand-red text-white py-2.5 text-sm font-semibold tracking-wide hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Entrando..." : "Iniciar sesión"}
+            </button>
+            {error && <p className="text-sm text-brand-red">{error}</p>}
+          </form>
+        </div>
+      </div>
+      <p className="absolute bottom-4 text-xs text-white/40">Ecosistemas · Soluciones Innovadoras</p>
+    </main>
   );
 }
