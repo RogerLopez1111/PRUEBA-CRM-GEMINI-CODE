@@ -237,7 +237,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     const now = new Date();
     set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
     for (const l of leads) {
-      const d = new Date(l.updatedAt);
+      const d = new Date(l.createdAt);
       if (!isNaN(d.getTime())) {
         set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
       }
@@ -293,13 +293,19 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     if (filterSucursal !== "all" && l.sucursal !== filterSucursal) return false;
     if (filterSegmento !== "all" && l.segmento !== filterSegmento) return false;
 
-    // Month filter only applies to closed leads (ENTREGADO / RECHAZADO);
-    // active leads always show so sellers keep them in sight until closed.
-    if (filterMonth !== "all" && (l.status === "ENTREGADO" || l.status === "RECHAZADO")) {
-      const d = new Date(l.updatedAt);
+    // Month filter: a lead belongs to the month it was created, not when it
+    // was last updated. Active leads always show regardless of month so sellers
+    // keep them in sight. Closed leads (ENTREGADO/RECHAZADO) are pinned to
+    // their creation month — a January lead rejected in February disappears
+    // from February's board and shows as RECHAZADO under January.
+    if (filterMonth !== "all") {
+      const d = new Date(l.createdAt);
       if (isNaN(d.getTime())) return false;
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (ym !== filterMonth) return false;
+      if (ym !== filterMonth) {
+        // Active leads from other months still show (seller needs to work them)
+        if (l.status === "ENTREGADO" || l.status === "RECHAZADO") return false;
+      }
     }
 
     if (filterClientInitiated && !l.clientInitiated) return false;
