@@ -71,6 +71,11 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
   const soldCount = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").length;
   const quotedCount = userLeads.filter(l => l.status === "COTIZADO").length;
   const lostCount = userLeads.filter(l => l.status === "RECHAZADO").length;
+  const lostThisMonth = userLeads.filter(l => {
+    if (l.status !== "RECHAZADO") return false;
+    const d = new Date(l.createdAt);
+    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
+  }).length;
 
   const pieData = [
     { name: "Vendido", value: soldValue, color: "#10b981" },
@@ -157,7 +162,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
             <div>
               <p className="text-xs font-semibold text-brand-gray">Total Perdido</p>
               <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{lostCount} tratos perdidos</p>
+              <p className="text-[10px] text-slate-400">{lostThisMonth} este mes · {lostCount} total</p>
             </div>
           </CardContent>
         </Card>
@@ -614,6 +619,11 @@ export function PerformanceTab() {
                     const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
                     const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
                     const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
+                    const lostThisMonth = userLeads.filter(l => {
+                      if (l.status !== "RECHAZADO") return false;
+                      const d = new Date(l.createdAt);
+                      return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
+                    }).length;
                     const clientInitiated = userLeads.filter(l => l.clientInitiated).length;
                     const sellerInitiated = userLeads.length - clientInitiated;
                     const newClientCounts = newClientsByMonth(userLeads);
@@ -640,7 +650,12 @@ export function PerformanceTab() {
                         </TableCell>
                         <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
                         <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
-                        <TableCell className="text-red-600">${lostValue.toLocaleString()}</TableCell>
+                        <TableCell className="text-red-600">
+                          <div className="flex flex-col gap-0.5 leading-tight">
+                            <span className="text-sm font-bold">${lostValue.toLocaleString()}</span>
+                            <span className="text-[10px] text-slate-500">{lostThisMonth} este mes</span>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-0.5 leading-tight">
                             <span className="text-[11px] text-blue-600">Cliente: <span className="font-bold">{clientInitiated}</span></span>
