@@ -6,19 +6,22 @@
  * route through openStatusUpdate so the host App owns the status-update
  * dialog.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { Clock, Filter } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  pointerWithin,
+  rectIntersection,
+  getFirstCollision,
   type DragStartEvent,
   type DragEndEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -204,10 +207,30 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   // DnD
   const [activeId, setActiveId] = useState<string | null>(null);
+  const lastOverId = useRef<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  // pointerWithin first (pointer literally inside the rect) → most reliable for
+  // column-based drops. Falls back to rectIntersection, then lastOverId so a
+  // release in a thin gap between columns still lands rather than cancelling.
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) {
+      const first = getFirstCollision(pointerCollisions, "id");
+      if (first != null) lastOverId.current = String(first);
+      return pointerCollisions;
+    }
+    const rectCollisions = rectIntersection(args);
+    if (rectCollisions.length > 0) {
+      const first = getFirstCollision(rectCollisions, "id");
+      if (first != null) lastOverId.current = String(first);
+      return rectCollisions;
+    }
+    return lastOverId.current ? [{ id: lastOverId.current }] : [];
+  }, []);
 
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -224,6 +247,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
+    lastOverId.current = null;
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -392,7 +416,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
       <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 min-h-[600px] -mx-2 px-2 md:mx-0 md:px-0">
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
