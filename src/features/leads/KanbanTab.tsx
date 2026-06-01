@@ -6,19 +6,22 @@
  * route through openStatusUpdate so the host App owns the status-update
  * dialog.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { Clock, Filter } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  pointerWithin,
+  rectIntersection,
+  getFirstCollision,
   type DragStartEvent,
   type DragEndEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -204,17 +207,37 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   // DnD
   const [activeId, setActiveId] = useState<string | null>(null);
+  const lastOverId = useRef<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  // pointerWithin first (pointer literally inside the rect) → most reliable for
+  // column-based drops. Falls back to rectIntersection, then lastOverId so a
+  // release in a thin gap between columns still lands rather than cancelling.
+  const collisionDetection: CollisionDetection = useCallback((args) => {
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) {
+      const first = getFirstCollision(pointerCollisions, "id");
+      if (first != null) lastOverId.current = String(first);
+      return pointerCollisions;
+    }
+    const rectCollisions = rectIntersection(args);
+    if (rectCollisions.length > 0) {
+      const first = getFirstCollision(rectCollisions, "id");
+      if (first != null) lastOverId.current = String(first);
+      return rectCollisions;
+    }
+    return lastOverId.current ? [{ id: lastOverId.current }] : [];
+  }, []);
 
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
     const now = new Date();
     set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
     for (const l of leads) {
-      const d = new Date(l.updatedAt);
+      const d = new Date(l.createdAt);
       if (!isNaN(d.getTime())) {
         set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
       }
@@ -224,6 +247,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
+    lastOverId.current = null;
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -269,13 +293,19 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     if (filterSucursal !== "all" && l.sucursal !== filterSucursal) return false;
     if (filterSegmento !== "all" && l.segmento !== filterSegmento) return false;
 
-    // Month filter only applies to closed leads (ENTREGADO / RECHAZADO);
-    // active leads always show so sellers keep them in sight until closed.
-    if (filterMonth !== "all" && (l.status === "ENTREGADO" || l.status === "RECHAZADO")) {
-      const d = new Date(l.updatedAt);
+    // Month filter: a lead belongs to the month it was created, not when it
+    // was last updated. Active leads always show regardless of month so sellers
+    // keep them in sight. Closed leads (ENTREGADO/RECHAZADO) are pinned to
+    // their creation month — a January lead rejected in February disappears
+    // from February's board and shows as RECHAZADO under January.
+    if (filterMonth !== "all") {
+      const d = new Date(l.createdAt);
       if (isNaN(d.getTime())) return false;
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (ym !== filterMonth) return false;
+      if (ym !== filterMonth) {
+        // Active leads from other months still show (seller needs to work them)
+        if (l.status === "ENTREGADO" || l.status === "RECHAZADO") return false;
+      }
     }
 
     if (filterClientInitiated && !l.clientInitiated) return false;
@@ -392,7 +422,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
       <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 min-h-[600px] -mx-2 px-2 md:mx-0 md:px-0">
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
