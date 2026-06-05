@@ -7,7 +7,7 @@
  * user is being viewed. Sellers see only their own card; admins default to the
  * team summary table and can click a row to drill into a single seller.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TrendingUp, CheckCircle2, AlertCircle, UserCheck, BarChart3, FileText,
 } from "lucide-react";
@@ -56,14 +56,21 @@ const GOAL_MONTHS = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
   faltantesAll: ReturnType<typeof useAppData>["faltantes"];
   goalsTimeline: SalesGoal[];
+  filterMonth: string;
 }) {
-  const userLeads = leadsAll.filter(l => l.assignedTo === user.id);
+  // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth for all KPIs
+  const allUserLeads = leadsAll.filter(l => l.assignedTo === user.id);
+  const userLeads = allUserLeads.filter(l => {
+    const d = new Date(l.createdAt);
+    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === filterMonth;
+  });
+
   const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
   const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
   const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
@@ -71,11 +78,6 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
   const soldCount = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").length;
   const quotedCount = userLeads.filter(l => l.status === "COTIZADO").length;
   const lostCount = userLeads.filter(l => l.status === "RECHAZADO").length;
-  const lostThisMonth = userLeads.filter(l => {
-    if (l.status !== "RECHAZADO") return false;
-    const d = new Date(l.createdAt);
-    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
-  }).length;
 
   const pieData = [
     { name: "Vendido", value: soldValue, color: "#10b981" },
@@ -94,12 +96,14 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
   const userFaltantes = faltantesAll.filter(f => f.vendedorId === user.id);
   const faltantesThisMonth = userFaltantes.filter(f => {
     const d = new Date(f.createdAt);
-    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
+    return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === filterMonth;
   }).length;
   const faltantesPendientes = userFaltantes.filter(f => f.estado === "pendiente").length;
 
-  const newClientCounts = newClientsByMonth(userLeads);
-  const convertedCounts = newClientsConvertedByMonth(userLeads);
+  // Sparkline always shows 6 months of context using allUserLeads so the chart
+  // gives historical perspective even when filterMonth is a past month.
+  const newClientCounts = newClientsByMonth(allUserLeads);
+  const convertedCounts = newClientsConvertedByMonth(allUserLeads);
   const recentMonthsForUser = (() => {
     const out: { ym: string; label: string; count: number; converted: number }[] = [];
     const now = new Date();
@@ -115,12 +119,17 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
     }
     return out;
   })();
-  const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
+  const newClientsForMonth = newClientCounts.get(filterMonth) || 0;
   const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
-  const convertedThisMonth = convertedCounts.get(currentYearMonth()) || 0;
+  const convertedForMonth = convertedCounts.get(filterMonth) || 0;
   const convertedTotal = [...convertedCounts.values()].reduce((a, b) => a + b, 0);
   const convertedPct = newClientsTotal > 0 ? Math.round((convertedTotal / newClientsTotal) * 100) : 0;
   const maxBar = Math.max(1, ...recentMonthsForUser.map(m => m.count));
+
+  // Goal for the selected month (server has per-month breakdown in goalsTimeline)
+  const [filterYear, filterMonthNum] = filterMonth.split("-").map(Number);
+  const goalForMonth = goalsTimeline.find(g => g.year === filterYear && g.month === filterMonthNum);
+  const effectiveSalesGoal = goalForMonth?.meta ?? user.performance.salesGoal;
 
   const userTtfc = timeToFirstContact(userLeads);
   const userFunnelData = funnelByStage(userLeads);
@@ -162,7 +171,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
             <div>
               <p className="text-xs font-semibold text-brand-gray">Total Perdido</p>
               <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{lostThisMonth} este mes · {lostCount} total</p>
+              <p className="text-[10px] text-slate-400">{lostCount} tratos perdidos</p>
             </div>
           </CardContent>
         </Card>
@@ -173,8 +182,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
             </div>
             <div>
               <p className="text-xs font-semibold text-brand-gray">Meta de Ventas</p>
-              <p className="text-xl font-bold text-slate-900">${user.performance.salesGoal.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}% alcanzado</p>
+              <p className="text-xl font-bold text-slate-900">${effectiveSalesGoal.toLocaleString()}</p>
+              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / effectiveSalesGoal) * 100))}% alcanzado</p>
             </div>
           </CardContent>
         </Card>
@@ -203,15 +212,15 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500 font-medium">Progreso de Meta</span>
-                <span className="font-bold">{Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100))}%</span>
+                <span className="font-bold">{Math.min(100, Math.round((soldValue / effectiveSalesGoal) * 100))}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (soldValue / user.performance.salesGoal) * 100)}%` }}
+                  animate={{ width: `${Math.min(100, (soldValue / effectiveSalesGoal) * 100)}%` }}
                   className={cn(
                     "h-full transition-all",
-                    soldValue >= user.performance.salesGoal ? "bg-green-500" : "bg-primary"
+                    soldValue >= effectiveSalesGoal ? "bg-green-500" : "bg-primary"
                   )}
                 />
               </div>
@@ -276,12 +285,12 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline }: {
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
                   <p className="text-xs font-semibold text-emerald-700">Nuevos</p>
-                  <p className="text-lg font-bold text-emerald-700 leading-tight">{newClientsThisMonth}</p>
+                  <p className="text-lg font-bold text-emerald-700 leading-tight">{newClientsForMonth}</p>
                   <p className="text-[10px] text-emerald-600/70">este mes</p>
                 </div>
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-2">
                   <p className="text-xs font-semibold text-indigo-700">Convertidos</p>
-                  <p className="text-lg font-bold text-indigo-700 leading-tight">{convertedThisMonth}</p>
+                  <p className="text-lg font-bold text-indigo-700 leading-tight">{convertedForMonth}</p>
                   <p className="text-[10px] text-indigo-600/70">{convertedTotal} total · {convertedPct}%</p>
                 </div>
               </div>
@@ -547,6 +556,21 @@ export function PerformanceTab() {
     return () => { aborted = true; };
   }, [viewedUserId]);
 
+  // Month filter — defaults to current month, scopes all metrics.
+  const [filterMonth, setFilterMonth] = useState<string>(currentYearMonth());
+
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    set.add(currentYearMonth());
+    for (const l of leads) {
+      const d = new Date(l.createdAt);
+      if (!isNaN(d.getTime())) {
+        set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+    }
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [leads]);
+
   // Keep filter in sync if the user switches accounts.
   useEffect(() => {
     if (currentUser?.role === "Seller") setUserFilter(currentUser.id);
@@ -571,22 +595,38 @@ export function PerformanceTab() {
           </p>
         </div>
 
-        {currentUser.role === "Admin" && (
+        <div className="flex flex-wrap items-end gap-3">
+          {currentUser.role === "Admin" && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-brand-gray ml-1">Filtrar por Vendedor</p>
+              <Select value={userFilter} onValueChange={setUserFilter}>
+                <SelectTrigger className="w-[200px] h-10">
+                  <SelectValue placeholder="Seleccionar Vista" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Resumen del Equipo</SelectItem>
+                  {users.map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
-            <p className="text-xs font-medium text-brand-gray ml-1">Filtrar por Vendedor</p>
-            <Select value={userFilter} onValueChange={setUserFilter}>
-              <SelectTrigger className="w-[200px] h-10">
-                <SelectValue placeholder="Seleccionar Vista" />
+            <p className="text-xs font-medium text-brand-gray ml-1">Mes</p>
+            <Select value={filterMonth} onValueChange={setFilterMonth}>
+              <SelectTrigger className="w-[160px] h-10">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Resumen del Equipo</SelectItem>
-                {users.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                ))}
+                {monthOptions.map(ym => {
+                  const [y, m] = ym.split("-").map(Number);
+                  return <SelectItem key={ym} value={ym}>{`${MESES[m - 1]} ${y}`}</SelectItem>;
+                })}
               </SelectContent>
             </Select>
           </div>
-        )}
+        </div>
       </div>
 
       {currentUser.role === "Admin" && userFilter === "all" ? (
@@ -615,24 +655,18 @@ export function PerformanceTab() {
                 </TableHeader>
                 <TableBody>
                   {users.map((user) => {
-                    const userLeads = leads.filter(l => l.assignedTo === user.id);
+                    const userLeads = leads.filter(l => {
+                      if (l.assignedTo !== user.id) return false;
+                      const d = new Date(l.createdAt);
+                      return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === filterMonth;
+                    });
                     const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
                     const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
                     const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
-                    const lostThisMonth = userLeads.filter(l => {
-                      if (l.status !== "RECHAZADO") return false;
-                      const d = new Date(l.createdAt);
-                      return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currentYearMonth();
-                    }).length;
                     const clientInitiated = userLeads.filter(l => l.clientInitiated).length;
                     const sellerInitiated = userLeads.length - clientInitiated;
-                    const newClientCounts = newClientsByMonth(userLeads);
-                    const newClientsThisMonth = newClientCounts.get(currentYearMonth()) || 0;
-                    const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
-                    const convertedCounts = newClientsConvertedByMonth(userLeads);
-                    const convertedThisMonth = convertedCounts.get(currentYearMonth()) || 0;
-                    const convertedTotal = [...convertedCounts.values()].reduce((a, b) => a + b, 0);
-                    const convertedPct = newClientsTotal > 0 ? Math.round((convertedTotal / newClientsTotal) * 100) : 0;
+                    const newClientsForMonth = userLeads.filter(l => l.newClient).length;
+                    const convertedForMonth = userLeads.filter(l => l.newClient && (l.status === "FACTURADO" || l.status === "ENTREGADO")).length;
                     const ttfc = timeToFirstContact(userLeads);
                     const userFunnel = funnelByStage(userLeads);
                     const cotToFact = userFunnel.find(s => s.stage === "FACTURADO")?.stepConversion ?? null;
@@ -651,10 +685,7 @@ export function PerformanceTab() {
                         <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
                         <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
                         <TableCell className="text-red-600">
-                          <div className="flex flex-col gap-0.5 leading-tight">
-                            <span className="text-sm font-bold">${lostValue.toLocaleString()}</span>
-                            <span className="text-[10px] text-slate-500">{lostThisMonth} este mes</span>
-                          </div>
+                          <span className="text-sm font-bold">${lostValue.toLocaleString()}</span>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-0.5 leading-tight">
@@ -663,16 +694,10 @@ export function PerformanceTab() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-0.5 leading-tight">
-                            <span className="text-sm font-bold text-emerald-700">{newClientsThisMonth}</span>
-                            <span className="text-[10px] text-slate-500">este mes · {newClientsTotal} total</span>
-                          </div>
+                          <span className="text-sm font-bold text-emerald-700">{newClientsForMonth}</span>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-0.5 leading-tight">
-                            <span className="text-sm font-bold text-indigo-700">{convertedThisMonth}</span>
-                            <span className="text-[10px] text-slate-500">{convertedTotal} total · {convertedPct}%</span>
-                          </div>
+                          <span className="text-sm font-bold text-indigo-700">{convertedForMonth}</span>
                         </TableCell>
                         <TableCell>
                           {ttfc.median !== null ? (
@@ -717,6 +742,7 @@ export function PerformanceTab() {
               leadsAll={leads}
               faltantesAll={faltantes}
               goalsTimeline={goalsTimeline}
+              filterMonth={filterMonth}
             />
           ))}
         </div>
