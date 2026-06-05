@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 
 import { MESES } from "../../lib/helpers";
+import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Lead, LeadStatus, User } from "../../types";
 
@@ -189,7 +190,7 @@ interface KanbanTabProps {
 }
 
 export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
-  const { leads, users, sucursales, segmentos, currentUser } = useAppData();
+  const { leads, users, sucursales, segmentos, currentUser, refetchAll } = useAppData();
 
   const [filterSeller, setFilterSeller] = useState<string>("all");
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
@@ -204,6 +205,27 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
   const [filterClientInitiated, setFilterClientInitiated] = useState(false);
   const [filterMostrador, setFilterMostrador] = useState(false);
   const [filterNewClient, setFilterNewClient] = useState(false);
+
+  const staleContactados = useMemo(() => {
+    const cutoff = Date.now() - 20 * 24 * 60 * 60 * 1000;
+    return leads.filter((l: Lead) => l.status === "CONTACTADO" && new Date(l.updatedAt).getTime() < cutoff);
+  }, [leads]);
+
+  const [bulkRejectState, setBulkRejectState] = useState<"idle" | "confirm" | "busy">("idle");
+
+  const handleBulkReject = async () => {
+    setBulkRejectState("busy");
+    await Promise.all(
+      staleContactados.map(l =>
+        apiFetch(`/api/leads/${l.id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "RECHAZADO" }),
+        })
+      )
+    );
+    await refetchAll();
+    setBulkRejectState("idle");
+  };
 
   // DnD
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -414,6 +436,39 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
                   }
                 </SelectContent>
               </Select>
+            </div>
+          )}
+          {currentUser?.role === "Admin" && staleContactados.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-brand-gray ml-1 invisible">·</p>
+              {bulkRejectState === "confirm" ? (
+                <div className="flex items-center gap-2 h-9">
+                  <span className="text-xs text-slate-600">¿Rechazar {staleContactados.length} leads?</span>
+                  <button
+                    onClick={handleBulkReject}
+                    className="text-xs font-semibold text-white bg-brand-red px-3 h-7 hover:opacity-90"
+                  >
+                    Sí
+                  </button>
+                  <button
+                    onClick={() => setBulkRejectState("idle")}
+                    className="text-xs font-semibold text-slate-600 border border-slate-300 px-3 h-7 hover:bg-slate-50"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  disabled={bulkRejectState === "busy"}
+                  onClick={() => setBulkRejectState("confirm")}
+                  className="flex items-center gap-2 h-9 px-3 border border-brand-red text-brand-red text-xs font-semibold hover:bg-brand-red-tint disabled:opacity-50"
+                >
+                  Rechazar inactivos
+                  <span className="bg-brand-red text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    {bulkRejectState === "busy" ? "..." : staleContactados.length}
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>
