@@ -75,12 +75,12 @@ export default function App() {
                     <BarChart3 className="w-4 h-4" />
                     <span className="hidden sm:inline">Rendimiento</span>
                   </TabsTrigger>
-                  <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Faltantes</span>
-                  </TabsTrigger>
                 </>
               )}
+              <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="hidden sm:inline">Faltantes</span>
+              </TabsTrigger>
               <TabsTrigger value="pedidos" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
                 <Clock className="w-4 h-4" />
                 <span className="hidden sm:inline">Pedidos Extraordinarios</span>
