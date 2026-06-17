@@ -218,7 +218,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     await Promise.all(
       staleContactados.map(l =>
         apiFetch(`/api/leads/${l.id}/status`, {
-          method: "PATCH",
+          method: "POST",
           body: JSON.stringify({ status: "RECHAZADO" }),
         })
       )
