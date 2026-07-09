@@ -39,6 +39,7 @@ interface NewLeadForm {
   assignedTo: string;
   clientInitiated: boolean;
   mostrador: boolean;
+  transferidoWhatsappRoger: boolean;
 }
 
 function emptyForm(): NewLeadForm {
@@ -46,7 +47,7 @@ function emptyForm(): NewLeadForm {
     name: "", email: "", company: "", value: 0,
     sucursal: "", segmento: "",
     isExistingClient: false, clientId: "", assignedTo: "",
-    clientInitiated: false, mostrador: false,
+    clientInitiated: false, mostrador: false, transferidoWhatsappRoger: false,
   };
 }
 
@@ -268,6 +269,19 @@ export function NewLeadDialog() {
               </div>
             </label>
           </div>
+
+          <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="h-4 w-4 mt-0.5 accent-primary"
+              checked={form.transferidoWhatsappRoger}
+              onChange={(e) => setForm({ ...form, transferidoWhatsappRoger: e.target.checked })}
+            />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">Transferido de WhatsApp (Roger)</span>
+              <span className="text-[11px] text-slate-500">Venta compartida recibida de Roger por WhatsApp.</span>
+            </div>
+          </label>
 
           <div className="grid gap-2">
             <label className="text-sm font-medium">Segmento</label>

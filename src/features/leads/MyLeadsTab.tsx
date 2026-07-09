@@ -31,6 +31,7 @@ export function MyLeadsTab({ openStatusUpdate }: MyLeadsTabProps) {
   const [filterClientInitiated, setFilterClientInitiated] = useState(false);
   const [filterMostrador, setFilterMostrador] = useState(false);
   const [filterNewClient, setFilterNewClient] = useState(false);
+  const [filterTransferidoWhatsappRoger, setFilterTransferidoWhatsappRoger] = useState(false);
 
   const visibleLeads = leads.filter((l) => {
     if (l.assignedTo !== currentUser?.id) return false;
@@ -41,6 +42,7 @@ export function MyLeadsTab({ openStatusUpdate }: MyLeadsTabProps) {
     if (filterClientInitiated && !l.clientInitiated) return false;
     if (filterMostrador && !l.mostrador) return false;
     if (filterNewClient && !l.newClient) return false;
+    if (filterTransferidoWhatsappRoger && !l.transferidoWhatsappRoger) return false;
     return true;
   });
 
@@ -78,6 +80,10 @@ export function MyLeadsTab({ openStatusUpdate }: MyLeadsTabProps) {
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterNewClient} onChange={(e) => setFilterNewClient(e.target.checked)} />
                 <span className="text-xs text-slate-700">Cliente nuevo</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterTransferidoWhatsappRoger} onChange={(e) => setFilterTransferidoWhatsappRoger(e.target.checked)} />
+                <span className="text-xs text-slate-700">WA Roger</span>
               </label>
             </div>
           </div>

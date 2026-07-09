@@ -57,6 +57,7 @@ export interface Lead {
   clientInitiated?: boolean; // Cl_Client_Initiated_CRM — true when the customer reached out first
   mostrador?: boolean;       // Cl_Mostrador_CRM — true when the lead originated as a walk-in / counter inquiry
   newClient?: boolean;  // Cl_New_Client_CRM — true when this lead created a brand-new CRM prospect (survives the ERP re-point on FACTURADO)
+  transferidoWhatsappRoger?: boolean; // Cl_Transferido_WA_Roger_CRM — sale shared/transferred from Roger via WhatsApp
   createdAt: string;    // Cl_CreatedAt_CRM
   updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];

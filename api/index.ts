@@ -144,6 +144,7 @@ async function getLeadsWithHistory() {
     clientInitiated: !!l.Cl_Client_Initiated_CRM,
     mostrador: !!l.Cl_Mostrador_CRM,
     newClient: !!l.Cl_New_Client_CRM,
+    transferidoWhatsappRoger: !!l.Cl_Transferido_WA_Roger_CRM,
     createdAt: l.Cl_CreatedAt_CRM,
     updatedAt: l.Cl_UpdatedAt_CRM,
     history: ((l.lead_history as any[]) || [])
@@ -461,7 +462,7 @@ app.get("/api/leads", requireAuth, async (_req, res) => {
 });
 
 app.post("/api/leads", requireAuth, async (req, res) => {
-  const { isExistingClient, clientId: existingClientId, clientInitiated, mostrador, ...leadData } = req.body;
+  const { isExistingClient, clientId: existingClientId, clientInitiated, mostrador, transferidoWhatsappRoger, ...leadData } = req.body;
   // Identity comes from the token, not the request body. For sellers the
   // lead is self-assigned; admins may pass assignedTo in the leadData
   // body (handled below by the original code path).
@@ -534,6 +535,7 @@ app.post("/api/leads", requireAuth, async (req, res) => {
     Cl_Client_Initiated_CRM: !!clientInitiated || !!mostrador,
     Cl_Mostrador_CRM: !!mostrador,
     Cl_New_Client_CRM: !isExistingClient,
+    Cl_Transferido_WA_Roger_CRM: !!transferidoWhatsappRoger,
     Cl_CreatedAt_CRM: now,
     Cl_UpdatedAt_CRM: now,
   });

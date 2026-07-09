@@ -18,6 +18,7 @@ export interface WorkloadFilterState {
   clientInitiated: boolean;
   mostrador: boolean;
   newClient: boolean;
+  transferidoWhatsappRoger: boolean;
 }
 
 export interface WorkloadStat {
@@ -68,6 +69,7 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
       if (filter.clientInitiated && !l.clientInitiated) return false;
       if (filter.mostrador && !l.mostrador) return false;
       if (filter.newClient && !l.newClient) return false;
+      if (filter.transferidoWhatsappRoger && !l.transferidoWhatsappRoger) return false;
       return true;
     };
 
@@ -125,6 +127,6 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
     return { stats, teamAvgConv, stuckLeads };
   }, [
     leads, users, sucursales,
-    filter.vendedor, filter.sucursal, filter.search, filter.clientInitiated, filter.mostrador, filter.newClient,
+    filter.vendedor, filter.sucursal, filter.search, filter.clientInitiated, filter.mostrador, filter.newClient, filter.transferidoWhatsappRoger,
   ]);
 }

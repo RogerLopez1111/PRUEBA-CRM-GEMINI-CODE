@@ -60,6 +60,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const [filterClientInitiated, setFilterClientInitiated] = useState(false);
   const [filterMostrador, setFilterMostrador] = useState(false);
   const [filterNewClient, setFilterNewClient] = useState(false);
+  const [filterTransferidoWhatsappRoger, setFilterTransferidoWhatsappRoger] = useState(false);
 
   // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">)
   const [activityFrom, setActivityFrom] = useState<string>("");
@@ -96,6 +97,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
     clientInitiated: filterClientInitiated,
     mostrador: filterMostrador,
     newClient: filterNewClient,
+    transferidoWhatsappRoger: filterTransferidoWhatsappRoger,
   });
 
   const fetchGoalsTimeline = async (userId: string) => {
@@ -597,6 +599,10 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterNewClient} onChange={(e) => setFilterNewClient(e.target.checked)} />
                       <span className="text-xs text-slate-700">Cliente nuevo</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterTransferidoWhatsappRoger} onChange={(e) => setFilterTransferidoWhatsappRoger(e.target.checked)} />
+                      <span className="text-xs text-slate-700">WA Roger</span>
                     </label>
                   </div>
                 </div>
