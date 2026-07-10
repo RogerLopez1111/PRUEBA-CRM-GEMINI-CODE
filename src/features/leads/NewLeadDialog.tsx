@@ -241,7 +241,7 @@ export function NewLeadDialog() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <label className={`flex items-start gap-2 p-3 rounded-md bg-slate-50 border select-none ${form.mostrador ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}>
               <input
                 type="checkbox"
@@ -268,20 +268,20 @@ export function NewLeadDialog() {
                 <span className="text-[11px] text-slate-500">Consulta en sucursal (walk-in).</span>
               </div>
             </label>
-          </div>
 
-          <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="h-4 w-4 mt-0.5 accent-primary"
-              checked={form.transferidoWhatsappRoger}
-              onChange={(e) => setForm({ ...form, transferidoWhatsappRoger: e.target.checked })}
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">Transferido de WhatsApp (Roger)</span>
-              <span className="text-[11px] text-slate-500">Venta compartida recibida de Roger por WhatsApp.</span>
-            </div>
-          </label>
+            <label className="flex items-start gap-2 p-3 rounded-md bg-slate-50 border cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 mt-0.5 accent-primary"
+                checked={form.transferidoWhatsappRoger}
+                onChange={(e) => setForm({ ...form, transferidoWhatsappRoger: e.target.checked })}
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">WA Roger</span>
+                <span className="text-[11px] text-slate-500">Transferido de WhatsApp (Roger).</span>
+              </div>
+            </label>
+          </div>
 
           <div className="grid gap-2">
             <label className="text-sm font-medium">Segmento</label>
