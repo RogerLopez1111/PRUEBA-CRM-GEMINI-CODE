@@ -145,6 +145,7 @@ async function getLeadsWithHistory() {
     mostrador: !!l.Cl_Mostrador_CRM,
     newClient: !!l.Cl_New_Client_CRM,
     transferidoWhatsappRoger: !!l.Cl_Transferido_WA_Roger_CRM,
+    tareaId: l.tarea_id ?? undefined,
     createdAt: l.Cl_CreatedAt_CRM,
     updatedAt: l.Cl_UpdatedAt_CRM,
     history: ((l.lead_history as any[]) || [])
@@ -462,7 +463,7 @@ app.get("/api/leads", requireAuth, async (_req, res) => {
 });
 
 app.post("/api/leads", requireAuth, async (req, res) => {
-  const { isExistingClient, clientId: existingClientId, clientInitiated, mostrador, transferidoWhatsappRoger, ...leadData } = req.body;
+  const { isExistingClient, clientId: existingClientId, clientInitiated, mostrador, transferidoWhatsappRoger, tareaId, ...leadData } = req.body;
   // Identity comes from the token, not the request body. For sellers the
   // lead is self-assigned; admins may pass assignedTo in the leadData
   // body (handled below by the original code path).
@@ -521,11 +522,44 @@ app.post("/api/leads", requireAuth, async (req, res) => {
     }
   }
 
+  // Resolve optional task link. The task must exist and be open; for sellers
+  // it must also be assigned to them (they can only work their own tasks).
+  let resolvedTareaId: string | null = null;
+  if (tareaId) {
+    const { data: tarea } = await supabase
+      .from("tareas")
+      .select("id, estado")
+      .eq("id", tareaId)
+      .maybeSingle();
+    if (!tarea) {
+      res.status(400).json({ error: "La tarea seleccionada no existe." });
+      return;
+    }
+    if (tarea.estado !== "abierta") {
+      res.status(400).json({ error: "No puedes vincular un lead a una tarea cerrada." });
+      return;
+    }
+    if (req.user!.role !== "Admin") {
+      const { data: asignado } = await supabase
+        .from("tarea_asignados")
+        .select("id")
+        .eq("tarea_id", tareaId)
+        .eq("vendedor_id", userId)
+        .maybeSingle();
+      if (!asignado) {
+        res.status(403).json({ error: "Esta tarea no está asignada a ti." });
+        return;
+      }
+    }
+    resolvedTareaId = tareaId;
+  }
+
   // Create lead
   const leadId = Math.random().toString(36).substr(2, 9);
   const { error: leadError } = await supabase.from("leads").insert({
     id: leadId,
     Cl_Cve_Cliente: clientId,
+    tarea_id: resolvedTareaId,
     Cl_Status_CRM: status,
     Vn_Cve_Vendedor: userId || null,
     Cl_Valor_CRM: leadData.value,
@@ -693,6 +727,202 @@ app.post("/api/leads/:id/status", requireAuth, async (req, res) => {
 
   const leads = await getLeadsWithHistory();
   res.json(leads.find((l) => l.id === id));
+});
+
+// ---------------------------------------------------------------------------
+// Tareas (CRM-only) — admin-created tasks/alerts assigned to sellers. Sellers
+// work a task by creating leads linked to it (leads.tarea_id); an admin closes
+// the task when done. No ERP counterpart.
+// ---------------------------------------------------------------------------
+
+async function getVendedoresNameMap(): Promise<Record<string, string>> {
+  const { data } = await supabase.from("vendedores").select("Vn_Cve_Vendedor, Vn_Descripcion");
+  const map: Record<string, string> = {};
+  for (const v of data || []) map[String(v.Vn_Cve_Vendedor)] = v.Vn_Descripcion;
+  return map;
+}
+
+async function fetchTareas(filters: { vendedorId?: string } = {}) {
+  // When scoped to a seller, restrict to tasks assigned to them.
+  let allowedTaskIds: string[] | null = null;
+  if (filters.vendedorId) {
+    const { data: mine } = await supabase
+      .from("tarea_asignados")
+      .select("tarea_id")
+      .eq("vendedor_id", filters.vendedorId);
+    allowedTaskIds = (mine || []).map((r) => r.tarea_id);
+    if (allowedTaskIds.length === 0) return [];
+  }
+
+  let query = supabase.from("tareas").select("*").order("created_at", { ascending: false });
+  if (allowedTaskIds) query = query.in("id", allowedTaskIds);
+  const { data: tareas, error } = await query;
+  if (error) { console.error("[tareas]", error.message); return []; }
+  if (!tareas || tareas.length === 0) return [];
+
+  const taskIds = tareas.map((t) => t.id);
+  const [asignadosRes, leadsRes, nameMap] = await Promise.all([
+    supabase.from("tarea_asignados").select("tarea_id, vendedor_id").in("tarea_id", taskIds),
+    supabase.from("leads").select("tarea_id").in("tarea_id", taskIds),
+    getVendedoresNameMap(),
+  ]);
+
+  const asignadosByTask: Record<string, { vendedorId: string; vendedorName?: string }[]> = {};
+  for (const a of asignadosRes.data || []) {
+    const vid = String(a.vendedor_id);
+    (asignadosByTask[a.tarea_id] ||= []).push({ vendedorId: vid, vendedorName: nameMap[vid] });
+  }
+  const leadsCountByTask: Record<string, number> = {};
+  for (const l of leadsRes.data || []) {
+    if (l.tarea_id) leadsCountByTask[l.tarea_id] = (leadsCountByTask[l.tarea_id] || 0) + 1;
+  }
+
+  return tareas.map((t: any) => ({
+    id: t.id,
+    titulo: t.titulo,
+    descripcion: t.descripcion || "",
+    productoId: t.producto_id ? String(t.producto_id) : null,
+    productoDescripcion: t.producto_descripcion || null,
+    estado: t.estado,
+    creadoPor: String(t.creado_por || ""),
+    creadoPorName: nameMap[String(t.creado_por)] || undefined,
+    cerradoPor: t.cerrado_por ? String(t.cerrado_por) : null,
+    cerradoPorName: t.cerrado_por ? (nameMap[String(t.cerrado_por)] || null) : null,
+    cerradoAt: t.cerrado_at || null,
+    asignados: asignadosByTask[t.id] || [],
+    leadsCount: leadsCountByTask[t.id] || 0,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  }));
+}
+
+app.get("/api/tareas", requireAuth, async (req, res) => {
+  // Admins see every task; everyone else sees only tasks assigned to them.
+  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
+  res.json(await fetchTareas({ vendedorId }));
+});
+
+app.post("/api/tareas", requireAdmin, async (req, res) => {
+  const { titulo, descripcion, productoId, productoDescripcion, asignados } = req.body;
+  if (!titulo || !String(titulo).trim()) {
+    return res.status(400).json({ error: "El título es obligatorio." });
+  }
+  const sellerIds: string[] = Array.isArray(asignados)
+    ? [...new Set(asignados.map((s: any) => String(s)).filter(Boolean))]
+    : [];
+  if (sellerIds.length === 0) {
+    return res.status(400).json({ error: "Asigna la tarea al menos a un vendedor." });
+  }
+
+  const now = new Date().toISOString();
+  const id = Math.random().toString(36).substr(2, 12);
+
+  const { error } = await supabase.from("tareas").insert({
+    id,
+    titulo: String(titulo).trim(),
+    descripcion: descripcion ? String(descripcion).trim() : "",
+    producto_id: productoId || null,
+    producto_descripcion: productoDescripcion ? String(productoDescripcion).trim() : null,
+    estado: "abierta",
+    creado_por: req.user!.sub,
+    created_at: now,
+    updated_at: now,
+  });
+  if (error) return res.status(400).json({ error: error.message });
+
+  const { error: asignError } = await supabase.from("tarea_asignados").insert(
+    sellerIds.map((vid) => ({
+      id: Math.random().toString(36).substr(2, 12),
+      tarea_id: id,
+      vendedor_id: vid,
+    }))
+  );
+  if (asignError) return res.status(400).json({ error: asignError.message });
+
+  const all = await fetchTareas();
+  res.status(201).json(all.find((t) => t.id === id));
+});
+
+app.patch("/api/tareas/:id", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { titulo, descripcion, productoId, productoDescripcion, estado, asignados } = req.body;
+
+  const { data: existing } = await supabase
+    .from("tareas")
+    .select("estado")
+    .eq("id", id)
+    .maybeSingle();
+  if (!existing) return res.status(404).json({ error: "Tarea no encontrada." });
+
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  if (typeof titulo === "string") {
+    if (!titulo.trim()) return res.status(400).json({ error: "El título no puede estar vacío." });
+    updates.titulo = titulo.trim();
+  }
+  if (typeof descripcion === "string") updates.descripcion = descripcion.trim();
+  if (productoId !== undefined) updates.producto_id = productoId || null;
+  if (typeof productoDescripcion === "string") updates.producto_descripcion = productoDescripcion.trim() || null;
+  if (estado !== undefined) {
+    if (estado !== "abierta" && estado !== "cerrada") {
+      return res.status(400).json({ error: "Estado inválido." });
+    }
+    updates.estado = estado;
+    if (estado === "cerrada") {
+      updates.cerrado_por = req.user!.sub;
+      updates.cerrado_at = new Date().toISOString();
+    } else {
+      updates.cerrado_por = null;
+      updates.cerrado_at = null;
+    }
+  }
+
+  const { error } = await supabase.from("tareas").update(updates).eq("id", id);
+  if (error) return res.status(400).json({ error: error.message });
+
+  // Replace the assignee set when provided.
+  if (Array.isArray(asignados)) {
+    const sellerIds = [...new Set(asignados.map((s: any) => String(s)).filter(Boolean))];
+    if (sellerIds.length === 0) {
+      return res.status(400).json({ error: "La tarea debe tener al menos un vendedor asignado." });
+    }
+    await supabase.from("tarea_asignados").delete().eq("tarea_id", id);
+    const { error: asignError } = await supabase.from("tarea_asignados").insert(
+      sellerIds.map((vid) => ({
+        id: Math.random().toString(36).substr(2, 12),
+        tarea_id: id,
+        Vn_Cve_Vendedor: vid,
+      }))
+    );
+    if (asignError) return res.status(400).json({ error: asignError.message });
+  }
+
+  const all = await fetchTareas();
+  res.json(all.find((t) => t.id === id));
+});
+
+// Admin-only delete: refuses if any lead is still linked so we don't orphan
+// a seller's work — admin must unlink/resolve those leads first.
+app.delete("/api/tareas/:id", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  const { data: tarea } = await supabase.from("tareas").select("id").eq("id", id).maybeSingle();
+  if (!tarea) return res.status(404).json({ error: "Tarea no encontrada." });
+
+  const { count: leadsCount } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .eq("tarea_id", id);
+  if (leadsCount && leadsCount > 0) {
+    return res.status(409).json({
+      error: `Esta tarea tiene ${leadsCount} lead(s) vinculado(s). Desvincúlalos antes de eliminarla.`,
+    });
+  }
+
+  await supabase.from("tarea_asignados").delete().eq("tarea_id", id);
+  const { error } = await supabase.from("tareas").delete().eq("id", id);
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------

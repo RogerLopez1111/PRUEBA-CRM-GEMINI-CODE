@@ -5,7 +5,7 @@
 
 import { useCallback, useRef } from "react";
 import {
-  AlertTriangle, BarChart3, UserCheck, ShieldCheck, Kanban, Clock,
+  AlertTriangle, BarChart3, UserCheck, ShieldCheck, Kanban, Clock, ListChecks,
 } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,6 +17,7 @@ import type { Lead, LeadStatus } from "./types";
 import { LoginScreen } from "./features/auth/LoginScreen";
 import { AppHeader } from "./features/shell/AppHeader";
 import { PedidosTab } from "./features/pedidos/PedidosTab";
+import { TareasTab } from "./features/tareas/TareasTab";
 import { FaltantesTab } from "./features/faltantes/FaltantesTab";
 import { AdminTab } from "./features/admin/AdminTab";
 import { KanbanTab } from "./features/leads/KanbanTab";
@@ -75,6 +76,10 @@ export default function App() {
                     <BarChart3 className="w-4 h-4" />
                     <span className="hidden sm:inline">Rendimiento</span>
                   </TabsTrigger>
+                  <TabsTrigger value="tareas" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
+                    <ListChecks className="w-4 h-4" />
+                    <span className="hidden sm:inline">Tareas</span>
+                  </TabsTrigger>
                 </>
               )}
               <TabsTrigger value="faltantes" className="gap-1.5 px-3 md:px-6 flex-shrink-0">
@@ -108,6 +113,10 @@ export default function App() {
 
           <TabsContent value="performance" className="space-y-6">
             <PerformanceTab />
+          </TabsContent>
+
+          <TabsContent value="tareas" className="space-y-6">
+            <TareasTab />
           </TabsContent>
 
           <TabsContent value="faltantes" className="space-y-6">

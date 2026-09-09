@@ -58,6 +58,7 @@ export interface Lead {
   mostrador?: boolean;       // Cl_Mostrador_CRM — true when the lead originated as a walk-in / counter inquiry
   newClient?: boolean;  // Cl_New_Client_CRM — true when this lead created a brand-new CRM prospect (survives the ERP re-point on FACTURADO)
   transferidoWhatsappRoger?: boolean; // Cl_Transferido_WA_Roger_CRM — sale shared/transferred from Roger via WhatsApp
+  tareaId?: string;     // tarea_id — optional FK to tareas (the task this lead was created for)
   createdAt: string;    // Cl_CreatedAt_CRM
   updatedAt: string;    // Cl_UpdatedAt_CRM
   history: LeadHistory[];
@@ -152,6 +153,32 @@ export interface ProductoFaltante {
   cantidad: number;
   comentario: string;
   estado: ProductoFaltanteEstado;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Maps to Supabase `tareas` (CRM-only) — an admin-created task/alert (e.g. "offer
+// this overstocked product to clients") assigned to one or more sellers. Sellers
+// work it by creating leads linked to it; an admin closes it when done.
+export type TareaEstado = 'abierta' | 'cerrada';
+export interface TareaAsignado {
+  vendedorId: string;   // Vn_Cve_Vendedor
+  vendedorName?: string;
+}
+export interface Tarea {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  productoId?: string | null;      // Pr_Cve_Producto — optional ERP product link
+  productoDescripcion?: string | null; // snapshot / free-text
+  estado: TareaEstado;
+  creadoPor: string;               // Vn_Cve_Vendedor of the admin who created it
+  creadoPorName?: string;
+  cerradoPor?: string | null;
+  cerradoPorName?: string | null;
+  cerradoAt?: string | null;
+  asignados: TareaAsignado[];      // sellers this task is assigned to
+  leadsCount: number;              // number of leads linked via Ta_Id_CRM
   createdAt: string;
   updatedAt: string;
 }

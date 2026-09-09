@@ -40,6 +40,7 @@ interface NewLeadForm {
   clientInitiated: boolean;
   mostrador: boolean;
   transferidoWhatsappRoger: boolean;
+  tareaId: string;
 }
 
 function emptyForm(): NewLeadForm {
@@ -48,11 +49,17 @@ function emptyForm(): NewLeadForm {
     sucursal: "", segmento: "",
     isExistingClient: false, clientId: "", assignedTo: "",
     clientInitiated: false, mostrador: false, transferidoWhatsappRoger: false,
+    tareaId: "",
   };
 }
 
 export function NewLeadDialog() {
-  const { clients, users, sucursales, segmentos, currentUser, refetchAll } = useAppData();
+  const { clients, users, sucursales, segmentos, tareas, currentUser, refetchAll } = useAppData();
+
+  // Open tasks the current user can link a new lead to. Sellers only receive
+  // their own assigned tasks from the API; admins receive all, so both cases
+  // reduce to "show the open ones".
+  const openTareas = tareas.filter((t) => t.estado === "abierta");
 
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -296,6 +303,27 @@ export function NewLeadDialog() {
               </SelectContent>
             </Select>
           </div>
+
+          {openTareas.length > 0 && (
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Tarea (opcional)</label>
+              <Select
+                value={form.tareaId || "none"}
+                onValueChange={(val) => setForm({ ...form, tareaId: val === "none" ? "" : val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin tarea" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin tarea</SelectItem>
+                  {openTareas.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.titulo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-500">Vincula este lead a una tarea asignada para que se contabilice en ella.</p>
+            </div>
+          )}
 
           {currentUser?.role === "Admin" && (
             <div className="grid gap-2">

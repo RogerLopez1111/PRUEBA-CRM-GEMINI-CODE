@@ -23,6 +23,7 @@ import type {
   Product,
   ProductoFaltante,
   PedidoExtraordinario,
+  Tarea,
 } from "../types";
 import { AUTH_EXPIRED_EVENT, apiFetch, getStoredToken, setStoredToken } from "../lib/api";
 
@@ -36,6 +37,7 @@ interface AppData {
   productos: Product[];
   faltantes: ProductoFaltante[];
   pedidos: PedidoExtraordinario[];
+  tareas: Tarea[];
   rechazoMotivos: { id: number; descripcion: string }[];
 
   // Auth
@@ -51,6 +53,7 @@ interface AppData {
   refetchUsers: () => Promise<void>;
   refetchFaltantes: () => Promise<void>;
   refetchPedidos: () => Promise<void>;
+  refetchTareas: () => Promise<void>;
 }
 
 const AppDataContext = createContext<AppData | null>(null);
@@ -75,6 +78,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [productos, setProductos] = useState<Product[]>([]);
   const [faltantes, setFaltantes] = useState<ProductoFaltante[]>([]);
   const [pedidos, setPedidos] = useState<PedidoExtraordinario[]>([]);
+  const [tareas, setTareas] = useState<Tarea[]>([]);
   const [currentUserState, setCurrentUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -114,11 +118,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setPedidos(await safeJson<PedidoExtraordinario[]>(res, []));
   }, []);
 
+  const refetchTareas = useCallback(async () => {
+    const res = await apiFetch("/api/tareas");
+    setTareas(await safeJson<Tarea[]>(res, []));
+  }, []);
+
   const refetchAll = useCallback(async () => {
     try {
       const [
         leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes,
-        motivosRes, productosRes, faltantesRes, pedidosRes,
+        motivosRes, productosRes, faltantesRes, pedidosRes, tareasRes,
       ] = await Promise.all([
         apiFetch("/api/leads"),
         apiFetch("/api/users"),
@@ -129,6 +138,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         apiFetch("/api/productos"),
         apiFetch("/api/productos-faltantes"),
         apiFetch("/api/pedidos-extraordinarios"),
+        apiFetch("/api/tareas"),
       ]);
 
       setLeads(await safeJson<Lead[]>(leadsRes, []));
@@ -140,6 +150,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setProductos(await safeJson<Product[]>(productosRes, []));
       setFaltantes(await safeJson<ProductoFaltante[]>(faltantesRes, []));
       setPedidos(await safeJson<PedidoExtraordinario[]>(pedidosRes, []));
+      setTareas(await safeJson<Tarea[]>(tareasRes, []));
     } catch (err) {
       console.error("Error fetching data:", err);
       toast.error("Error al cargar los datos");
@@ -189,7 +200,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppData>(
     () => ({
-      leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, rechazoMotivos,
+      leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, tareas, rechazoMotivos,
       currentUser: currentUserState,
       setCurrentUser,
       loading,
@@ -198,11 +209,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       refetchUsers,
       refetchFaltantes,
       refetchPedidos,
+      refetchTareas,
     }),
     [
-      leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, rechazoMotivos,
+      leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, tareas, rechazoMotivos,
       currentUserState, setCurrentUser, loading,
-      refetchAll, refetchLeads, refetchUsers, refetchFaltantes, refetchPedidos,
+      refetchAll, refetchLeads, refetchUsers, refetchFaltantes, refetchPedidos, refetchTareas,
     ]
   );
 
