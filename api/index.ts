@@ -762,15 +762,15 @@ async function fetchTareas(filters: { vendedorId?: string } = {}) {
 
   const taskIds = tareas.map((t) => t.id);
   const [asignadosRes, leadsRes, nameMap] = await Promise.all([
-    supabase.from("tarea_asignados").select("tarea_id, vendedor_id").in("tarea_id", taskIds),
+    supabase.from("tarea_asignados").select("tarea_id, vendedor_id, created_at").in("tarea_id", taskIds),
     supabase.from("leads").select("tarea_id").in("tarea_id", taskIds),
     getVendedoresNameMap(),
   ]);
 
-  const asignadosByTask: Record<string, { vendedorId: string; vendedorName?: string }[]> = {};
+  const asignadosByTask: Record<string, { vendedorId: string; vendedorName?: string; assignedAt?: string }[]> = {};
   for (const a of asignadosRes.data || []) {
     const vid = String(a.vendedor_id);
-    (asignadosByTask[a.tarea_id] ||= []).push({ vendedorId: vid, vendedorName: nameMap[vid] });
+    (asignadosByTask[a.tarea_id] ||= []).push({ vendedorId: vid, vendedorName: nameMap[vid], assignedAt: a.created_at ?? undefined });
   }
   const leadsCountByTask: Record<string, number> = {};
   for (const l of leadsRes.data || []) {
@@ -794,6 +794,62 @@ async function fetchTareas(filters: { vendedorId?: string } = {}) {
     createdAt: t.created_at,
     updatedAt: t.updated_at,
   }));
+}
+
+// Fire-and-forget: emails a seller when a task is assigned to them (on create
+// or when added to an existing task). Never throws — failures are logged so the
+// API response stays clean.
+async function notifyTareaAsignada(tareaId: string, vendedorId: string): Promise<void> {
+  const tag = "[tarea-asignada-email]";
+  const esc = (s: string) =>
+    String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  try {
+    const [{ data: tarea }, { data: seller }] = await Promise.all([
+      supabase.from("tareas").select("titulo, descripcion, producto_descripcion, creado_por").eq("id", tareaId).maybeSingle(),
+      supabase.from("vendedores").select("Vn_Email, Vn_Descripcion").eq("Vn_Cve_Vendedor", vendedorId).maybeSingle(),
+    ]);
+    if (!tarea) { console.error(`${tag} task ${tareaId} not found`); return; }
+    const to = (seller?.Vn_Email || "").trim();
+    if (!to) { console.warn(`${tag} seller ${vendedorId} has no email — skipping`); return; }
+    const sellerName = (seller?.Vn_Descripcion || "").trim() || "Vendedor";
+
+    let creadorName = "Un administrador";
+    if (tarea.creado_por) {
+      const { data: creador } = await supabase.from("vendedores").select("Vn_Descripcion").eq("Vn_Cve_Vendedor", tarea.creado_por).maybeSingle();
+      creadorName = (creador?.Vn_Descripcion || "").trim() || creadorName;
+    }
+
+    const titulo = tarea.titulo || "";
+    const descripcion = (tarea.descripcion || "").trim();
+    const producto = (tarea.producto_descripcion || "").trim();
+
+    const subject = `Nueva tarea asignada — ${titulo}`.trim();
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fff;color:#0f172a">
+        <h2 style="color:#141456;margin:0 0 4px 0">Se te asignó una nueva tarea</h2>
+        <p style="color:#475569;font-size:13px;margin:0 0 16px 0">Hola ${esc(sellerName)}, ${esc(creadorName)} te asignó una tarea en el CRM.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">
+          <tr><td style="padding:8px 10px;background:#f8fafc;color:#475569;width:140px">Tarea</td><td style="padding:8px 10px;font-weight:600">${esc(titulo)}</td></tr>
+          ${descripcion ? `<tr><td style="padding:8px 10px;background:#f8fafc;color:#475569;vertical-align:top">Descripción</td><td style="padding:8px 10px;color:#334155">${esc(descripcion)}</td></tr>` : ""}
+          ${producto ? `<tr><td style="padding:8px 10px;background:#f8fafc;color:#475569">Producto</td><td style="padding:8px 10px">${esc(producto)}</td></tr>` : ""}
+        </table>
+        <p style="color:#334155;font-size:13px;margin-top:16px">Trabaja esta tarea creando leads y vinculándolos a ella desde el diálogo de <strong>Nuevo Lead</strong>.</p>
+        <p style="color:#94a3b8;font-size:11px;margin-top:20px">Notificación automática del CRM Ecosistemas.</p>
+      </div>
+    `;
+    const text = [
+      `Se te asignó una nueva tarea.`,
+      `Asignada por: ${creadorName}`,
+      `Tarea: ${titulo}`,
+      descripcion ? `Descripción: ${descripcion}` : "",
+      producto ? `Producto: ${producto}` : "",
+      `Trabájala creando leads vinculados a ella desde el diálogo de Nuevo Lead.`,
+    ].filter(Boolean).join("\n");
+
+    await sendEmail({ to, subject, html, text });
+  } catch (err) {
+    console.error(`${tag} send failed:`, err);
+  }
 }
 
 app.get("/api/tareas", requireAuth, async (req, res) => {
@@ -835,9 +891,15 @@ app.post("/api/tareas", requireAdmin, async (req, res) => {
       id: Math.random().toString(36).substr(2, 12),
       tarea_id: id,
       vendedor_id: vid,
+      created_at: now,
     }))
   );
   if (asignError) return res.status(400).json({ error: asignError.message });
+
+  // Notify each assigned seller by email (fire-and-forget so SMTP latency /
+  // failure never blocks the API response). The bell alert is derived
+  // client-side from the assignment timestamp.
+  for (const vid of sellerIds) void notifyTareaAsignada(id, vid);
 
   const all = await fetchTareas();
   res.status(201).json(all.find((t) => t.id === id));
@@ -879,22 +941,42 @@ app.patch("/api/tareas/:id", requireAdmin, async (req, res) => {
   const { error } = await supabase.from("tareas").update(updates).eq("id", id);
   if (error) return res.status(400).json({ error: error.message });
 
-  // Replace the assignee set when provided.
+  // Reconcile the assignee set when provided: add new sellers, remove dropped
+  // ones, and leave existing assignments untouched so their created_at (which
+  // drives the bell alert) is preserved and we don't re-notify them.
+  let newlyAssigned: string[] = [];
   if (Array.isArray(asignados)) {
     const sellerIds = [...new Set(asignados.map((s: any) => String(s)).filter(Boolean))];
     if (sellerIds.length === 0) {
       return res.status(400).json({ error: "La tarea debe tener al menos un vendedor asignado." });
     }
-    await supabase.from("tarea_asignados").delete().eq("tarea_id", id);
-    const { error: asignError } = await supabase.from("tarea_asignados").insert(
-      sellerIds.map((vid) => ({
-        id: Math.random().toString(36).substr(2, 12),
-        tarea_id: id,
-        Vn_Cve_Vendedor: vid,
-      }))
-    );
-    if (asignError) return res.status(400).json({ error: asignError.message });
+    const { data: existingRows } = await supabase
+      .from("tarea_asignados")
+      .select("vendedor_id")
+      .eq("tarea_id", id);
+    const existingIds = new Set((existingRows || []).map((r) => String(r.vendedor_id)));
+    newlyAssigned = sellerIds.filter((vid) => !existingIds.has(vid));
+    const removed = [...existingIds].filter((vid) => !sellerIds.includes(vid));
+
+    if (removed.length > 0) {
+      await supabase.from("tarea_asignados").delete().eq("tarea_id", id).in("vendedor_id", removed);
+    }
+    if (newlyAssigned.length > 0) {
+      const nowTs = new Date().toISOString();
+      const { error: asignError } = await supabase.from("tarea_asignados").insert(
+        newlyAssigned.map((vid) => ({
+          id: Math.random().toString(36).substr(2, 12),
+          tarea_id: id,
+          vendedor_id: vid,
+          created_at: nowTs,
+        }))
+      );
+      if (asignError) return res.status(400).json({ error: asignError.message });
+    }
   }
+
+  // Notify only sellers newly added to the task.
+  for (const vid of newlyAssigned) void notifyTareaAsignada(id, vid);
 
   const all = await fetchTareas();
   res.json(all.find((t) => t.id === id));

@@ -164,6 +164,7 @@ export type TareaEstado = 'abierta' | 'cerrada';
 export interface TareaAsignado {
   vendedorId: string;   // Vn_Cve_Vendedor
   vendedorName?: string;
+  assignedAt?: string;  // tarea_asignados.created_at — when this seller was assigned (drives the bell alert)
 }
 export interface Tarea {
   id: string;

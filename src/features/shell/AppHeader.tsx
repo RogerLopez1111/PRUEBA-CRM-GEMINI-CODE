@@ -4,12 +4,13 @@
  *   stale-assignment / stale-quote      — leads without activity (all roles)
  *   pedido-aprobado / pedido-rechazado  — pedido resolution (vendor only)
  *   lead-supervisor-comment             — admin updated seller's lead (seller only)
+ *   tarea-asignada                      — admin assigned a task (seller only)
  *
- * Event-based notifications (pedido + lead-comment) share a single
+ * Event-based notifications (pedido + lead-comment + tarea) share a single
  * localStorage cursor committed on popover close.
  */
 import { useMemo, useState } from "react";
-import { Bell, LogOut, Users, AlertTriangle, CheckCircle2, XCircle, MessageSquare } from "lucide-react";
+import { Bell, LogOut, Users, AlertTriangle, CheckCircle2, XCircle, MessageSquare, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAppData } from "../../state/AppDataContext";
-import type { Lead, LeadStatus, PedidoExtraordinario } from "../../types";
+import type { Lead, LeadStatus, PedidoExtraordinario, Tarea } from "../../types";
 
 interface AppHeaderProps {
   openStatusUpdate: (lead: Lead, newStatus?: LeadStatus) => void;
@@ -50,6 +51,12 @@ type Notification =
       comment: string;
       newStatus: string;
       sortKey: number;
+    }
+  | {
+      kind: "tarea-asignada";
+      id: string;
+      tarea: Tarea;
+      sortKey: number;
     };
 
 const notifSeenKey = (userId: string) => `notifications_seen:${userId}`;
@@ -68,10 +75,10 @@ const readNotifSeenAt = (userId: string | undefined): string => {
   }
 };
 
-const EVENT_KINDS = new Set(["pedido-aprobado", "pedido-rechazado", "lead-supervisor-comment"]);
+const EVENT_KINDS = new Set(["pedido-aprobado", "pedido-rechazado", "lead-supervisor-comment", "tarea-asignada"]);
 
 export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
-  const { leads, users, pedidos, currentUser, setCurrentUser } = useAppData();
+  const { leads, users, pedidos, tareas, currentUser, setCurrentUser } = useAppData();
 
   const [notifSeenAt, setNotifSeenAt] = useState<string>(() => readNotifSeenAt(currentUser?.id));
 
@@ -138,8 +145,23 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
       }
     }
 
+    // ── Task assignment events (seller only) ─────────────────────────────────
+    // A seller's context only contains tasks assigned to them; alert on open
+    // tasks whose assignment (their own) happened after the seen cursor.
+    if (currentUser.role === "Seller") {
+      for (const t of tareas) {
+        if (t.estado !== "abierta") continue;
+        const mine = t.asignados.find(a => a.vendedorId === currentUser.id);
+        const assignedAt = mine?.assignedAt || t.createdAt;
+        if (!assignedAt) continue;
+        const assignedMs = new Date(assignedAt).getTime();
+        if (!(assignedMs > seenAtMs)) continue;
+        out.push({ kind: "tarea-asignada", id: `tarea-${t.id}`, tarea: t, sortKey: -assignedMs - 1e15 });
+      }
+    }
+
     return out.sort((a, b) => a.sortKey - b.sortKey);
-  }, [leads, users, pedidos, notifSeenAt, currentUser]);
+  }, [leads, users, pedidos, tareas, notifSeenAt, currentUser]);
 
   const handleNotifOpenChange = (open: boolean) => {
     if (open || !currentUser) return;
@@ -212,6 +234,27 @@ export function AppHeader({ openStatusUpdate }: AppHeaderProps) {
                             </div>
                           </div>
                         </button>
+                      );
+                    }
+
+                    if (n.kind === "tarea-asignada") {
+                      const t = n.tarea;
+                      return (
+                        <div key={n.id} className="w-full text-left px-4 py-3 border-b last:border-b-0">
+                          <div className="flex items-start gap-2">
+                            <ClipboardList className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#141456" }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate">Nueva tarea asignada</p>
+                              <p className="text-xs text-slate-500 truncate">{t.titulo}</p>
+                              {t.descripcion && (
+                                <p className="text-[11px] italic text-slate-500 mt-0.5 truncate">"{t.descripcion}"</p>
+                              )}
+                              {t.creadoPorName && (
+                                <p className="text-[10px] text-slate-400 mt-0.5">Asignada por {t.creadoPorName}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       );
                     }
 
