@@ -26,7 +26,8 @@ import {
 
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
-import type { Product, Tarea, TareaEstado } from "../../types";
+import { getStatusBadge } from "../leads/getStatusBadge";
+import type { Lead, Product, Tarea, TareaEstado } from "../../types";
 
 const estadoStyles: Record<string, string> = {
   abierta: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -52,7 +53,7 @@ const emptyForm: TareaForm = {
 };
 
 export function TareasTab() {
-  const { tareas, users, currentUser, productos, refetchTareas } = useAppData();
+  const { tareas, leads, users, currentUser, productos, sucursales, refetchTareas } = useAppData();
 
   const [isOpen, setIsOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export function TareasTab() {
   const [isProductoSearchOpen, setIsProductoSearchOpen] = useState(false);
   const [productoSearch, setProductoSearch] = useState("");
   const [isSellerPickerOpen, setIsSellerPickerOpen] = useState(false);
+  const [viewLeadsTask, setViewLeadsTask] = useState<Tarea | null>(null);
 
   const [filterEstado, setFilterEstado] = useState<"all" | TareaEstado>("all");
 
@@ -73,7 +75,16 @@ export function TareasTab() {
     [tareas, filterEstado]
   );
 
+  // Leads linked to a task, scoped by role: admins see every linked lead;
+  // sellers see only their own leads linked to the task.
+  const leadsForTask = (taskId: string): Lead[] =>
+    leads.filter(
+      (l) => l.tareaId === taskId && (isAdmin || l.assignedTo === currentUser?.id)
+    );
+
   if (!currentUser) return null;
+
+  const viewLeads = viewLeadsTask ? leadsForTask(viewLeadsTask.id) : [];
 
   const resetForm = () => {
     setEditingId(null);
@@ -388,8 +399,16 @@ export function TareasTab() {
             </CardContent>
           </Card>
         ) : (
-          filteredTareas.map((t) => (
-            <Card key={t.id} className="bg-white">
+          filteredTareas.map((t) => {
+            const linkedCount = leadsForTask(t.id).length;
+            return (
+            <Card
+              key={t.id}
+              className="bg-white cursor-pointer transition-colors hover:border-brand-navy/40 hover:bg-slate-50/60"
+              onClick={() => setViewLeadsTask(t)}
+              role="button"
+              title="Ver leads vinculados"
+            >
               <CardContent className="p-4 flex flex-col md:flex-row md:items-start gap-4 justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -405,7 +424,9 @@ export function TareasTab() {
                   )}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                     <span>
-                      Leads vinculados: <span className="font-semibold text-brand-navy">{t.leadsCount}</span>
+                      {isAdmin ? "Leads vinculados" : "Mis leads vinculados"}:{" "}
+                      <span className="font-semibold text-brand-navy">{linkedCount}</span>
+                      <span className="text-slate-400"> · ver detalle</span>
                     </span>
                     <span>
                       Asignada a:{" "}
@@ -422,7 +443,7 @@ export function TareasTab() {
                   </div>
                 </div>
                 {isAdmin && (
-                  <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {t.estado === "abierta" ? (
                       <Button size="sm" variant="default" onClick={() => setEstado(t, "cerrada")}>Cerrar</Button>
                     ) : (
@@ -434,9 +455,59 @@ export function TareasTab() {
                 )}
               </CardContent>
             </Card>
-          ))
+            );
+          })
         )}
       </div>
+
+      <Dialog open={!!viewLeadsTask} onOpenChange={(open) => { if (!open) setViewLeadsTask(null); }}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle className="pr-6">{viewLeadsTask?.titulo}</DialogTitle>
+            <DialogDescription>
+              {isAdmin
+                ? "Leads vinculados a esta tarea."
+                : "Tus leads vinculados a esta tarea."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1">
+            {viewLeads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                <ListChecks className="w-9 h-9 opacity-20" />
+                <p className="text-sm">
+                  {isAdmin ? "Aún no hay leads vinculados a esta tarea." : "Aún no tienes leads vinculados a esta tarea."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {viewLeads.map((l) => {
+                  const seller = users.find((u) => u.id === l.assignedTo);
+                  const sucursalName = seller ? (sucursales.find((s) => s.id === seller.sucursalId)?.name || l.sucursal) : l.sucursal;
+                  return (
+                    <div key={l.id} className="rounded-md border bg-white p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm text-slate-900 truncate">{l.company || l.name || "—"}</p>
+                          {l.name && l.company && <p className="text-[11px] text-slate-500 truncate">{l.name}</p>}
+                          {l.email && <p className="text-[11px] text-slate-400 truncate">{l.email}</p>}
+                        </div>
+                        <div className="shrink-0">{getStatusBadge(l.status)}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-2">
+                        <span>Valor: <span className="font-semibold text-slate-700">${l.value.toLocaleString()}</span></span>
+                        {isAdmin && <span>Vendedor: <span className="font-medium text-slate-700">{seller?.name || l.assignedTo || "—"}</span></span>}
+                        {sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{sucursalName}</span></span>}
+                        {l.segmento && <span>Segmento: <span className="font-medium text-slate-700">{l.segmento}</span></span>}
+                        <span>Creado: {new Date(l.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
