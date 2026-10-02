@@ -207,9 +207,12 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
   const [filterNewClient, setFilterNewClient] = useState(false);
   const [filterTransferidoWhatsappRoger, setFilterTransferidoWhatsappRoger] = useState(false);
 
-  const staleContactados = useMemo(() => {
-    const cutoff = Date.now() - 20 * 24 * 60 * 60 * 1000;
-    return leads.filter((l: Lead) => l.status === "CONTACTADO" && new Date(l.updatedAt).getTime() < cutoff);
+  const staleLeads = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const closedStatuses = new Set(["FACTURADO", "ENTREGADO", "RECHAZADO"]);
+    return leads.filter(
+      (l: Lead) => !closedStatuses.has(l.status) && new Date(l.updatedAt).getTime() < cutoff
+    );
   }, [leads]);
 
   const [bulkRejectState, setBulkRejectState] = useState<"idle" | "confirm" | "busy">("idle");
@@ -217,7 +220,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
   const handleBulkReject = async () => {
     setBulkRejectState("busy");
     await Promise.all(
-      staleContactados.map(l =>
+      staleLeads.map(l =>
         apiFetch(`/api/leads/${l.id}/status`, {
           method: "POST",
           body: JSON.stringify({ status: "RECHAZADO" }),
@@ -444,12 +447,12 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
               </Select>
             </div>
           )}
-          {currentUser?.role === "Admin" && staleContactados.length > 0 && (
+          {currentUser?.role === "Admin" && staleLeads.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs font-medium text-brand-gray ml-1 invisible">·</p>
               {bulkRejectState === "confirm" ? (
                 <div className="flex items-center gap-2 h-9">
-                  <span className="text-xs text-slate-600">¿Rechazar {staleContactados.length} leads?</span>
+                  <span className="text-xs text-slate-600">¿Rechazar {staleLeads.length} leads?</span>
                   <button
                     onClick={handleBulkReject}
                     className="text-xs font-semibold text-white bg-brand-red px-3 h-7 hover:opacity-90"
@@ -471,7 +474,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
                 >
                   Rechazar inactivos
                   <span className="bg-brand-red text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                    {bulkRejectState === "busy" ? "..." : staleContactados.length}
+                    {bulkRejectState === "busy" ? "..." : staleLeads.length}
                   </span>
                 </button>
               )}
