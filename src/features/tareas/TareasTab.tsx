@@ -70,6 +70,20 @@ export function TareasTab() {
   // Only sellers can be assigned tasks.
   const sellers = useMemo(() => users.filter((u) => u.role === "Seller"), [users]);
 
+  // Sellers grouped by sucursal, so the picker can offer per-group select.
+  const sellersBySucursal = useMemo(() => {
+    const byId = new Map(sucursales.map((s) => [s.id, s.name]));
+    const groups = new Map<string, { id: string; name: string; sellers: typeof sellers }>();
+    for (const u of sellers) {
+      const sid = u.sucursalId || "__none__";
+      if (!groups.has(sid)) {
+        groups.set(sid, { id: sid, name: byId.get(u.sucursalId) || "Sin sucursal", sellers: [] });
+      }
+      groups.get(sid)!.sellers.push(u);
+    }
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [sellers, sucursales]);
+
   const filteredTareas = useMemo(
     () => tareas.filter((t) => filterEstado === "all" || t.estado === filterEstado),
     [tareas, filterEstado]
@@ -112,6 +126,18 @@ export function TareasTab() {
         ? f.asignados.filter((x) => x !== vid)
         : [...f.asignados, vid],
     }));
+  };
+
+  // Bulk toggle a set of seller ids: if all are already selected, clear them;
+  // otherwise add the missing ones. Used by "select all" and per-sucursal.
+  const toggleMany = (ids: string[]) => {
+    setForm((f) => {
+      const allSelected = ids.every((id) => f.asignados.includes(id));
+      const asignados = allSelected
+        ? f.asignados.filter((id: string) => !ids.includes(id))
+        : [...new Set([...f.asignados, ...ids])];
+      return { ...f, asignados };
+    });
   };
 
   const handleSubmit = async () => {
@@ -319,25 +345,59 @@ export function TareasTab() {
                     <PopoverContent className="p-0 w-[340px]" align="start">
                       <Command>
                         <CommandInput placeholder="Buscar vendedor..." />
+                        <div className="flex items-center justify-between gap-2 border-b px-2 py-1.5">
+                          <span className="text-[11px] text-slate-500">
+                            {form.asignados.length} de {sellers.length} seleccionados
+                          </span>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-brand-navy hover:underline"
+                            onClick={() => toggleMany(sellers.map((u) => u.id))}
+                          >
+                            {sellers.every((u) => form.asignados.includes(u.id))
+                              ? "Quitar todos"
+                              : "Seleccionar todos"}
+                          </button>
+                        </div>
                         <CommandList>
                           <CommandEmpty>No se encontraron vendedores.</CommandEmpty>
-                          <CommandGroup>
-                            {sellers.map((u) => {
-                              const selected = form.asignados.includes(u.id);
-                              return (
-                                <CommandItem
-                                  key={u.id}
-                                  value={u.name}
-                                  onSelect={() => toggleAsignado(u.id)}
-                                >
-                                  <div className={`mr-2 flex h-4 w-4 items-center justify-center rounded border ${selected ? "bg-primary border-primary text-primary-foreground" : "border-slate-300"}`}>
-                                    {selected && <Check className="w-3 h-3" />}
+                          {sellersBySucursal.map((group) => {
+                            const groupIds = group.sellers.map((u) => u.id);
+                            const allInGroup = groupIds.every((id) => form.asignados.includes(id));
+                            return (
+                              <CommandGroup
+                                key={group.id}
+                                heading={
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span>{group.name}</span>
+                                    <button
+                                      type="button"
+                                      className="text-[11px] font-medium text-brand-navy hover:underline"
+                                      onClick={() => toggleMany(groupIds)}
+                                    >
+                                      {allInGroup ? "Quitar grupo" : "Seleccionar grupo"}
+                                    </button>
                                   </div>
-                                  <span className="text-sm">{u.name}</span>
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
+                                }
+                              >
+                                {group.sellers.map((u) => {
+                                  const selected = form.asignados.includes(u.id);
+                                  return (
+                                    <CommandItem
+                                      key={u.id}
+                                      value={`${group.name} ${u.name}`}
+                                      onSelect={() => toggleAsignado(u.id)}
+                                    >
+                                      <div className={`mr-2 flex h-4 w-4 items-center justify-center rounded border ${selected ? "bg-primary border-primary text-primary-foreground" : "border-slate-300"}`}>
+                                        {selected && <Check className="w-3 h-3" />}
+                                      </div>
+                                      <span className="text-sm">{u.name}</span>
+                                    </CommandItem>
+                                  );
+                                })}
+                              </CommandGroup>
+                            );
+                          })}
                         </CommandList>
                       </Command>
                     </PopoverContent>
