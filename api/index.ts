@@ -45,82 +45,117 @@ type LeadStatus =
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getUsersWithPerformance() {
-  const { data: vendedores } = await supabase.from("vendedores").select("*").eq("Es_Cve_Estado", "AC");
-  if (!vendedores) return [];
+// Builds each active seller's performance/workload card. When `vendedorId` is
+// passed, only that seller is computed — used both to enforce "sellers see only
+// their own numbers" and to answer the many callers that need a single card.
+//
+// Aggregation is done in JS over ONE slim, paginated leads fetch instead of the
+// old 4-queries-per-seller N+1 (which full-scanned `leads` ~4×M times per call
+// and, under 10 concurrent sellers, was a top cause of connection-pool
+// starvation and statement timeouts).
+async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
+  let vendedoresQuery = supabase.from("vendedores").select("*").eq("Es_Cve_Estado", "AC");
+  if (filters.vendedorId) vendedoresQuery = vendedoresQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
+  const { data: vendedores } = await vendedoresQuery;
+  if (!vendedores || vendedores.length === 0) return [];
 
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
 
-  return Promise.all(
-    vendedores.map(async (v) => {
-      const [closedLeadsResult, totalAssignedResult, activeLeadsResult, metaResult] =
-        await Promise.all([
-          supabase
-            .from("leads")
-            .select("Cl_Valor_CRM")
-            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
-            .in("Cl_Status_CRM", ["FACTURADO", "ENTREGADO"]),
-          supabase
-            .from("leads")
-            .select("*", { count: "exact", head: true })
-            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor),
-          supabase
-            .from("leads")
-            .select("Cl_Valor_CRM")
-            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
-            .neq("Cl_Status_CRM", "FACTURADO")
-            .neq("Cl_Status_CRM", "ENTREGADO")
-            .neq("Cl_Status_CRM", "RECHAZADO"),
-          supabase
-            .from("vendedor_metas")
-            .select("meta")
-            .eq("Vn_Cve_Vendedor", v.Vn_Cve_Vendedor)
-            .eq("year", currentYear)
-            .eq("month", currentMonth)
-            .maybeSingle(),
-        ]);
+  const vendedorIds = vendedores.map((v) => v.Vn_Cve_Vendedor);
 
-      const closedLeads = closedLeadsResult.data;
-      const activeLeads = activeLeadsResult.data;
-      const totalAssigned = totalAssignedResult.count;
+  // Page through the leads (slim projection) to bypass PostgREST's ~1000-row
+  // cap — without this, a busy team's aggregates would silently under-count
+  // once total leads exceed one page.
+  const PAGE = 1000;
+  const leadRows: { Vn_Cve_Vendedor: any; Cl_Status_CRM: any; Cl_Valor_CRM: any }[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("Vn_Cve_Vendedor, Cl_Status_CRM, Cl_Valor_CRM")
+      .in("Vn_Cve_Vendedor", vendedorIds)
+      .range(from, from + PAGE - 1);
+    if (error) { console.error("[users-performance leads]", error.message); break; }
+    if (!data || data.length === 0) break;
+    leadRows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
 
-      const totalClosed = closedLeads?.length || 0;
-      const totalValue = closedLeads?.reduce((s, l) => s + (l.Cl_Valor_CRM || 0), 0) || 0;
-      const pipelineValue = activeLeads?.reduce((s, l) => s + (l.Cl_Valor_CRM || 0), 0) || 0;
+  // Current-month goals: at most one row per seller (unique on vendedor+year+month).
+  const { data: metasData } = await supabase
+    .from("vendedor_metas")
+    .select("Vn_Cve_Vendedor, meta")
+    .in("Vn_Cve_Vendedor", vendedorIds)
+    .eq("year", currentYear)
+    .eq("month", currentMonth);
 
-      return {
-        id: v.Vn_Cve_Vendedor,
-        name: v.Vn_Descripcion,
-        email: v.Vn_Email,
-        role: v.Vn_Perfil as "Admin" | "Seller",
-        sucursalId: v.Sc_Cve_Sucursal != null ? String(v.Sc_Cve_Sucursal) : "",
-        performance: {
-          totalClosed,
-          totalValue,
-          conversionRate: totalAssigned ? totalClosed / totalAssigned : 0,
-          salesGoal: metaResult.data?.meta || 0,
-        },
-        workload: {
-          activeLeads: activeLeads?.length || 0,
-          pipelineValue,
-        },
-      };
-    })
-  );
+  const leadsByVendedor: Record<string, { status: string; valor: number }[]> = {};
+  for (const l of leadRows) {
+    const vid = String(l.Vn_Cve_Vendedor);
+    (leadsByVendedor[vid] ||= []).push({
+      status: String(l.Cl_Status_CRM || ""),
+      valor: l.Cl_Valor_CRM || 0,
+    });
+  }
+  const metaByVendedor: Record<string, number> = {};
+  for (const m of metasData || []) metaByVendedor[String(m.Vn_Cve_Vendedor)] = m.meta || 0;
+
+  // Same status semantics as before: closed = FACTURADO|ENTREGADO; active =
+  // anything that isn't FACTURADO|ENTREGADO|RECHAZADO; totalAssigned = all leads.
+  const CLOSED = new Set(["FACTURADO", "ENTREGADO"]);
+  const INACTIVE = new Set(["FACTURADO", "ENTREGADO", "RECHAZADO"]);
+
+  return vendedores.map((v) => {
+    const vid = String(v.Vn_Cve_Vendedor);
+    const myLeads = leadsByVendedor[vid] || [];
+    const closedLeads = myLeads.filter((l) => CLOSED.has(l.status));
+    const activeLeads = myLeads.filter((l) => !INACTIVE.has(l.status));
+
+    const totalClosed = closedLeads.length;
+    const totalValue = closedLeads.reduce((s, l) => s + l.valor, 0);
+    const pipelineValue = activeLeads.reduce((s, l) => s + l.valor, 0);
+    const totalAssigned = myLeads.length;
+
+    return {
+      id: v.Vn_Cve_Vendedor,
+      name: v.Vn_Descripcion,
+      email: v.Vn_Email,
+      role: v.Vn_Perfil as "Admin" | "Seller",
+      sucursalId: v.Sc_Cve_Sucursal != null ? String(v.Sc_Cve_Sucursal) : "",
+      performance: {
+        totalClosed,
+        totalValue,
+        conversionRate: totalAssigned ? totalClosed / totalAssigned : 0,
+        salesGoal: metaByVendedor[vid] || 0,
+      },
+      workload: {
+        activeLeads: activeLeads.length,
+        pipelineValue,
+      },
+    };
+  });
 }
 
-async function getLeadsWithHistory() {
+// When `vendedorId` is passed, only that seller's leads are returned — this is
+// the server-side enforcement of "sellers see only their own leads" (admins
+// call it with no filter to get everything). Combined with idx_leads_vendedor
+// the scoped query is a fast indexed lookup instead of a full-table scan.
+async function getLeadsWithHistory(filters: { vendedorId?: string } = {}) {
+  let leadsQuery = supabase
+    .from("leads")
+    .select(`
+      *,
+      clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
+      lead_history(*, rechazo_motivos(descripcion))
+    `)
+    .order("Cl_CreatedAt_CRM", { ascending: false });
+  if (filters.vendedorId) leadsQuery = leadsQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
+
   const [leadsResult, sucursalesMap, segmentosMap] = await Promise.all([
-    supabase
-      .from("leads")
-      .select(`
-        *,
-        clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-        lead_history(*, rechazo_motivos(descripcion))
-      `)
-      .order("Cl_CreatedAt_CRM", { ascending: false }),
+    leadsQuery,
     getSucursalesMap(),
     getSegmentosMap(),
   ]);
@@ -194,7 +229,7 @@ app.post("/api/login", async (req, res) => {
     return;
   }
 
-  const users = await getUsersWithPerformance();
+  const users = await getUsersWithPerformance({ vendedorId: vendor.Vn_Cve_Vendedor });
   const user = users.find((u) => u.id === vendor.Vn_Cve_Vendedor);
   if (!user) {
     res.status(500).json({ error: "User record not found after login" });
@@ -207,7 +242,7 @@ app.post("/api/login", async (req, res) => {
 // Used by the frontend on page load to rehydrate `currentUser` from the
 // stored token without trusting localStorage state.
 app.get("/api/me", requireAuth, async (req, res) => {
-  const users = await getUsersWithPerformance();
+  const users = await getUsersWithPerformance({ vendedorId: req.user!.sub });
   const user = users.find((u) => u.id === req.user!.sub);
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -220,8 +255,10 @@ app.get("/api/me", requireAuth, async (req, res) => {
 // Users / Vendedores
 // ---------------------------------------------------------------------------
 
-app.get("/api/users", requireAuth, async (_req, res) => {
-  res.json(await getUsersWithPerformance());
+app.get("/api/users", requireAuth, async (req, res) => {
+  // Admins get every seller's card; sellers get only their own numbers.
+  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
+  res.json(await getUsersWithPerformance({ vendedorId }));
 });
 
 app.post("/api/users", requireAdmin, async (req, res) => {
@@ -261,7 +298,7 @@ app.post("/api/users", requireAdmin, async (req, res) => {
     });
   }
 
-  const users = await getUsersWithPerformance();
+  const users = await getUsersWithPerformance({ vendedorId: id });
   res.status(201).json(users.find((u) => u.id === id));
 });
 
@@ -274,7 +311,7 @@ app.post("/api/users/:id/role", requireAdmin, async (req, res) => {
     .eq("Vn_Cve_Vendedor", id);
 
   if (!error) {
-    const users = await getUsersWithPerformance();
+    const users = await getUsersWithPerformance({ vendedorId: id });
     res.json(users.find((u) => u.id === id));
   } else {
     res.status(404).json({ error: "User not found" });
@@ -297,7 +334,7 @@ app.post("/api/users/:id/email", requireAdmin, async (req, res) => {
     res.status(400).json({ error: error.message });
     return;
   }
-  const users = await getUsersWithPerformance();
+  const users = await getUsersWithPerformance({ vendedorId: id });
   res.json(users.find((u) => u.id === id));
 });
 
@@ -356,7 +393,7 @@ app.post("/api/users/:id/goal", requireAdmin, async (req, res) => {
     return;
   }
 
-  const users = await getUsersWithPerformance();
+  const users = await getUsersWithPerformance({ vendedorId: id });
   res.json(users.find((u) => u.id === id));
 });
 
@@ -458,8 +495,10 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
 // Leads (CRM-only table)
 // ---------------------------------------------------------------------------
 
-app.get("/api/leads", requireAuth, async (_req, res) => {
-  res.json(await getLeadsWithHistory());
+app.get("/api/leads", requireAuth, async (req, res) => {
+  // Admins see every lead; sellers see only the leads assigned to them.
+  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
+  res.json(await getLeadsWithHistory({ vendedorId }));
 });
 
 app.post("/api/leads", requireAuth, async (req, res) => {
@@ -588,7 +627,8 @@ app.post("/api/leads", requireAuth, async (req, res) => {
     timestamp: now,
   });
 
-  const leads = await getLeadsWithHistory();
+  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
+  const leads = await getLeadsWithHistory({ vendedorId });
   res.status(201).json(leads.find((l) => l.id === leadId));
 });
 
@@ -725,7 +765,8 @@ app.post("/api/leads/:id/status", requireAuth, async (req, res) => {
     timestamp: now,
   });
 
-  const leads = await getLeadsWithHistory();
+  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
+  const leads = await getLeadsWithHistory({ vendedorId });
   res.json(leads.find((l) => l.id === id));
 });
 
