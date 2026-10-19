@@ -54,6 +54,38 @@ export const currentYearMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
+// The month ('YYYY-MM') a lead REACHED a given stage — the timestamp of its last
+// history entry with that status. Lets a metric count in the month its event
+// happened (quoted / facturado), no matter when the lead was created. Falls back
+// to createdAt for legacy/edge rows that are in the stage yet never recorded the
+// transition, so a real quote/sale is never silently dropped from the totals.
+export function stageMonth(lead: Lead, status: LeadStatus): string | null {
+  const entry = [...lead.history].reverse().find(h => h.status === status);
+  const iso = entry?.timestamp ?? lead.createdAt;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// The month ('YYYY-MM') a lead was INVOICED in — when its sale should count.
+export const facturadoMonth = (lead: Lead) => stageMonth(lead, "FACTURADO");
+
+// Leads whose sale landed in a given month ('YYYY-MM'), bucketed by facturación
+// date (NOT lead creation date). A lead counts as sold once it reaches FACTURADO
+// or the downstream ENTREGADO state.
+export function soldLeadsInMonth(leads: Lead[], ym: string): Lead[] {
+  return leads.filter(l =>
+    (l.status === "FACTURADO" || l.status === "ENTREGADO") && facturadoMonth(l) === ym
+  );
+}
+
+// Active quotes bucketed by the month the lead reached the COTIZADO stage (NOT
+// lead creation date). Still restricted to leads currently in COTIZADO, so the
+// "cotizaciones activas" count stays accurate — only the month bucket changes.
+export function quotedLeadsInMonth(leads: Lead[], ym: string): Lead[] {
+  return leads.filter(l => l.status === "COTIZADO" && stageMonth(l, "COTIZADO") === ym);
+}
+
 export const getTimeStuck = (updatedAt: string) => {
   const lastUpdate = new Date(updatedAt).getTime();
   const now = new Date().getTime();

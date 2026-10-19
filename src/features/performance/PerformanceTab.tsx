@@ -34,6 +34,8 @@ import {
   newClientsByMonth,
   newClientsConvertedByMonth,
   currentYearMonth,
+  soldLeadsInMonth,
+  quotedLeadsInMonth,
   timeToFirstContact,
   rechazoMotivosPareto,
   funnelByStage,
@@ -190,19 +192,24 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   erpEnabled: boolean;
   metaVentas: number; // stored ERP sales (subtotal) for this seller + month — the Progreso Meta numerator
 }) {
-  // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth for all KPIs
+  // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth (by createdAt).
+  // EXCEPTION: Vendido and Cotizado bucket by the month the lead reached that stage (facturación /
+  // cotización date), not createdAt, so they draw from allUserLeads (incl. leads created earlier).
+  // Perdido and the remaining KPIs stay on the createdAt cohort (userLeads).
   const allUserLeads = leadsAll.filter(l => l.assignedTo === user.id);
   const userLeads = allUserLeads.filter(l => {
     const d = new Date(l.createdAt);
     return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === filterMonth;
   });
 
-  const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
-  const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
+  const soldLeads = soldLeadsInMonth(allUserLeads, filterMonth);
+  const soldValue = soldLeads.reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
+  const quotedLeads = quotedLeadsInMonth(allUserLeads, filterMonth);
+  const quotedValue = quotedLeads.reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
   const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
 
-  const soldCount = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").length;
-  const quotedCount = userLeads.filter(l => l.status === "COTIZADO").length;
+  const soldCount = soldLeads.length;
+  const quotedCount = quotedLeads.length;
   const lostCount = userLeads.filter(l => l.status === "RECHAZADO").length;
 
   const pieData = [
@@ -927,13 +934,14 @@ export function PerformanceTab() {
                 </TableHeader>
                 <TableBody>
                   {users.map((user) => {
-                    const userLeads = leads.filter(l => {
-                      if (l.assignedTo !== user.id) return false;
+                    const userAllLeads = leads.filter(l => l.assignedTo === user.id);
+                    const userLeads = userAllLeads.filter(l => {
                       const d = new Date(l.createdAt);
                       return !isNaN(d.getTime()) && `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === filterMonth;
                     });
-                    const soldValue = userLeads.filter(l => l.status === "FACTURADO" || l.status === "ENTREGADO").reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
-                    const quotedValue = userLeads.filter(l => l.status === "COTIZADO").reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
+                    // Vendido / Cotizado bucket by the month the lead reached that stage (not createdAt).
+                    const soldValue = soldLeadsInMonth(userAllLeads, filterMonth).reduce((acc, l) => acc + (l.invoicedAmount ?? l.value), 0);
+                    const quotedValue = quotedLeadsInMonth(userAllLeads, filterMonth).reduce((acc, l) => acc + (l.quotedAmount ?? l.value), 0);
                     const lostValue = userLeads.filter(l => l.status === "RECHAZADO").reduce((acc, l) => acc + l.value, 0);
                     const clientInitiated = userLeads.filter(l => l.clientInitiated).length;
                     const sellerInitiated = userLeads.length - clientInitiated;
