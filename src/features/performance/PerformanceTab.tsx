@@ -7,9 +7,9 @@
  * user is being viewed. Sellers see only their own card; admins default to the
  * team summary table and can click a row to drill into a single seller.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  TrendingUp, CheckCircle2, AlertCircle, UserCheck, BarChart3, FileText,
+  TrendingUp, CheckCircle2, AlertCircle, UserCheck, BarChart3, FileText, Receipt, RefreshCw,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -20,6 +20,7 @@ import {
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -56,13 +57,136 @@ const GOAL_MONTHS = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth }: {
+// ERP "general sales" stream — total ventas invoiced per vendedor for the month,
+// pulled live from the ERP (not mirrored). Kept visually SEPARATE from the
+// leads/pipeline numbers so the two are never conflated.
+type ErpVentasRow = { count: number; subtotal: number; total: number; error?: string };
+type ErpVentas = {
+  available: boolean;
+  byVendedor: Record<string, ErpVentasRow>;
+  grand: { count: number; subtotal: number; total: number };
+  fromDevice?: boolean; // true when served from the browser's local cache (ERP unreachable)
+  savedAt?: string; // ISO timestamp of the last successful pull saved on THIS device
+};
+
+// Local datetime for a cached-pull timestamp.
+function formatFetched(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// --- Device (browser) persistence -------------------------------------------
+// The ERP is LAN-only, so the live pull works only inside the office. We save
+// each successful pull in localStorage ON THE DEVICE, keyed by user + month, so
+// when the user leaves the LAN the fields still show the last-known numbers with
+// a "last pulled" timestamp instead of going empty.
+type DeviceCache = { byVendedor: Record<string, ErpVentasRow>; savedAt: string };
+
+const deviceKey = (userId: string, month: string) => `erp_ventas:${userId}:${month}`;
+
+function loadDeviceCache(userId: string, month: string): DeviceCache | null {
+  try {
+    const raw = localStorage.getItem(deviceKey(userId, month));
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && p.byVendedor && p.savedAt ? (p as DeviceCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDeviceCache(userId: string, month: string, byVendedor: Record<string, ErpVentasRow>, savedAt: string) {
+  try {
+    localStorage.setItem(deviceKey(userId, month), JSON.stringify({ byVendedor, savedAt }));
+  } catch {
+    /* quota / private mode — non-fatal */
+  }
+}
+
+function grandOf(byVendedor: Record<string, ErpVentasRow>) {
+  return Object.values(byVendedor).reduce(
+    (a, v) => ({ count: a.count + v.count, subtotal: a.subtotal + v.subtotal, total: a.total + v.total }),
+    { count: 0, subtotal: 0, total: 0 }
+  );
+}
+
+// Prominent, distinctly-styled banner showing the ERP total for one seller.
+// Deliberately indigo + "ERP · en vivo" badge so it never reads as a pipeline
+// (leads) metric.
+function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }: {
+  data: ErpVentasRow | undefined;
+  available: boolean;
+  loading: boolean;
+  onRetry: () => void;
+  stale: boolean; // served from this device's local cache (ERP unreachable)
+  fetchedAt?: string;
+}) {
+  // "Busy" = ERP unreachable AND nothing cached, or this seller came back with an
+  // ERP error. Offer a manual retry rather than auto-hammering.
+  const busy = !loading && (!available || !!data?.error);
+  return (
+    <Card className="bg-white overflow-hidden border-indigo-200">
+      <div className="h-1.5 bg-indigo-500 w-full" />
+      <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+            <Receipt className="w-6 h-6 text-indigo-600" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-brand-gray">Ventas Facturadas (sin IVA)</p>
+              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px]">ERP · en vivo</Badge>
+            </div>
+            {loading ? (
+              <p className="text-sm text-slate-400 italic mt-1">Consultando ERP…</p>
+            ) : busy ? (
+              <div className="mt-1 flex items-center gap-3">
+                <span className="text-sm text-amber-600 italic">ERP ocupado{data?.error && data.error !== "1001" ? ` (${data.error})` : ""}</span>
+                <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
+                  <RefreshCw className="w-3.5 h-3.5" /> Reintentar
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-indigo-700">${(data?.subtotal ?? 0).toLocaleString()}</p>
+                <p className="text-[11px] text-slate-500">
+                  {data?.count ?? 0} facturas este mes · con IVA ${(data?.total ?? 0).toLocaleString()}
+                </p>
+                {stale && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
+                      en caché · {formatFetched(fetchedAt)}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
+                      <RefreshCw className="w-3.5 h-3.5" /> Actualizar
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <div className="max-w-xs text-[11px] text-slate-500 leading-snug">
+          Reconocimiento general de ventas del ERP: incluye ventas sin lead (mostrador, recompras).{" "}
+          <span className="font-semibold text-slate-600">No confundir</span> con el pipeline de leads de abajo, que mide lo logrado persiguiendo leads.
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
   faltantesAll: ReturnType<typeof useAppData>["faltantes"];
   goalsTimeline: SalesGoal[];
   filterMonth: string;
+  erpVentas: ErpVentas | null;
+  erpLoading: boolean;
+  onErpRetry: () => void;
 }) {
   // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth for all KPIs
   const allUserLeads = leadsAll.filter(l => l.assignedTo === user.id);
@@ -138,6 +262,17 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
 
   return (
     <div className="lg:col-span-3 space-y-6">
+      {/* ERP stream — general total sales, kept separate from the leads KPIs below */}
+      <ErpVentasBanner
+        data={erpVentas?.byVendedor[user.id]}
+        available={erpVentas?.available ?? false}
+        loading={erpLoading}
+        onRetry={onErpRetry}
+        stale={erpVentas?.fromDevice ?? false}
+        fetchedAt={erpVentas?.savedAt}
+      />
+
+      {/* Leads/pipeline stream — what the seller achieved working tracked leads */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center gap-4">
@@ -145,7 +280,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <CheckCircle2 className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Total Vendido</p>
+              <p className="text-xs font-semibold text-brand-gray">Vendido (leads)</p>
               <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
               <p className="text-[10px] text-slate-400">{soldCount} tratos cerrados</p>
             </div>
@@ -559,6 +694,67 @@ export function PerformanceTab() {
   // Month filter — defaults to current month, scopes all metrics.
   const [filterMonth, setFilterMonth] = useState<string>(currentYearMonth());
 
+  // ERP "general sales" stream for the selected month. Fetched once per month
+  // (role-scoped server-side: admins get all sellers, a seller gets only self).
+  const [erpVentas, setErpVentas] = useState<ErpVentas | null>(null);
+  const [erpLoading, setErpLoading] = useState(false);
+  // Monotonic request id so a manual retry and the month-change effect can't
+  // clobber each other — only the latest request's result is applied.
+  const erpReqRef = useRef(0);
+
+  const loadErpVentas = useCallback(() => {
+    const [y, m] = filterMonth.split("-").map(Number);
+    const desde = `${filterMonth}-01`;
+    // For the current month, cap at today ("mes a la fecha"); past months use
+    // their real month-end.
+    const isCurrentMonth = filterMonth === currentYearMonth();
+    const lastDay = isCurrentMonth ? new Date().getDate() : new Date(y, m, 0).getDate();
+    const hasta = `${filterMonth}-${String(lastDay).padStart(2, "0")}`;
+    const userId = currentUser?.id || "me";
+
+    // When the live pull fails (off-LAN / ERP busy), show whatever this device
+    // last saved for this month, tagged with when it was pulled.
+    const serveFromDevice = () => {
+      const cached = loadDeviceCache(userId, filterMonth);
+      if (cached) {
+        setErpVentas({ available: true, byVendedor: cached.byVendedor, grand: grandOf(cached.byVendedor), fromDevice: true, savedAt: cached.savedAt });
+        return true;
+      }
+      return false;
+    };
+
+    const reqId = ++erpReqRef.current;
+    setErpLoading(true);
+    apiFetch(`/api/performance/ventas?desde=${desde}&hasta=${hasta}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: ErpVentas | null) => {
+        if (erpReqRef.current !== reqId) return;
+        const freshRows = data && data.available
+          ? Object.entries(data.byVendedor || {}).filter(([, v]) => !v.error)
+          : [];
+        if (freshRows.length > 0) {
+          // Live pull worked (we're on the LAN). Show it AND save to the device,
+          // merging the fresh rows over any previously-cached ones for the month.
+          const savedAt = new Date().toISOString();
+          const merged = { ...(loadDeviceCache(userId, filterMonth)?.byVendedor || {}) };
+          for (const [id, v] of freshRows) merged[id] = v;
+          saveDeviceCache(userId, filterMonth, merged, savedAt);
+          setErpVentas({ available: true, byVendedor: data!.byVendedor, grand: data!.grand, fromDevice: false, savedAt });
+        } else if (!serveFromDevice()) {
+          setErpVentas(data); // no live data and nothing cached yet
+        }
+      })
+      .catch(() => {
+        if (erpReqRef.current !== reqId) return;
+        if (!serveFromDevice()) setErpVentas(null);
+      })
+      .finally(() => { if (erpReqRef.current === reqId) setErpLoading(false); });
+  }, [filterMonth, currentUser]);
+
+  // Initial load + whenever the month changes: check that month (current month
+  // on first render).
+  useEffect(() => { loadErpVentas(); }, [loadErpVentas]);
+
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
     set.add(currentYearMonth());
@@ -626,6 +822,25 @@ export function PerformanceTab() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-brand-gray ml-1">Ventas ERP</p>
+            <div className="h-10 flex items-center">
+              {erpLoading ? (
+                <span className="text-xs text-slate-400 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Consultando…</span>
+              ) : erpVentas?.fromDevice ? (
+                <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200" title={`Guardado en este dispositivo · ${formatFetched(erpVentas.savedAt)}`}>
+                  <RefreshCw className="w-3.5 h-3.5" /> En caché · {formatFetched(erpVentas.savedAt)}
+                </Button>
+              ) : erpVentas && erpVentas.available && Object.values(erpVentas.byVendedor).some((v: ErpVentasRow) => !v.error) ? (
+                <span className="text-xs text-emerald-600 flex items-center gap-1.5"><Receipt className="w-3.5 h-3.5" />en vivo</span>
+              ) : (
+                <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200">
+                  <RefreshCw className="w-3.5 h-3.5" /> ERP no disponible — reintentar
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -633,7 +848,9 @@ export function PerformanceTab() {
         <Card className="bg-white overflow-hidden">
           <CardHeader>
             <CardTitle>Resumen de Rendimiento del Equipo</CardTitle>
-            <CardDescription>Resumen de todos los vendedores y su estado actual del pipeline.</CardDescription>
+            <CardDescription>
+              Las columnas <span className="font-semibold text-indigo-600">ERP</span> son ventas facturadas, subtotal sin IVA (en vivo, incluye ventas sin lead); el resto proviene del pipeline de leads.
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -641,7 +858,9 @@ export function PerformanceTab() {
                 <TableHeader>
                   <TableRow className="bg-slate-50/50">
                     <TableHead className="font-semibold">Vendedor</TableHead>
-                    <TableHead className="font-semibold">Vendido ($)</TableHead>
+                    <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700">Facturado ERP (s/IVA)</TableHead>
+                    <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700"># Facturas ERP</TableHead>
+                    <TableHead className="font-semibold">Vendido leads ($)</TableHead>
                     <TableHead className="font-semibold">Cotizado ($)</TableHead>
                     <TableHead className="font-semibold">Perdido ($)</TableHead>
                     <TableHead className="font-semibold">Origen</TableHead>
@@ -671,6 +890,8 @@ export function PerformanceTab() {
                     const userFunnel = funnelByStage(userLeads);
                     const cotToFact = userFunnel.find(s => s.stage === "FACTURADO")?.stepConversion ?? null;
                     const progress = Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100));
+                    const erp = erpVentas?.byVendedor[user.id];
+                    const erpStale = erpVentas?.fromDevice ?? false;
 
                     return (
                       <TableRow key={user.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setUserFilter(user.id)}>
@@ -681,6 +902,21 @@ export function PerformanceTab() {
                             </div>
                             {user.name}
                           </div>
+                        </TableCell>
+                        <TableCell className="bg-indigo-50/30 font-bold">
+                          {erpLoading ? <span className="text-slate-300">…</span>
+                            : erp && !erp.error ? (
+                                <span className={erpStale ? "text-amber-600" : "text-indigo-700"}
+                                  title={erpStale ? `En caché · ${formatFetched(erpVentas?.savedAt)}` : undefined}>
+                                  ${erp.subtotal.toLocaleString()}{erpStale ? " *" : ""}
+                                </span>
+                              )
+                            : <span className="text-slate-300" title={erp?.error || "ERP no disponible"}>—</span>}
+                        </TableCell>
+                        <TableCell className={`bg-indigo-50/30 font-semibold ${erpStale ? "text-amber-600" : "text-indigo-700"}`}>
+                          {erpLoading ? <span className="text-slate-300">…</span>
+                            : erp && !erp.error ? erp.count
+                            : <span className="text-slate-300">—</span>}
                         </TableCell>
                         <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
                         <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
@@ -743,6 +979,9 @@ export function PerformanceTab() {
               faltantesAll={faltantes}
               goalsTimeline={goalsTimeline}
               filterMonth={filterMonth}
+              erpVentas={erpVentas}
+              erpLoading={erpLoading}
+              onErpRetry={loadErpVentas}
             />
           ))}
         </div>

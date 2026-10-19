@@ -4,6 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 import { signToken, requireAuth, requireAdmin, type Role } from "./auth.js";
 import { runDigest } from "../src/digest-compras.js";
 import { sendEmail } from "../src/email.js";
+import erpTestRouter from "./erp-test.js";
+import erpVentasRouter from "./erp-ventas.js";
+import { erpConfigured } from "./erp-client.js";
+import { aggregateVentas, ISO_DATE } from "./erp-ventas-core.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -207,6 +211,10 @@ async function getLeadsWithHistory(filters: { vendedorId?: string } = {}) {
 
 const app = express();
 app.use(express.json());
+
+// Isolated ERP HTTP-API test routes (no auth, test-only).
+app.use(erpTestRouter);   // raw proxy — api/erp-test.ts
+app.use(erpVentasRouter); // live ventas-by-vendedor aggregation — api/erp-ventas.ts
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -489,6 +497,71 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
       };
     })
   );
+});
+
+// ---------------------------------------------------------------------------
+// ERP ventas (live, on-demand) — the "general sales" stream for Rendimiento.
+//
+// Total ventas per vendedor for a date range, pulled straight from the ERP HTTP
+// API and NOT mirrored into Supabase (ventas is high-volume; replicating it just
+// to score sellers would be constant load). This is deliberately SEPARATE from
+// the leads/pipeline stream: it reports everything a seller invoiced in the ERP
+// (incl. walk-ins and sales never tracked as a lead), whereas the leads stream
+// reports only what was closed by actively working a tracked lead. The two
+// overlap partially and must never be summed or conflated.
+//
+// Role-scoped: sellers get only their own total; admins get all active sellers.
+// Degrades gracefully (available:false) if the ERP is unreachable — e.g. the CRM
+// server is off the LAN where the ERP lives — so the tab still renders.
+// ---------------------------------------------------------------------------
+
+app.get("/api/performance/ventas", requireAuth, async (req, res) => {
+  const emptyGrand = { count: 0, subtotal: 0, total: 0 };
+  if (!erpConfigured()) {
+    res.json({ available: false, byVendedor: {}, grand: emptyGrand });
+    return;
+  }
+
+  const desde = String(req.query.desde || "");
+  const hasta = String(req.query.hasta || "");
+  if (!ISO_DATE.test(desde) || !ISO_DATE.test(hasta)) {
+    res.status(400).json({ error: "desde y hasta son obligatorios (YYYY-MM-DD)." });
+    return;
+  }
+
+  // Admins compute all active sellers; a seller computes only their own number.
+  let sellers: { id: string; name: string }[];
+  if (req.user!.role === "Admin") {
+    const { data } = await supabase
+      .from("vendedores")
+      .select("Vn_Cve_Vendedor, Vn_Descripcion")
+      .eq("Es_Cve_Estado", "AC");
+    sellers = (data || []).map((v) => ({ id: String(v.Vn_Cve_Vendedor), name: v.Vn_Descripcion }));
+  } else {
+    sellers = [{ id: req.user!.sub, name: "" }];
+  }
+
+  try {
+    const results = await aggregateVentas(sellers, desde, hasta);
+    const byVendedor: Record<string, { count: number; subtotal: number; total: number; error?: string }> = {};
+    for (const r of results) {
+      byVendedor[r.vendedorId] = {
+        count: r.count, subtotal: r.subtotal, total: r.total,
+        ...(r.error ? { error: r.error } : {}),
+      };
+    }
+    const grand = results.reduce(
+      (a, r) => ({ count: a.count + r.count, subtotal: a.subtotal + r.subtotal, total: a.total + r.total }),
+      { ...emptyGrand }
+    );
+    res.json({
+      available: true, desde, hasta, byVendedor, grand,
+      errors: results.filter((r) => r.error).length,
+    });
+  } catch (err: any) {
+    console.error("[performance/ventas]", err?.message || err);
+    res.json({ available: false, byVendedor: {}, grand: emptyGrand, error: String(err?.message || err) });
+  }
 });
 
 // ---------------------------------------------------------------------------
