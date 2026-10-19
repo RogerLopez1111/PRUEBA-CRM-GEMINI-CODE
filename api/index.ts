@@ -470,18 +470,18 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
     return;
   }
 
-  // For each month with a goal, calculate actual invoiced amount from leads
-  const { data: closedLeads } = await supabase
-    .from("leads")
-    .select("Cl_InvoicedAmount_CRM, Cl_Valor_CRM, Cl_UpdatedAt_CRM")
-    .eq("Vn_Cve_Vendedor", id)
-    .in("Cl_Status_CRM", ["FACTURADO", "ENTREGADO"]);
+  // "Facturado" per month now comes from the stored ERP sales aggregate
+  // (erp_ventas_mensual, subtotal sin IVA) instead of leads — so Progreso Meta
+  // reflects real ERP sales. The table is topped up whenever a LAN user reads
+  // the ERP; months never read show 0.
+  const { data: ventasRows } = await supabase
+    .from("erp_ventas_mensual")
+    .select("periodo, subtotal")
+    .eq("vendedor_id", id);
 
   const invoicedByMonth: Record<string, number> = {};
-  for (const lead of closedLeads || []) {
-    const d = new Date(lead.Cl_UpdatedAt_CRM);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    invoicedByMonth[key] = (invoicedByMonth[key] || 0) + (lead.Cl_InvoicedAmount_CRM ?? lead.Cl_Valor_CRM ?? 0);
+  for (const v of ventasRows || []) {
+    invoicedByMonth[String(v.periodo)] = Number(v.subtotal) || 0; // periodo is 'YYYY-MM'
   }
 
   const now = new Date();
@@ -490,7 +490,7 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
 
   res.json(
     (data || []).map((r) => {
-      const key = `${r.year}-${r.month}`;
+      const key = `${r.year}-${String(r.month).padStart(2, "0")}`;
       const invoiced = invoicedByMonth[key] || 0;
       const isPast = r.year < currentYear || (r.year === currentYear && r.month < currentMonth);
       const isCurrent = r.year === currentYear && r.month === currentMonth;
@@ -563,6 +563,24 @@ app.get("/api/performance/ventas", requireAuth, async (req, res) => {
       (a, r) => ({ count: a.count + r.count, subtotal: a.subtotal + r.subtotal, total: a.total + r.total }),
       { ...emptyGrand }
     );
+
+    // Persist the calculated per-seller amount to Supabase so EVERY build (incl.
+    // the Vercel web build that can't reach the LAN ERP) can show Progreso Meta
+    // vs real sales. Only the aggregate is stored, never raw ventas. Any LAN read
+    // tops this up. Fire-and-forget: never block/fault the response on the write.
+    const periodo = desde.slice(0, 7); // 'YYYY-MM'
+    const toStore = results
+      .filter((r) => !r.error)
+      .map((r) => ({
+        vendedor_id: r.vendedorId, periodo,
+        subtotal: r.subtotal, total: r.total, facturas: r.count,
+        updated_at: new Date().toISOString(),
+      }));
+    if (toStore.length) {
+      supabase.from("erp_ventas_mensual").upsert(toStore, { onConflict: "vendedor_id,periodo" })
+        .then(({ error }) => { if (error) console.error("[ventas-mensual upsert]", error.message); });
+    }
+
     res.json({
       available: true, desde, hasta, byVendedor, grand,
       errors: results.filter((r) => r.error).length,
@@ -571,6 +589,44 @@ app.get("/api/performance/ventas", requireAuth, async (req, res) => {
     console.error("[performance/ventas]", err?.message || err);
     res.json({ available: false, byVendedor: {}, grand: emptyGrand, error: String(err?.message || err) });
   }
+});
+
+// Stored ERP sales aggregate for a month — read from Supabase (erp_ventas_mensual).
+// Unlike /api/performance/ventas, this needs NO ERP access, so it works on every
+// build (incl. Vercel). It's the source for Progreso Meta vs real sales. Values
+// are as fresh as the last time a LAN user read that month from the ERP.
+app.get("/api/performance/ventas-stored", requireAuth, async (req, res) => {
+  const periodo = String(req.query.periodo || "");
+  if (!/^\d{4}-\d{2}$/.test(periodo)) {
+    res.status(400).json({ error: "periodo (YYYY-MM) es obligatorio." });
+    return;
+  }
+
+  // Role-scoped: sellers only see their own stored amount; admins see all.
+  let query = supabase
+    .from("erp_ventas_mensual")
+    .select("vendedor_id, subtotal, total, facturas, updated_at")
+    .eq("periodo", periodo);
+  if (req.user!.role !== "Admin") query = query.eq("vendedor_id", req.user!.sub);
+
+  const { data, error } = await query;
+  if (error) {
+    // Table missing / transient: degrade to empty so Progreso Meta just shows 0.
+    console.error("[ventas-stored]", error.message);
+    res.json({ periodo, byVendedor: {}, updatedAt: null });
+    return;
+  }
+
+  const byVendedor: Record<string, { subtotal: number; total: number; facturas: number; updatedAt: string }> = {};
+  let newest: string | null = null;
+  for (const r of data || []) {
+    byVendedor[String(r.vendedor_id)] = {
+      subtotal: Number(r.subtotal) || 0, total: Number(r.total) || 0,
+      facturas: r.facturas || 0, updatedAt: r.updated_at,
+    };
+    if (!newest || r.updated_at > newest) newest = r.updated_at;
+  }
+  res.json({ periodo, byVendedor, updatedAt: newest });
 });
 
 // ---------------------------------------------------------------------------

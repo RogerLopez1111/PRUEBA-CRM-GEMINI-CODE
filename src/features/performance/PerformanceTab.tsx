@@ -177,7 +177,7 @@ function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }
   );
 }
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled }: {
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled, metaVentas }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
@@ -188,6 +188,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   erpLoading: boolean;
   onErpRetry: () => void;
   erpEnabled: boolean;
+  metaVentas: number; // stored ERP sales (subtotal) for this seller + month — the Progreso Meta numerator
 }) {
   // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth for all KPIs
   const allUserLeads = leadsAll.filter(l => l.assignedTo === user.id);
@@ -322,7 +323,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             <div>
               <p className="text-xs font-semibold text-brand-gray">Meta de Ventas</p>
               <p className="text-xl font-bold text-slate-900">${effectiveSalesGoal.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{Math.min(100, Math.round((soldValue / effectiveSalesGoal) * 100))}% alcanzado</p>
+              <p className="text-[10px] text-slate-400">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}% · ${metaVentas.toLocaleString()} ventas ERP</p>
             </div>
           </CardContent>
         </Card>
@@ -342,7 +343,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                   <CardDescription>{user.role === "Admin" ? "Administrador" : "Vendedor"}</CardDescription>
                 </div>
               </div>
-              {soldValue >= user.performance.salesGoal && (
+              {effectiveSalesGoal > 0 && metaVentas >= effectiveSalesGoal && (
                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Meta Cumplida</Badge>
               )}
             </div>
@@ -350,16 +351,16 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500 font-medium">Progreso de Meta</span>
-                <span className="font-bold">{Math.min(100, Math.round((soldValue / effectiveSalesGoal) * 100))}%</span>
+                <span className="text-slate-500 font-medium">Progreso de Meta <span className="text-[10px] text-slate-400">(ventas ERP)</span></span>
+                <span className="font-bold">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (soldValue / effectiveSalesGoal) * 100)}%` }}
+                  animate={{ width: `${effectiveSalesGoal > 0 ? Math.min(100, (metaVentas / effectiveSalesGoal) * 100) : 0}%` }}
                   className={cn(
                     "h-full transition-all",
-                    soldValue >= effectiveSalesGoal ? "bg-green-500" : "bg-primary"
+                    effectiveSalesGoal > 0 && metaVentas >= effectiveSalesGoal ? "bg-green-500" : "bg-primary"
                   )}
                 />
               </div>
@@ -720,6 +721,34 @@ export function PerformanceTab() {
   // clobber each other — only the latest request's result is applied.
   const erpReqRef = useRef(0);
 
+  // Stored ERP sales per seller for the selected month (from Supabase, NOT the
+  // live ERP). Drives Progreso Meta vs real sales and works on every build —
+  // incl. the Vercel web one that can't reach the ERP. Topped up whenever any
+  // LAN user reads the ERP.
+  const [erpStored, setErpStored] = useState<Record<string, { subtotal: number; total: number; facturas: number; updatedAt: string }>>({});
+  useEffect(() => {
+    let aborted = false;
+    apiFetch(`/api/performance/ventas-stored?periodo=${filterMonth}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { byVendedor?: Record<string, { subtotal: number; total: number; facturas: number; updatedAt: string }> } | null) => {
+        if (!aborted && d) setErpStored(d.byVendedor || {});
+      })
+      .catch(() => { if (!aborted) setErpStored({}); });
+    return () => { aborted = true; };
+  }, [filterMonth]);
+  // Progreso Meta source:
+  //  - LAN build (erpEnabled): print from the LIVE API read (erpVentas).
+  //  - Vercel/web build: read the amount stored in the DB (ventas-stored).
+  // The DB value also backs up the LAN case while the live read is still loading
+  // or when a seller's live read didn't land (busy/error).
+  const metaVentas = (vendedorId: string) => {
+    if (erpEnabled) {
+      const live = erpVentas?.byVendedor[vendedorId];
+      if (live && !live.error) return live.subtotal;
+    }
+    return erpStored[vendedorId]?.subtotal ?? 0;
+  };
+
   const loadErpVentas = useCallback(() => {
     const [y, m] = filterMonth.split("-").map(Number);
     const desde = `${filterMonth}-01`;
@@ -913,7 +942,11 @@ export function PerformanceTab() {
                     const ttfc = timeToFirstContact(userLeads);
                     const userFunnel = funnelByStage(userLeads);
                     const cotToFact = userFunnel.find(s => s.stage === "FACTURADO")?.stepConversion ?? null;
-                    const progress = Math.min(100, Math.round((soldValue / user.performance.salesGoal) * 100));
+                    // Progreso Meta compares the goal to stored ERP sales (not leads).
+                    const metaVentasUser = metaVentas(user.id);
+                    const progress = user.performance.salesGoal > 0
+                      ? Math.min(100, Math.round((metaVentasUser / user.performance.salesGoal) * 100))
+                      : 0;
                     const erp = erpVentas?.byVendedor[user.id];
                     const erpStale = erpVentas?.fromDevice ?? false;
 
@@ -1009,6 +1042,7 @@ export function PerformanceTab() {
               erpLoading={erpLoading}
               onErpRetry={loadErpVentas}
               erpEnabled={erpEnabled}
+              metaVentas={metaVentas(user.id)}
             />
           ))}
         </div>
