@@ -23,6 +23,30 @@ export type ErpResponse = {
   body: any;
 };
 
+/**
+ * The ERP serialises some text fields (addresses, contact names, measurements
+ * like 1/2") with raw control characters, invalid backslash escapes, and the
+ * occasional trailing comma — so a strict JSON.parse fails on larger responses
+ * (e.g. a full client list). Try strict first; on failure, sanitize the obvious
+ * offenders and retry; if it still won't parse, hand back the raw text so the
+ * caller can decide what to do.
+ */
+export function parseErpBody(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      const cleaned = text
+        .replace(new RegExp("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "g"), "") // raw control chars
+        .replace(new RegExp('\\\\(?!["\\\\/bfnrt]|u[0-9a-fA-F]{4})', "g"), "") // invalid \escapes
+        .replace(new RegExp(",(\\s*[}\\]])", "g"), "$1"); // trailing commas
+      return JSON.parse(cleaned);
+    } catch {
+      return text; // genuinely not JSON (e.g. an IIS HTML error page)
+    }
+  }
+}
+
 export async function callErp(
   provider: string,
   action: string,
@@ -40,11 +64,6 @@ export async function callErp(
     signal: AbortSignal.timeout(15000),
   });
   const text = await res.text();
-  let body: any;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = text; // ERP returned HTML/plain text (e.g. an IIS error page)
-  }
+  const body = parseErpBody(text);
   return { ok: res.ok, httpStatus: res.status, body };
 }

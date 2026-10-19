@@ -21,6 +21,7 @@ import {
   getErpClients,
   getErpClientsRaw,
   getProductosRaw,
+  getVentasClienteMensual,
 } from '../src/sqlserver.js';
 
 // Sync runs locally / via scheduler with full DB access. Uses the service role
@@ -282,6 +283,59 @@ async function syncProductos() {
 }
 
 // ---------------------------------------------------------------------------
+// Ventas analíticas por cliente/mes — materializes the ManagementPro
+// "REPORTE ANALÍTICO DE VENTAS ANUAL (CLIENTE)" so the report tab reads one
+// Supabase table (no ERP API). Recomputed over a rolling window each sync, so
+// backdated edits / cancellations in closed months are picked up.
+// ---------------------------------------------------------------------------
+const VENTAS_REPORTE_YEARS_BACK = 1; // keep current + previous year
+
+async function syncVentasClienteMensual() {
+  const now = new Date();
+  const fromYear = now.getFullYear() - VENTAS_REPORTE_YEARS_BACK;
+  const desde = `${fromYear}-01-01`;
+  const hasta = `${now.getFullYear() + 1}-01-01`; // exclusive upper bound
+
+  const rows = await getVentasClienteMensual(desde, hasta);
+  if (!rows.length) {
+    console.warn('⚠  No ventas (cliente/mes) returned from SQL Server');
+    return;
+  }
+
+  // Replace the window: delete the periodos we're about to rewrite, then insert
+  // fresh. (Safer than upsert — a sale cancelled since last sync should DROP its
+  // contribution, and a client with no sales this period must leave no stale row.)
+  const periodoDesde = `${fromYear}-01`;
+  const { error: delErr } = await supabase
+    .from('erp_ventas_cliente_mensual')
+    .delete()
+    .gte('periodo', periodoDesde);
+  if (delErr) { console.error('✗ ventas-cliente-mensual delete:', delErr.message); return; }
+
+  const payload = rows.map((r) => ({
+    vendedor_id: r.vendedorId,
+    vendedor_nombre: r.vendedorNombre,
+    segmento_id: r.segmentoId,
+    segmento_nombre: r.segmentoNombre,
+    cliente_id: r.clienteId,
+    cliente_nombre: r.clienteNombre,
+    razon_social: r.razonSocial,
+    periodo: r.periodo,
+    importe: r.importe,
+  }));
+
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < payload.length; i += CHUNK) {
+    const chunk = payload.slice(i, i + CHUNK);
+    const { error } = await supabase.from('erp_ventas_cliente_mensual').insert(chunk);
+    if (error) console.error(`✗ ventas-cliente-mensual chunk ${i}–${i + chunk.length}:`, error.message);
+    else inserted += chunk.length;
+  }
+  console.log(`✓ ventas-cliente-mensual inserted: ${inserted} / ${payload.length} (desde ${periodoDesde})`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -291,6 +345,7 @@ async function main() {
   await syncVendedores();
   await syncClients();
   await syncProductos();
+  await syncVentasClienteMensual();
   console.log('── done ──\n');
   process.exit(0);
 }

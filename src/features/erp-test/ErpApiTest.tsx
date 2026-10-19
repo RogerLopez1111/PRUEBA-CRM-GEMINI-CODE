@@ -3,14 +3,18 @@
  *
  * Rendered in place of <App/> when the URL has `?erp-test` (see main.tsx), so it
  * is fully isolated: no login, no AppDataProvider, no shared state. Two tabs:
- *   • Ventas por vendedor — live sales-by-seller aggregation (the real goal)
- *   • Consola API        — raw request/response explorer
+ *   • Ventas por vendedor    — live sales-by-seller aggregation (the real goal)
+ *   • Clientes por segmento  — seller's client roster grouped by segmento (live)
+ *   • Reporte anual          — materialized annual sales matrix (from the sync)
+ *   • Consola API            — raw request/response explorer
  */
 import { useState } from "react";
 import VentasPorVendedor from "./VentasPorVendedor";
+import ClientesPorSegmento from "./ClientesPorSegmento";
+import ReporteAnualCliente from "./ReporteAnualCliente";
 import RawConsole from "./RawConsole";
 
-type Tab = "ventas" | "consola";
+type Tab = "ventas" | "clientes" | "reporte" | "consola";
 
 export default function ErpApiTest() {
   const [tab, setTab] = useState<Tab>("ventas");
@@ -30,7 +34,7 @@ export default function ErpApiTest() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid #e2e8f0" }}>
-          {([["ventas", "Ventas por vendedor"], ["consola", "Consola API"]] as [Tab, string][]).map(([key, label]) => (
+          {([["ventas", "Ventas por vendedor"], ["clientes", "Clientes por segmento"], ["reporte", "Reporte anual"], ["consola", "Consola API"]] as [Tab, string][]).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -46,7 +50,7 @@ export default function ErpApiTest() {
           ))}
         </div>
 
-        {tab === "ventas" ? <VentasPorVendedor /> : <RawConsole />}
+        {tab === "ventas" ? <VentasPorVendedor /> : tab === "clientes" ? <ClientesPorSegmento /> : tab === "reporte" ? <ReporteAnualCliente /> : <RawConsole />}
       </div>
     </div>
   );

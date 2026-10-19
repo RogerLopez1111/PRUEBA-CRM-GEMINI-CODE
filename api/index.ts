@@ -6,6 +6,7 @@ import { runDigest } from "../src/digest-compras.js";
 import { sendEmail } from "../src/email.js";
 import erpTestRouter from "./erp-test.js";
 import erpVentasRouter from "./erp-ventas.js";
+import erpTestClientesRouter from "./erp-test-clientes.js";
 import { erpConfigured } from "./erp-client.js";
 import { aggregateVentas, ISO_DATE } from "./erp-ventas-core.js";
 
@@ -215,6 +216,7 @@ app.use(express.json());
 // Isolated ERP HTTP-API test routes (no auth, test-only).
 app.use(erpTestRouter);   // raw proxy — api/erp-test.ts
 app.use(erpVentasRouter); // live ventas-by-vendedor aggregation — api/erp-ventas.ts
+app.use(erpTestClientesRouter); // live clientes-por-segmento roster — api/erp-test-clientes.ts
 
 // Runtime capability flag for the frontend. The ERP live-pull only works when
 // the server runs on the office LAN (it calls the LAN-only ERP directly). On

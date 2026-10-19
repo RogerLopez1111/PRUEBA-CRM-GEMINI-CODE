@@ -129,6 +129,71 @@ export async function getVendedores(): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// Ventas analíticas por cliente/mes — feeds the materialized
+// "REPORTE ANALÍTICO DE VENTAS ANUAL (CLIENTE)" table (erp_ventas_cliente_mensual).
+// One row per (vendedor que vendió, cliente, mes). Validated to the peso against
+// the ManagementPro report: importe = SUM(Vn_Precio_Descontado_Importe) sin IVA,
+// estatus FA, vendedor = sale's vendedor, segmento = client's current segmento.
+// ---------------------------------------------------------------------------
+export type VentaClienteMensual = {
+  vendedorId: string;
+  vendedorNombre: string;
+  segmentoId: string;
+  segmentoNombre: string;
+  clienteId: string;
+  clienteNombre: string;
+  razonSocial: string;
+  periodo: string; // 'YYYY-MM'
+  importe: number;
+};
+
+export async function getVentasClienteMensual(
+  desde: string, // 'YYYY-MM-DD' inclusive
+  hasta: string  // 'YYYY-MM-DD' exclusive
+): Promise<VentaClienteMensual[]> {
+  try {
+    const p = await getPool();
+    const req = p.request();
+    req.input('desde', sql.DateTime, new Date(desde));
+    req.input('hasta', sql.DateTime, new Date(hasta));
+    const r = await req.query(`
+      SELECT
+        ve.Vn_Cve_Vendedor                        AS vendedorId,
+        MAX(LTRIM(RTRIM(v.Vn_Descripcion)))       AS vendedorNombre,
+        c.Sg_Cve_Segmento                         AS segmentoId,
+        MAX(LTRIM(RTRIM(s.Sg_Descripcion)))       AS segmentoNombre,
+        ve.Cl_Cve_Cliente                         AS clienteId,
+        MAX(LTRIM(RTRIM(c.Cl_Descripcion)))       AS clienteNombre,
+        MAX(LTRIM(RTRIM(c.Cl_Razon_Social)))      AS razonSocial,
+        CONVERT(char(7), ve.Vn_Fecha, 126)        AS periodo,
+        SUM(ve.Vn_Precio_Descontado_Importe)      AS importe
+      FROM Venta ve
+      JOIN Cliente c      ON c.Cl_Cve_Cliente   = ve.Cl_Cve_Cliente
+      LEFT JOIN Segmento s ON s.Sg_Cve_Segmento = c.Sg_Cve_Segmento
+      LEFT JOIN Vendedor v ON v.Vn_Cve_Vendedor = ve.Vn_Cve_Vendedor
+      WHERE ve.Es_Cve_Estado = 'FA'
+        AND ve.Vn_Fecha >= @desde AND ve.Vn_Fecha < @hasta
+      GROUP BY ve.Vn_Cve_Vendedor, c.Sg_Cve_Segmento, ve.Cl_Cve_Cliente,
+               CONVERT(char(7), ve.Vn_Fecha, 126)
+    `);
+    return r.recordset.map((row) => ({
+      vendedorId: String(row.vendedorId ?? ''),
+      vendedorNombre: String(row.vendedorNombre ?? ''),
+      segmentoId: String(row.segmentoId ?? ''),
+      segmentoNombre: String(row.segmentoNombre ?? ''),
+      clienteId: String(row.clienteId ?? ''),
+      clienteNombre: String(row.clienteNombre ?? ''),
+      razonSocial: String(row.razonSocial ?? ''),
+      periodo: String(row.periodo ?? ''),
+      importe: Number(row.importe) || 0,
+    }));
+  } catch (err) {
+    console.error('[MSSQL] getVentasClienteMensual:', err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Clients (read-only from ERP)
 // ---------------------------------------------------------------------------
 
