@@ -216,6 +216,15 @@ app.use(express.json());
 app.use(erpTestRouter);   // raw proxy — api/erp-test.ts
 app.use(erpVentasRouter); // live ventas-by-vendedor aggregation — api/erp-ventas.ts
 
+// Runtime capability flag for the frontend. The ERP live-pull only works when
+// the server runs on the office LAN (it calls the LAN-only ERP directly). On
+// Vercel the serverless functions can't reach the LAN, so the web build hides
+// the ERP features. Vercel sets process.env.VERCEL automatically; running
+// locally it's undefined — so erpEnabled is true only on the local/LAN server.
+app.get("/api/config", (_req, res) => {
+  res.json({ erpEnabled: !process.env.VERCEL && erpConfigured() });
+});
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------

@@ -177,7 +177,7 @@ function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }
   );
 }
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry }: {
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
@@ -187,6 +187,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   erpVentas: ErpVentas | null;
   erpLoading: boolean;
   onErpRetry: () => void;
+  erpEnabled: boolean;
 }) {
   // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth for all KPIs
   const allUserLeads = leadsAll.filter(l => l.assignedTo === user.id);
@@ -262,15 +263,18 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
 
   return (
     <div className="lg:col-span-3 space-y-6">
-      {/* ERP stream — general total sales, kept separate from the leads KPIs below */}
-      <ErpVentasBanner
-        data={erpVentas?.byVendedor[user.id]}
-        available={erpVentas?.available ?? false}
-        loading={erpLoading}
-        onRetry={onErpRetry}
-        stale={erpVentas?.fromDevice ?? false}
-        fetchedAt={erpVentas?.savedAt}
-      />
+      {/* ERP stream — general total sales, kept separate from the leads KPIs below.
+          Only shown on the local/LAN build (hidden on the Vercel web build). */}
+      {erpEnabled && (
+        <ErpVentasBanner
+          data={erpVentas?.byVendedor[user.id]}
+          available={erpVentas?.available ?? false}
+          loading={erpLoading}
+          onRetry={onErpRetry}
+          stale={erpVentas?.fromDevice ?? false}
+          fetchedAt={erpVentas?.savedAt}
+        />
+      )}
 
       {/* Leads/pipeline stream — what the seller achieved working tracked leads */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -694,6 +698,20 @@ export function PerformanceTab() {
   // Month filter — defaults to current month, scopes all metrics.
   const [filterMonth, setFilterMonth] = useState<string>(currentYearMonth());
 
+  // The ERP stream only works on the local/LAN build (the server calls the
+  // LAN-only ERP directly). On the Vercel web build the server reports
+  // erpEnabled:false and we hide every ERP-specific control. Default false so
+  // nothing ERP-related flashes before the flag resolves.
+  const [erpEnabled, setErpEnabled] = useState(false);
+  useEffect(() => {
+    let aborted = false;
+    apiFetch("/api/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg: { erpEnabled?: boolean } | null) => { if (!aborted) setErpEnabled(!!cfg?.erpEnabled); })
+      .catch(() => { if (!aborted) setErpEnabled(false); });
+    return () => { aborted = true; };
+  }, []);
+
   // ERP "general sales" stream for the selected month. Fetched once per month
   // (role-scoped server-side: admins get all sellers, a seller gets only self).
   const [erpVentas, setErpVentas] = useState<ErpVentas | null>(null);
@@ -752,8 +770,8 @@ export function PerformanceTab() {
   }, [filterMonth, currentUser]);
 
   // Initial load + whenever the month changes: check that month (current month
-  // on first render).
-  useEffect(() => { loadErpVentas(); }, [loadErpVentas]);
+  // on first render). Only when the ERP stream is enabled (local build).
+  useEffect(() => { if (erpEnabled) loadErpVentas(); }, [loadErpVentas, erpEnabled]);
 
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
@@ -823,24 +841,26 @@ export function PerformanceTab() {
             </Select>
           </div>
 
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-brand-gray ml-1">Ventas ERP</p>
-            <div className="h-10 flex items-center">
-              {erpLoading ? (
-                <span className="text-xs text-slate-400 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Consultando…</span>
-              ) : erpVentas?.fromDevice ? (
-                <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200" title={`Guardado en este dispositivo · ${formatFetched(erpVentas.savedAt)}`}>
-                  <RefreshCw className="w-3.5 h-3.5" /> En caché · {formatFetched(erpVentas.savedAt)}
-                </Button>
-              ) : erpVentas && erpVentas.available && Object.values(erpVentas.byVendedor).some((v: ErpVentasRow) => !v.error) ? (
-                <span className="text-xs text-emerald-600 flex items-center gap-1.5"><Receipt className="w-3.5 h-3.5" />en vivo</span>
-              ) : (
-                <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200">
-                  <RefreshCw className="w-3.5 h-3.5" /> ERP no disponible — reintentar
-                </Button>
-              )}
+          {erpEnabled && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-brand-gray ml-1">Ventas ERP</p>
+              <div className="h-10 flex items-center">
+                {erpLoading ? (
+                  <span className="text-xs text-slate-400 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" />Consultando…</span>
+                ) : erpVentas?.fromDevice ? (
+                  <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200" title={`Guardado en este dispositivo · ${formatFetched(erpVentas.savedAt)}`}>
+                    <RefreshCw className="w-3.5 h-3.5" /> En caché · {formatFetched(erpVentas.savedAt)}
+                  </Button>
+                ) : erpVentas && erpVentas.available && Object.values(erpVentas.byVendedor).some((v: ErpVentasRow) => !v.error) ? (
+                  <span className="text-xs text-emerald-600 flex items-center gap-1.5"><Receipt className="w-3.5 h-3.5" />en vivo</span>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={loadErpVentas} className="text-amber-700 border-amber-200">
+                    <RefreshCw className="w-3.5 h-3.5" /> ERP no disponible — reintentar
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -849,7 +869,9 @@ export function PerformanceTab() {
           <CardHeader>
             <CardTitle>Resumen de Rendimiento del Equipo</CardTitle>
             <CardDescription>
-              Las columnas <span className="font-semibold text-indigo-600">ERP</span> son ventas facturadas, subtotal sin IVA (en vivo, incluye ventas sin lead); el resto proviene del pipeline de leads.
+              {erpEnabled
+                ? <>Las columnas <span className="font-semibold text-indigo-600">ERP</span> son ventas facturadas, subtotal sin IVA (en vivo, incluye ventas sin lead); el resto proviene del pipeline de leads.</>
+                : "Resumen de todos los vendedores y su estado actual del pipeline."}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -858,8 +880,10 @@ export function PerformanceTab() {
                 <TableHeader>
                   <TableRow className="bg-slate-50/50">
                     <TableHead className="font-semibold">Vendedor</TableHead>
-                    <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700">Facturado ERP (s/IVA)</TableHead>
-                    <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700"># Facturas ERP</TableHead>
+                    {erpEnabled && (<>
+                      <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700">Facturado ERP (s/IVA)</TableHead>
+                      <TableHead className="font-semibold bg-indigo-50/50 text-indigo-700"># Facturas ERP</TableHead>
+                    </>)}
                     <TableHead className="font-semibold">Vendido leads ($)</TableHead>
                     <TableHead className="font-semibold">Cotizado ($)</TableHead>
                     <TableHead className="font-semibold">Perdido ($)</TableHead>
@@ -903,21 +927,23 @@ export function PerformanceTab() {
                             {user.name}
                           </div>
                         </TableCell>
-                        <TableCell className="bg-indigo-50/30 font-bold">
-                          {erpLoading ? <span className="text-slate-300">…</span>
-                            : erp && !erp.error ? (
-                                <span className={erpStale ? "text-amber-600" : "text-indigo-700"}
-                                  title={erpStale ? `En caché · ${formatFetched(erpVentas?.savedAt)}` : undefined}>
-                                  ${erp.subtotal.toLocaleString()}{erpStale ? " *" : ""}
-                                </span>
-                              )
-                            : <span className="text-slate-300" title={erp?.error || "ERP no disponible"}>—</span>}
-                        </TableCell>
-                        <TableCell className={`bg-indigo-50/30 font-semibold ${erpStale ? "text-amber-600" : "text-indigo-700"}`}>
-                          {erpLoading ? <span className="text-slate-300">…</span>
-                            : erp && !erp.error ? erp.count
-                            : <span className="text-slate-300">—</span>}
-                        </TableCell>
+                        {erpEnabled && (<>
+                          <TableCell className="bg-indigo-50/30 font-bold">
+                            {erpLoading ? <span className="text-slate-300">…</span>
+                              : erp && !erp.error ? (
+                                  <span className={erpStale ? "text-amber-600" : "text-indigo-700"}
+                                    title={erpStale ? `En caché · ${formatFetched(erpVentas?.savedAt)}` : undefined}>
+                                    ${erp.subtotal.toLocaleString()}{erpStale ? " *" : ""}
+                                  </span>
+                                )
+                              : <span className="text-slate-300" title={erp?.error || "ERP no disponible"}>—</span>}
+                          </TableCell>
+                          <TableCell className={`bg-indigo-50/30 font-semibold ${erpStale ? "text-amber-600" : "text-indigo-700"}`}>
+                            {erpLoading ? <span className="text-slate-300">…</span>
+                              : erp && !erp.error ? erp.count
+                              : <span className="text-slate-300">—</span>}
+                          </TableCell>
+                        </>)}
                         <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
                         <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
                         <TableCell className="text-red-600">
@@ -982,6 +1008,7 @@ export function PerformanceTab() {
               erpVentas={erpVentas}
               erpLoading={erpLoading}
               onErpRetry={loadErpVentas}
+              erpEnabled={erpEnabled}
             />
           ))}
         </div>
