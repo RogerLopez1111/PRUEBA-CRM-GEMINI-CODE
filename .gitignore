@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 .claude/
+
+# deployment kit — internal infra (server IP/host, .env refs); kept local, not published
+deploy/
+deploy-bundle/
+crm-deploy.zip
