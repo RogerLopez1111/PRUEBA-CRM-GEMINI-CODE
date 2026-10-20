@@ -116,19 +116,38 @@ function grandOf(byVendedor: Record<string, ErpVentasRow>) {
 }
 
 // Prominent, distinctly-styled banner showing the ERP total for one seller.
-// Deliberately indigo + "ERP · en vivo" badge so it never reads as a pipeline
-// (leads) metric.
-function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }: {
-  data: ErpVentasRow | undefined;
+// Deliberately indigo so it never reads as a pipeline (leads) metric.
+//
+// Source priority: LIVE ERP read (LAN build) → this device's local cache →
+// the stored Supabase aggregate. The stored value works on EVERY build (incl.
+// the Vercel web build that can't reach the LAN ERP) so the banner shows for
+// all users; it's only as fresh as the last LAN read, hence the "may be
+// outdated · updated <date>" note.
+function ErpVentasBanner({ live, available, loading, onRetry, fromDevice, fetchedAt, stored, erpEnabled }: {
+  live: ErpVentasRow | undefined;
   available: boolean;
   loading: boolean;
   onRetry: () => void;
-  stale: boolean; // served from this device's local cache (ERP unreachable)
+  fromDevice: boolean; // live value served from this device's local cache
   fetchedAt?: string;
+  stored?: { subtotal: number; total: number; facturas: number; updatedAt: string };
+  erpEnabled: boolean; // this build can reach the LAN ERP (live read + retry possible)
 }) {
-  // "Busy" = ERP unreachable AND nothing cached, or this seller came back with an
-  // ERP error. Offer a manual retry rather than auto-hammering.
-  const busy = !loading && (!available || !!data?.error);
+  const hasLive = available && !!live && !live.error;
+  const hasStored = !!stored;
+  const show = hasLive || hasStored;
+
+  // Display values: prefer live, else the stored Supabase aggregate.
+  const subtotal = hasLive ? live!.subtotal : stored?.subtotal ?? 0;
+  const total = hasLive ? live!.total : stored?.total ?? 0;
+  const facturas = hasLive ? live!.count : stored?.facturas ?? 0;
+
+  const badge = hasLive
+    ? fromDevice
+      ? { text: `ERP · en caché`, cls: "bg-amber-50 text-amber-700 border-amber-200" }
+      : { text: "ERP · en vivo", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" }
+    : { text: "ERP · guardado", cls: "bg-slate-100 text-slate-600 border-slate-200" };
+
   return (
     <Card className="bg-white overflow-hidden border-indigo-200">
       <div className="h-1.5 bg-indigo-500 w-full" />
@@ -140,24 +159,29 @@ function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }
           <div>
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold text-brand-gray">Ventas Facturadas (sin IVA)</p>
-              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px]">ERP · en vivo</Badge>
+              <Badge variant="outline" className={`${badge.cls} text-[10px]`}>{badge.text}</Badge>
             </div>
             {loading ? (
               <p className="text-sm text-slate-400 italic mt-1">Consultando ERP…</p>
-            ) : busy ? (
-              <div className="mt-1 flex items-center gap-3">
-                <span className="text-sm text-amber-600 italic">ERP ocupado{data?.error && data.error !== "1001" ? ` (${data.error})` : ""}</span>
-                <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
-                  <RefreshCw className="w-3.5 h-3.5" /> Reintentar
-                </Button>
-              </div>
+            ) : !show ? (
+              erpEnabled ? (
+                <div className="mt-1 flex items-center gap-3">
+                  <span className="text-sm text-amber-600 italic">ERP ocupado{live?.error && live.error !== "1001" ? ` (${live.error})` : ""}</span>
+                  <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
+                    <RefreshCw className="w-3.5 h-3.5" /> Reintentar
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400 italic mt-1">Sin datos del ERP para este mes todavía.</p>
+              )
             ) : (
               <>
-                <p className="text-2xl font-bold text-indigo-700">${(data?.subtotal ?? 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-indigo-700">${subtotal.toLocaleString()}</p>
                 <p className="text-[11px] text-slate-500">
-                  {data?.count ?? 0} facturas este mes · con IVA ${(data?.total ?? 0).toLocaleString()}
+                  {facturas} facturas este mes · con IVA ${total.toLocaleString()}
                 </p>
-                {stale && (
+                {/* Live value from this device's cache — offer a live refresh. */}
+                {hasLive && fromDevice && (
                   <div className="mt-1.5 flex items-center gap-2">
                     <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
                       en caché · {formatFetched(fetchedAt)}
@@ -165,6 +189,19 @@ function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }
                     <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
                       <RefreshCw className="w-3.5 h-3.5" /> Actualizar
                     </Button>
+                  </div>
+                )}
+                {/* No live read available — showing the stored aggregate, which may be stale. */}
+                {!hasLive && hasStored && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200 text-[10px]">
+                      Puede estar desactualizada · actualizado {formatFetched(stored!.updatedAt)}
+                    </Badge>
+                    {erpEnabled && (
+                      <Button variant="outline" size="sm" onClick={onRetry} className="text-amber-700 border-amber-200">
+                        <RefreshCw className="w-3.5 h-3.5" /> Actualizar
+                      </Button>
+                    )}
                   </div>
                 )}
               </>
@@ -180,7 +217,7 @@ function ErpVentasBanner({ data, available, loading, onRetry, stale, fetchedAt }
   );
 }
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled, metaVentas }: {
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled, metaVentas, erpStored, erpStoredLoading }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
@@ -192,6 +229,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   onErpRetry: () => void;
   erpEnabled: boolean;
   metaVentas: number; // stored ERP sales (subtotal) for this seller + month — the Progreso Meta numerator
+  erpStored?: { subtotal: number; total: number; facturas: number; updatedAt: string }; // stored Supabase aggregate — fallback when no live ERP
+  erpStoredLoading: boolean; // stored aggregate fetch in flight (used for the banner's loading state off-LAN)
 }) {
   // allUserLeads used for sparkline (6-month context); userLeads scoped to filterMonth (by createdAt).
   // EXCEPTION: Vendido and Cotizado bucket by the month the lead reached that stage (facturación /
@@ -273,17 +312,18 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   return (
     <div className="lg:col-span-3 space-y-6">
       {/* ERP stream — general total sales, kept separate from the leads KPIs below.
-          Only shown on the local/LAN build (hidden on the Vercel web build). */}
-      {erpEnabled && (
-        <ErpVentasBanner
-          data={erpVentas?.byVendedor[user.id]}
-          available={erpVentas?.available ?? false}
-          loading={erpLoading}
-          onRetry={onErpRetry}
-          stale={erpVentas?.fromDevice ?? false}
-          fetchedAt={erpVentas?.savedAt}
-        />
-      )}
+          Shown on EVERY build: live on the LAN, else the stored Supabase aggregate
+          (tagged "may be outdated") so web/off-LAN users still see the number. */}
+      <ErpVentasBanner
+        live={erpVentas?.byVendedor[user.id]}
+        available={erpVentas?.available ?? false}
+        loading={erpEnabled ? erpLoading : erpStoredLoading}
+        onRetry={onErpRetry}
+        fromDevice={erpVentas?.fromDevice ?? false}
+        fetchedAt={erpVentas?.savedAt}
+        stored={erpStored}
+        erpEnabled={erpEnabled}
+      />
 
       {/* Leads/pipeline stream — what the seller achieved working tracked leads */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -737,14 +777,18 @@ export function PerformanceTab() {
   // incl. the Vercel web one that can't reach the ERP. Topped up whenever any
   // LAN user reads the ERP.
   const [erpStored, setErpStored] = useState<Record<string, { subtotal: number; total: number; facturas: number; updatedAt: string }>>({});
+  const [erpStoredLoading, setErpStoredLoading] = useState(true);
   useEffect(() => {
     let aborted = false;
+    setErpStoredLoading(true);
+    setErpStored({}); // clear prior month so a stale number never flashes under the new month
     apiFetch(`/api/performance/ventas-stored?periodo=${filterMonth}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { byVendedor?: Record<string, { subtotal: number; total: number; facturas: number; updatedAt: string }> } | null) => {
         if (!aborted && d) setErpStored(d.byVendedor || {});
       })
-      .catch(() => { if (!aborted) setErpStored({}); });
+      .catch(() => { if (!aborted) setErpStored({}); })
+      .finally(() => { if (!aborted) setErpStoredLoading(false); });
     return () => { aborted = true; };
   }, [filterMonth]);
   // Progreso Meta source:
@@ -1055,6 +1099,8 @@ export function PerformanceTab() {
               onErpRetry={loadErpVentas}
               erpEnabled={erpEnabled}
               metaVentas={metaVentas(user.id)}
+              erpStored={erpStored[user.id]}
+              erpStoredLoading={erpStoredLoading}
             />
           ))}
         </div>
