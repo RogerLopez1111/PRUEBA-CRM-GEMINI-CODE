@@ -10,6 +10,7 @@ import erpTestClientesRouter from "./erp-test-clientes.js";
 import { erpConfigured } from "./erp-client.js";
 import { aggregateVentas, ISO_DATE } from "./erp-ventas-core.js";
 import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
+import { fetchRentabilidadRows, groupRentabilidadAnual } from "./rentabilidad-core.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -93,7 +94,7 @@ async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
   // Current-month goals: at most one row per seller (unique on vendedor+year+month).
   const { data: metasData } = await supabase
     .from("vendedor_metas")
-    .select("Vn_Cve_Vendedor, meta")
+    .select("Vn_Cve_Vendedor, meta, meta_utilidad")
     .in("Vn_Cve_Vendedor", vendedorIds)
     .eq("year", currentYear)
     .eq("month", currentMonth);
@@ -107,7 +108,11 @@ async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
     });
   }
   const metaByVendedor: Record<string, number> = {};
-  for (const m of metasData || []) metaByVendedor[String(m.Vn_Cve_Vendedor)] = m.meta || 0;
+  const utilidadMetaByVendedor: Record<string, number> = {};
+  for (const m of metasData || []) {
+    metaByVendedor[String(m.Vn_Cve_Vendedor)] = m.meta || 0;
+    utilidadMetaByVendedor[String(m.Vn_Cve_Vendedor)] = m.meta_utilidad || 0;
+  }
 
   // Same status semantics as before: closed = FACTURADO|ENTREGADO; active =
   // anything that isn't FACTURADO|ENTREGADO|RECHAZADO; totalAssigned = all leads.
@@ -136,6 +141,7 @@ async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
         totalValue,
         conversionRate: totalAssigned ? totalClosed / totalAssigned : 0,
         salesGoal: metaByVendedor[vid] || 0,
+        utilidadGoal: utilidadMetaByVendedor[vid] || 0,
       },
       workload: {
         activeLeads: activeLeads.length,
@@ -327,7 +333,7 @@ app.get("/api/users", requireAuth, async (req, res) => {
 });
 
 app.post("/api/users", requireAdmin, async (req, res) => {
-  const { name, email, role, salesGoal, sucursal } = req.body;
+  const { name, email, role, salesGoal, utilidadGoal, sucursal } = req.body;
   const id = Math.random().toString(36).substr(2, 9);
 
   const { data: sucursalRow } = await supabase
@@ -352,14 +358,15 @@ app.post("/api/users", requireAdmin, async (req, res) => {
     return;
   }
 
-  if (salesGoal) {
+  if (salesGoal || utilidadGoal) {
     const now = new Date();
     await supabase.from("vendedor_metas").insert({
       id: Math.random().toString(36).substr(2, 9),
       Vn_Cve_Vendedor: id,
       year: now.getFullYear(),
       month: now.getMonth() + 1,
-      meta: salesGoal,
+      meta: salesGoal || 0,
+      meta_utilidad: utilidadGoal || 0,
     });
   }
 
@@ -424,7 +431,7 @@ app.post("/api/users/:id/reset-password", requireAdmin, async (req, res) => {
 
 app.post("/api/users/:id/goal", requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { goal, year, month } = req.body;
+  const { goal, metaUtilidad, year, month } = req.body;
   const now = new Date();
   const targetYear: number = year ?? now.getFullYear();
   const targetMonth: number = month ?? now.getMonth() + 1;
@@ -441,14 +448,27 @@ app.post("/api/users/:id/goal", requireAdmin, async (req, res) => {
     return;
   }
 
-  // Upsert goal for the given month/year
+  // Read the existing row so a caller updating only ONE of the two goals (sales
+  // or utilidad) never wipes the other. Each field defaults to its stored value.
+  const { data: existing } = await supabase
+    .from("vendedor_metas")
+    .select("id, meta, meta_utilidad")
+    .eq("Vn_Cve_Vendedor", id)
+    .eq("year", targetYear)
+    .eq("month", targetMonth)
+    .maybeSingle();
+
+  const nextMeta = goal !== undefined ? goal : (existing?.meta ?? 0);
+  const nextUtilidad = metaUtilidad !== undefined ? metaUtilidad : (existing?.meta_utilidad ?? 0);
+
   const { error } = await supabase.from("vendedor_metas").upsert(
     {
-      id: Math.random().toString(36).substr(2, 9),
+      id: existing?.id ?? Math.random().toString(36).substr(2, 9),
       Vn_Cve_Vendedor: id,
       year: targetYear,
       month: targetMonth,
-      meta: goal,
+      meta: nextMeta,
+      meta_utilidad: nextUtilidad,
     },
     { onConflict: "Vn_Cve_Vendedor,year,month" }
   );
@@ -464,7 +484,7 @@ app.post("/api/users/:id/goal", requireAdmin, async (req, res) => {
 
 app.post("/api/sucursales/:id/goal", requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { goal, year, month } = req.body;
+  const { goal, metaUtilidad, year, month } = req.body;
   const now = new Date();
   const targetYear: number = year ?? now.getFullYear();
   const targetMonth: number = month ?? now.getMonth() + 1;
@@ -480,14 +500,34 @@ app.post("/api/sucursales/:id/goal", requireAdmin, async (req, res) => {
     return;
   }
 
+  const sellerIds = sellers.map((s) => s.Vn_Cve_Vendedor);
+
+  // Read existing metas for this period so a branch update that sets only one of
+  // the two goals preserves the other per seller (same rule as the single-user
+  // endpoint). Map by vendedor to carry id + the untouched field forward.
+  const { data: existingRows } = await supabase
+    .from("vendedor_metas")
+    .select("id, Vn_Cve_Vendedor, meta, meta_utilidad")
+    .in("Vn_Cve_Vendedor", sellerIds)
+    .eq("year", targetYear)
+    .eq("month", targetMonth);
+  const existingByVendedor: Record<string, { id: string; meta: number; meta_utilidad: number }> = {};
+  for (const r of existingRows || []) {
+    existingByVendedor[String(r.Vn_Cve_Vendedor)] = { id: r.id, meta: r.meta || 0, meta_utilidad: r.meta_utilidad || 0 };
+  }
+
   const { error } = await supabase.from("vendedor_metas").upsert(
-    sellers.map((s) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      Vn_Cve_Vendedor: s.Vn_Cve_Vendedor,
-      year: targetYear,
-      month: targetMonth,
-      meta: goal,
-    })),
+    sellers.map((s) => {
+      const prev = existingByVendedor[String(s.Vn_Cve_Vendedor)];
+      return {
+        id: prev?.id ?? Math.random().toString(36).substr(2, 9),
+        Vn_Cve_Vendedor: s.Vn_Cve_Vendedor,
+        year: targetYear,
+        month: targetMonth,
+        meta: goal !== undefined ? goal : (prev?.meta ?? 0),
+        meta_utilidad: metaUtilidad !== undefined ? metaUtilidad : (prev?.meta_utilidad ?? 0),
+      };
+    }),
     { onConflict: "Vn_Cve_Vendedor,year,month" }
   );
 
@@ -508,7 +548,7 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
   }
   const { data, error } = await supabase
     .from("vendedor_metas")
-    .select("id, Vn_Cve_Vendedor, year, month, meta, created_at")
+    .select("id, Vn_Cve_Vendedor, year, month, meta, meta_utilidad, created_at")
     .eq("Vn_Cve_Vendedor", id)
     .order("year", { ascending: false })
     .order("month", { ascending: false });
@@ -532,6 +572,22 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
     invoicedByMonth[String(v.periodo)] = Number(v.subtotal) || 0; // periodo is 'YYYY-MM'
   }
 
+  // "Utilidad bruta" per month comes from the materialized rentabilidad mirror
+  // (erp_rentabilidad_vendedor_mensual) — net of devoluciones/rechazos y
+  // bonificaciones, the same figure the RPVNA06 report shows. Drives Progreso de
+  // Utilidad. Works on every build (no ERP access). Months never synced show 0.
+  const { data: rentabRows } = await supabase
+    .from("erp_rentabilidad_vendedor_mensual")
+    .select("periodo, venta_importe, venta_costo, dev_importe, dev_costo, boni_importe")
+    .eq("vendedor_id", id);
+
+  const utilidadByMonth: Record<string, number> = {};
+  for (const v of rentabRows || []) {
+    const importe = (Number(v.venta_importe) || 0) - (Number(v.dev_importe) || 0) - (Number(v.boni_importe) || 0);
+    const costo = (Number(v.venta_costo) || 0) - (Number(v.dev_costo) || 0);
+    utilidadByMonth[String(v.periodo)] = importe - costo;
+  }
+
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
@@ -540,6 +596,8 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
     (data || []).map((r) => {
       const key = `${r.year}-${String(r.month).padStart(2, "0")}`;
       const invoiced = invoicedByMonth[key] || 0;
+      const utilidad = utilidadByMonth[key] || 0;
+      const metaUtilidad = r.meta_utilidad || 0;
       const isPast = r.year < currentYear || (r.year === currentYear && r.month < currentMonth);
       const isCurrent = r.year === currentYear && r.month === currentMonth;
       return {
@@ -550,6 +608,9 @@ app.get("/api/users/:id/goals", requireAuth, async (req, res) => {
         meta: r.meta,
         invoiced,
         status: isCurrent ? "current" : isPast ? (invoiced >= r.meta ? "achieved" : "missed") : "future",
+        metaUtilidad,
+        utilidad,
+        utilidadStatus: isCurrent ? "current" : isPast ? (metaUtilidad > 0 && utilidad >= metaUtilidad ? "achieved" : "missed") : "future",
         createdAt: r.created_at,
       };
     })
@@ -677,6 +738,41 @@ app.get("/api/performance/ventas-stored", requireAuth, async (req, res) => {
   res.json({ periodo, byVendedor, updatedAt: newest });
 });
 
+// Stored utilidad bruta per seller for a month — read from the materialized
+// rentabilidad mirror (erp_rentabilidad_vendedor_mensual). Net of
+// devoluciones/rechazos y bonificaciones, exactly like the RPVNA06 report.
+// Needs NO ERP access (works on every build); it's the numerator for Progreso de
+// Utilidad vs meta. Role-scoped like ventas-stored.
+app.get("/api/performance/utilidad-stored", requireAuth, async (req, res) => {
+  const periodo = String(req.query.periodo || "");
+  if (!/^\d{4}-\d{2}$/.test(periodo)) {
+    res.status(400).json({ error: "periodo (YYYY-MM) es obligatorio." });
+    return;
+  }
+
+  let query = supabase
+    .from("erp_rentabilidad_vendedor_mensual")
+    .select("vendedor_id, venta_importe, venta_costo, dev_importe, dev_costo, boni_importe")
+    .eq("periodo", periodo);
+  if (req.user!.role !== "Admin") query = query.eq("vendedor_id", req.user!.sub);
+
+  const { data, error } = await query;
+  if (error) {
+    // Table missing / transient: degrade to empty so Progreso de Utilidad shows 0.
+    console.error("[utilidad-stored]", error.message);
+    res.json({ periodo, byVendedor: {} });
+    return;
+  }
+
+  const byVendedor: Record<string, { utilidad: number; importe: number; costo: number }> = {};
+  for (const r of data || []) {
+    const importe = (Number(r.venta_importe) || 0) - (Number(r.dev_importe) || 0) - (Number(r.boni_importe) || 0);
+    const costo = (Number(r.venta_costo) || 0) - (Number(r.dev_costo) || 0);
+    byVendedor[String(r.vendedor_id)] = { utilidad: importe - costo, importe, costo };
+  }
+  res.json({ periodo, byVendedor });
+});
+
 // Annual "REPORTE ANALÍTICO DE VENTAS ANUAL (CLIENTE)" for one seller — clients
 // grouped by segmento with monthly importes. Read from the materialized mirror
 // (erp_ventas_cliente_mensual), so it needs NO ERP access and works on every
@@ -702,6 +798,46 @@ app.get("/api/performance/reporte-anual", requireAuth, async (req, res) => {
     // Degrade to an empty report (e.g. table missing) rather than erroring the tab.
     console.error("[performance/reporte-anual]", err?.message || err);
     res.json({ vendedor: { id: vendedor }, anio, segmentos: [], totalesMes: new Array(12).fill(0), total: 0, clientesConVenta: 0 });
+  }
+});
+
+// "REPORTE DE RENTABILIDAD" (por Vendedor) — all sellers × 12 months, net
+// utilidad bruta per the ManagementPro RPVNA06 formula. Read from the
+// materialized mirror (erp_rentabilidad_vendedor_mensual), so it needs NO ERP
+// access and works on every build. Admin-only: it spans the whole company and
+// feeds the utilidad-goal tracking, so it lives under the Administración section.
+app.get("/api/performance/rentabilidad", requireAdmin, async (req, res) => {
+  const anio = String(req.query.anio || "");
+  const emptyCell = { importe: 0, costo: 0, utilidad: 0, rentabilidad: 0 };
+  if (!/^\d{4}$/.test(anio)) {
+    res.status(400).json({ error: "anio (YYYY) es obligatorio." });
+    return;
+  }
+  try {
+    const rows = await fetchRentabilidadRows(supabase, anio);
+    res.json({ anio, ...groupRentabilidadAnual(rows) });
+  } catch (err: any) {
+    // Degrade to an empty report (e.g. table missing) rather than erroring the tab.
+    console.error("[performance/rentabilidad]", err?.message || err);
+    res.json({ anio, vendedores: [], totalesMes: Array.from({ length: 12 }, () => ({ ...emptyCell })), total: { ...emptyCell }, vendedoresConVenta: 0 });
+  }
+});
+
+// Available years for the rentabilidad report — min/max periodo in the mirror.
+app.get("/api/performance/rentabilidad/anios", requireAdmin, async (_req, res) => {
+  try {
+    const [{ data: minRow }, { data: maxRow }] = await Promise.all([
+      supabase.from("erp_rentabilidad_vendedor_mensual").select("periodo").order("periodo", { ascending: true }).limit(1),
+      supabase.from("erp_rentabilidad_vendedor_mensual").select("periodo").order("periodo", { ascending: false }).limit(1),
+    ]);
+    const minY = Number(String(minRow?.[0]?.periodo || "").slice(0, 4));
+    const maxY = Number(String(maxRow?.[0]?.periodo || "").slice(0, 4));
+    const anios: string[] = [];
+    if (minY && maxY) for (let y = maxY; y >= minY; y--) anios.push(String(y));
+    res.json({ anios });
+  } catch (err: any) {
+    console.error("[performance/rentabilidad/anios]", err?.message || err);
+    res.json({ anios: [] });
   }
 });
 

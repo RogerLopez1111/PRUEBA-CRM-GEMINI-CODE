@@ -194,6 +194,141 @@ export async function getVentasClienteMensual(
 }
 
 // ---------------------------------------------------------------------------
+// Rentabilidad por vendedor/mes — feeds the materialized
+// "REPORTE DE RENTABILIDAD" (por Vendedor) table (erp_rentabilidad_vendedor_mensual).
+//
+// Faithful port of the ManagementPro report RPVNA06 (RPVNA06_CO.asp) for the
+// Agrupar = "36" (Vendedor) case, which the ERP builds from THREE sources, all
+// filtered Es_Cve_Estado <> 'CA' within [desde, hasta):
+//   • Venta           → ventaImporte = SUM((Vn_Precio_Descontado_Importe
+//                       - Vn_Descuento_Global_Importe) * Vn_Tipo_Cambio)
+//                       ventaCosto   = SUM(Vn_Costo_Importe)
+//   • Nota_Credito (Nc_Tabla IN ('ACUSE_RECIBO','DEVOLUCION_CLIENTE')) → dev/rechazo
+//                       devImporte, devCosto (same expressions, Nc_ prefix)
+//   • Nota_Credito (Nc_Tabla NOT IN (...))                             → bonificaciones
+//                       boniImporte (importe only; no cost)
+// The net profitability is derived at read time (rentabilidad-core):
+//   ImporteNeto = ventaImporte - devImporte - boniImporte
+//   CostoNeto   = ventaCosto   - devCosto
+//   Utilidad    = ImporteNeto  - CostoNeto ;  % = Utilidad / ImporteNeto
+// Merma & Gasto are intentionally excluded — the ERP disables both for the
+// Vendedor grouping. Vendedor on the Nota_Credito side is the NC's own vendedor.
+// The INNER JOINs (Sucursal/Almacen/Cliente/Ruta/Producto) mirror the ERP's
+// grain exactly so orphan rows drop the same way and totals match to the peso.
+// One row per (vendedor, mes); amounts are in base currency (pesos) via tipo de
+// cambio, so USD sales are converted just like the ERP report.
+// ---------------------------------------------------------------------------
+export type RentabilidadVendedorMensual = {
+  vendedorId: string;
+  vendedorNombre: string;
+  periodo: string; // 'YYYY-MM'
+  ventaImporte: number;
+  ventaCosto: number;
+  devImporte: number;
+  devCosto: number;
+  boniImporte: number;
+};
+
+export async function getRentabilidadVendedorMensual(
+  desde: string, // 'YYYY-MM-DD' inclusive
+  hasta: string  // 'YYYY-MM-DD' exclusive
+): Promise<RentabilidadVendedorMensual[]> {
+  try {
+    const p = await getPool();
+    const req = p.request();
+    req.input('desde', sql.DateTime, new Date(desde));
+    req.input('hasta', sql.DateTime, new Date(hasta));
+    const r = await req.query(`
+      WITH V AS (
+        SELECT
+          ve.Vn_Cve_Vendedor                 AS vendedorId,
+          CONVERT(char(7), ve.Vn_Fecha, 126) AS periodo,
+          SUM(ve.Vn_Costo_Importe)           AS ventaCosto,
+          SUM((ve.Vn_Precio_Descontado_Importe - ve.Vn_Descuento_Global_Importe) * ve.Vn_Tipo_Cambio) AS ventaImporte
+        FROM Venta ve
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = ve.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = ve.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = ve.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = ve.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = ve.Vn_Cve_Vendedor
+        WHERE ve.Vn_Fecha >= @desde AND ve.Vn_Fecha < @hasta
+          AND ve.Es_Cve_Estado <> 'CA'
+        GROUP BY ve.Vn_Cve_Vendedor, CONVERT(char(7), ve.Vn_Fecha, 126)
+      ),
+      D AS (
+        SELECT
+          nc.Vn_Cve_Vendedor                 AS vendedorId,
+          CONVERT(char(7), nc.Nc_Fecha, 126) AS periodo,
+          SUM(nc.Nc_Costo_Importe)           AS devCosto,
+          SUM((nc.Nc_Precio_Descontado_Importe - nc.Nc_Descuento_Global_Importe) * nc.Nc_Tipo_Cambio) AS devImporte
+        FROM Nota_Credito nc
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = nc.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = nc.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = nc.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = nc.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = nc.Vn_Cve_Vendedor
+        WHERE nc.Nc_Fecha >= @desde AND nc.Nc_Fecha < @hasta
+          AND nc.Es_Cve_Estado <> 'CA'
+          AND nc.Nc_Tabla IN ('ACUSE_RECIBO','DEVOLUCION_CLIENTE')
+        GROUP BY nc.Vn_Cve_Vendedor, CONVERT(char(7), nc.Nc_Fecha, 126)
+      ),
+      B AS (
+        SELECT
+          nc.Vn_Cve_Vendedor                 AS vendedorId,
+          CONVERT(char(7), nc.Nc_Fecha, 126) AS periodo,
+          SUM((nc.Nc_Precio_Descontado_Importe - nc.Nc_Descuento_Global_Importe) * nc.Nc_Tipo_Cambio) AS boniImporte
+        FROM Nota_Credito nc
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = nc.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = nc.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = nc.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = nc.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = nc.Vn_Cve_Vendedor
+        WHERE nc.Nc_Fecha >= @desde AND nc.Nc_Fecha < @hasta
+          AND nc.Es_Cve_Estado <> 'CA'
+          AND nc.Nc_Tabla NOT IN ('ACUSE_RECIBO','DEVOLUCION_CLIENTE')
+        GROUP BY nc.Vn_Cve_Vendedor, CONVERT(char(7), nc.Nc_Fecha, 126)
+      ),
+      K AS (
+        SELECT vendedorId, periodo FROM V
+        UNION SELECT vendedorId, periodo FROM D
+        UNION SELECT vendedorId, periodo FROM B
+      )
+      SELECT
+        K.vendedorId                          AS vendedorId,
+        LTRIM(RTRIM(vn.Vn_Descripcion))       AS vendedorNombre,
+        K.periodo                             AS periodo,
+        ISNULL(V.ventaImporte, 0)             AS ventaImporte,
+        ISNULL(V.ventaCosto, 0)               AS ventaCosto,
+        ISNULL(D.devImporte, 0)               AS devImporte,
+        ISNULL(D.devCosto, 0)                 AS devCosto,
+        ISNULL(B.boniImporte, 0)              AS boniImporte
+      FROM K
+        LEFT JOIN V ON V.vendedorId = K.vendedorId AND V.periodo = K.periodo
+        LEFT JOIN D ON D.vendedorId = K.vendedorId AND D.periodo = K.periodo
+        LEFT JOIN B ON B.vendedorId = K.vendedorId AND B.periodo = K.periodo
+        LEFT JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = K.vendedorId
+      ORDER BY K.vendedorId, K.periodo
+    `);
+    return r.recordset.map((row) => ({
+      vendedorId: String(row.vendedorId ?? ''),
+      vendedorNombre: String(row.vendedorNombre ?? ''),
+      periodo: String(row.periodo ?? ''),
+      ventaImporte: Number(row.ventaImporte) || 0,
+      ventaCosto: Number(row.ventaCosto) || 0,
+      devImporte: Number(row.devImporte) || 0,
+      devCosto: Number(row.devCosto) || 0,
+      boniImporte: Number(row.boniImporte) || 0,
+    }));
+  } catch (err) {
+    console.error('[MSSQL] getRentabilidadVendedorMensual:', err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Clients (read-only from ERP)
 // ---------------------------------------------------------------------------
 

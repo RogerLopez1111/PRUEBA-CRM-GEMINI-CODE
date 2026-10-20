@@ -71,8 +71,11 @@ export interface SalesGoal {
   year: number;
   month: number;        // 1–12
   meta: number;
-  invoiced: number;     // actual invoiced amount for that month
+  invoiced: number;     // actual invoiced amount for that month (ventas ERP)
   status: "current" | "achieved" | "missed" | "future";
+  metaUtilidad: number; // gross-profit goal for that month (vendedor_metas.meta_utilidad)
+  utilidad: number;     // actual utilidad bruta for that month (erp_rentabilidad_vendedor_mensual)
+  utilidadStatus: "current" | "achieved" | "missed" | "future";
   createdAt: string;
 }
 
@@ -88,7 +91,8 @@ export interface User {
     totalClosed: number;
     totalValue: number;
     conversionRate: number;
-    salesGoal: number;  // from vendedor_metas (current month)
+    salesGoal: number;    // from vendedor_metas.meta (current month)
+    utilidadGoal: number; // from vendedor_metas.meta_utilidad (current month)
   };
   workload?: {
     activeLeads: number;

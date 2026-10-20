@@ -217,7 +217,7 @@ function ErpVentasBanner({ live, available, loading, onRetry, fromDevice, fetche
   );
 }
 
-function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled, metaVentas, erpStored, erpStoredLoading }: {
+function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMonth, erpVentas, erpLoading, onErpRetry, erpEnabled, metaVentas, utilidadReal, erpStored, erpStoredLoading }: {
   key?: string;
   user: User;
   leadsAll: ReturnType<typeof useAppData>["leads"];
@@ -229,6 +229,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   onErpRetry: () => void;
   erpEnabled: boolean;
   metaVentas: number; // stored ERP sales (subtotal) for this seller + month — the Progreso Meta numerator
+  utilidadReal: number; // real utilidad bruta (rentabilidad mirror) for this seller + month — Progreso de Utilidad numerator
   erpStored?: { subtotal: number; total: number; facturas: number; updatedAt: string }; // stored Supabase aggregate — fallback when no live ERP
   erpStoredLoading: boolean; // stored aggregate fetch in flight (used for the banner's loading state off-LAN)
 }) {
@@ -303,6 +304,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   const [filterYear, filterMonthNum] = filterMonth.split("-").map(Number);
   const goalForMonth = goalsTimeline.find(g => g.year === filterYear && g.month === filterMonthNum);
   const effectiveSalesGoal = goalForMonth?.meta ?? user.performance.salesGoal;
+  const effectiveUtilidadGoal = goalForMonth?.metaUtilidad ?? user.performance.utilidadGoal;
+  const utilidadPct = effectiveUtilidadGoal > 0 ? Math.min(100, Math.round((utilidadReal / effectiveUtilidadGoal) * 100)) : 0;
 
   const userTtfc = timeToFirstContact(userLeads);
   const userFunnelData = funnelByStage(userLeads);
@@ -326,7 +329,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
       />
 
       {/* Leads/pipeline stream — what the seller achieved working tracked leads */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
@@ -375,6 +378,18 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
           </CardContent>
         </Card>
+        <Card className="bg-white">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-brand-gray">Meta de Utilidad</p>
+              <p className="text-xl font-bold text-slate-900">${effectiveUtilidadGoal.toLocaleString()}</p>
+              <p className="text-[10px] text-slate-400">{utilidadPct}% · ${utilidadReal.toLocaleString()} utilidad ERP</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -412,6 +427,24 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                   )}
                 />
               </div>
+
+              <div className="flex items-center justify-between text-sm pt-1">
+                <span className="text-slate-500 font-medium">Progreso de Utilidad <span className="text-[10px] text-slate-400">(utilidad ERP)</span></span>
+                <span className="font-bold">{utilidadPct}%</span>
+              </div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${utilidadPct}%` }}
+                  className={cn(
+                    "h-full transition-all",
+                    effectiveUtilidadGoal > 0 && utilidadReal >= effectiveUtilidadGoal ? "bg-emerald-500" : "bg-emerald-400"
+                  )}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Meta ${effectiveUtilidadGoal.toLocaleString()} · Utilidad ${utilidadReal.toLocaleString()}
+              </p>
             </div>
 
             <div className="pt-4 border-t space-y-4">
@@ -683,6 +716,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {goalsTimeline.map((g) => {
                   const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
+                  const uPct = g.metaUtilidad > 0 ? Math.min(100, Math.round((g.utilidad / g.metaUtilidad) * 100)) : 0;
                   const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
                     : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
                     : g.status === "current" ? "bg-blue-50 text-blue-700 border-blue-200"
@@ -694,14 +728,26 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                         <span className="text-xs font-semibold">{GOAL_MONTHS[g.month - 1]} {g.year}</span>
                         <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>{badgeLabel}</Badge>
                       </div>
+                      {/* Ventas */}
                       <div className="flex justify-between text-[11px] text-slate-500">
-                        <span>Meta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
+                        <span>Meta venta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
                         <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
                       </div>
                       <div className="space-y-0.5">
                         <div className="flex justify-end text-[10px] font-bold">{pct}%</div>
                         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div className={`h-full rounded-full ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      {/* Utilidad */}
+                      <div className="flex justify-between text-[11px] text-slate-500 pt-1 border-t">
+                        <span>Meta util.: <span className="font-semibold text-slate-700">${g.metaUtilidad.toLocaleString()}</span></span>
+                        <span>Utilidad: <span className="font-semibold text-slate-700">${g.utilidad.toLocaleString()}</span></span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex justify-end text-[10px] font-bold">{uPct}%</div>
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${uPct}%` }} />
                         </div>
                       </div>
                     </div>
@@ -803,6 +849,22 @@ export function PerformanceTab() {
     }
     return erpStored[vendedorId]?.subtotal ?? 0;
   };
+
+  // Stored utilidad bruta per seller for the selected month (from the rentabilidad
+  // mirror). Numerator for Progreso de Utilidad vs meta. Works on every build.
+  const [utilidadStored, setUtilidadStored] = useState<Record<string, { utilidad: number; importe: number; costo: number }>>({});
+  useEffect(() => {
+    let aborted = false;
+    setUtilidadStored({}); // clear prior month so a stale number never flashes
+    apiFetch(`/api/performance/utilidad-stored?periodo=${filterMonth}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { byVendedor?: Record<string, { utilidad: number; importe: number; costo: number }> } | null) => {
+        if (!aborted && d) setUtilidadStored(d.byVendedor || {});
+      })
+      .catch(() => { if (!aborted) setUtilidadStored({}); });
+    return () => { aborted = true; };
+  }, [filterMonth]);
+  const utilidadReal = (vendedorId: string) => utilidadStored[vendedorId]?.utilidad ?? 0;
 
   const loadErpVentas = useCallback(() => {
     const [y, m] = filterMonth.split("-").map(Number);
@@ -977,6 +1039,7 @@ export function PerformanceTab() {
                     <TableHead className="font-semibold">1er Contacto</TableHead>
                     <TableHead className="font-semibold">COT→FACT</TableHead>
                     <TableHead className="font-semibold">Progreso Meta</TableHead>
+                    <TableHead className="font-semibold">Progreso Utilidad</TableHead>
                     <TableHead className="text-right font-semibold">Conversión</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1002,6 +1065,10 @@ export function PerformanceTab() {
                     const metaVentasUser = metaVentas(user.id);
                     const progress = user.performance.salesGoal > 0
                       ? Math.min(100, Math.round((metaVentasUser / user.performance.salesGoal) * 100))
+                      : 0;
+                    const utilidadUser = utilidadReal(user.id);
+                    const uProgress = user.performance.utilidadGoal > 0
+                      ? Math.min(100, Math.round((utilidadUser / user.performance.utilidadGoal) * 100))
                       : 0;
                     const erp = erpVentas?.byVendedor[user.id];
                     const erpStale = erpVentas?.fromDevice ?? false;
@@ -1075,6 +1142,14 @@ export function PerformanceTab() {
                             <span className="text-xs font-bold">{progress}%</span>
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden border">
+                              <div className="h-full bg-emerald-500" style={{ width: `${uProgress}%` }} />
+                            </div>
+                            <span className="text-xs font-bold">{uProgress}%</span>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">{(user.performance.conversionRate * 100).toFixed(1)}%</TableCell>
                       </TableRow>
                     );
@@ -1099,6 +1174,7 @@ export function PerformanceTab() {
               onErpRetry={loadErpVentas}
               erpEnabled={erpEnabled}
               metaVentas={metaVentas(user.id)}
+              utilidadReal={utilidadReal(user.id)}
               erpStored={erpStored[user.id]}
               erpStoredLoading={erpStoredLoading}
             />

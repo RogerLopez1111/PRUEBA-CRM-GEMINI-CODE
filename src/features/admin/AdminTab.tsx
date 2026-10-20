@@ -23,13 +23,14 @@ import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { Lead, LeadStatus, SalesGoal, User } from "../../types";
 import { useWorkloadInsights } from "./useWorkloadInsights";
+import { RentabilidadReport } from "./RentabilidadReport";
 import { getStatusBadge } from "../leads/getStatusBadge";
 
 export interface AdminTabProps {
   openStatusUpdate: (lead: Lead) => void;
 }
 
-const NEW_USER_BLANK = { name: "", email: "", role: "Seller" as "Admin" | "Seller" | "Compras", salesGoal: 50000, sucursal: "" };
+const NEW_USER_BLANK = { name: "", email: "", role: "Seller" as "Admin" | "Seller" | "Compras", salesGoal: 50000, utilidadGoal: 0, sucursal: "" };
 const STAGE_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: "ASIGNADO", label: "Asignado" },
   { value: "CONTACTADO", label: "Contactado" },
@@ -44,6 +45,7 @@ const BRANCH_GOAL_BLANK = () => ({
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
   amount: 0,
+  utilidadAmount: 0,
 });
 
 export function AdminTab({ openStatusUpdate }: AdminTabProps) {
@@ -186,12 +188,32 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
     }
   };
 
-  const handleSetBranchGoal = async () => {
-    if (!branchGoal.sucursalId || !branchGoal.amount) return;
+  const handleUpdateUtilidadGoal = async (userId: string, metaUtilidad: number) => {
     try {
+      const res = await apiFetch(`/api/users/${userId}/goal`, {
+        method: "POST",
+        body: JSON.stringify({ metaUtilidad }),
+      });
+      if (res.ok) {
+        toast.success("Meta de utilidad actualizada");
+        refetchAll();
+      }
+    } catch {
+      toast.error("Error al actualizar meta de utilidad");
+    }
+  };
+
+  const handleSetBranchGoal = async () => {
+    if (!branchGoal.sucursalId || (!branchGoal.amount && !branchGoal.utilidadAmount)) return;
+    try {
+      // Send only the fields the admin actually filled, so leaving one blank
+      // doesn't zero out the existing goal (the API preserves the untouched one).
+      const body: Record<string, number> = { year: branchGoal.year, month: branchGoal.month };
+      if (branchGoal.amount) body.goal = branchGoal.amount;
+      if (branchGoal.utilidadAmount) body.metaUtilidad = branchGoal.utilidadAmount;
       const res = await apiFetch(`/api/sucursales/${branchGoal.sucursalId}/goal`, {
         method: "POST",
-        body: JSON.stringify({ goal: branchGoal.amount, year: branchGoal.year, month: branchGoal.month }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const data = await res.json();
@@ -239,6 +261,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
             <TabsTrigger value="workload" className="text-xs px-4">Carga de Trabajo</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs px-4">Actividad Global</TabsTrigger>
             <TabsTrigger value="goals" className="text-xs px-4">Metas por Sucursal</TabsTrigger>
+            <TabsTrigger value="rentabilidad" className="text-xs px-4">Rentabilidad</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -298,9 +321,15 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                           </Select>
                         </div>
                       </div>
-                      <div className="grid gap-2">
-                        <label className="text-sm font-medium">Meta de Ventas ($)</label>
-                        <Input type="number" value={newUser.salesGoal || ""} onChange={(e) => setNewUser({ ...newUser, salesGoal: Number(e.target.value) })} />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Meta de Ventas ($)</label>
+                          <Input type="number" value={newUser.salesGoal || ""} onChange={(e) => setNewUser({ ...newUser, salesGoal: Number(e.target.value) })} />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-sm font-medium">Meta de Utilidad ($)</label>
+                          <Input type="number" value={newUser.utilidadGoal || ""} onChange={(e) => setNewUser({ ...newUser, utilidadGoal: Number(e.target.value) })} />
+                        </div>
                       </div>
                     </div>
                     <DialogFooter>
@@ -341,6 +370,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       <TableHead className="font-semibold">Usuario</TableHead>
                       <TableHead className="font-semibold">Rol</TableHead>
                       <TableHead className="font-semibold">Meta de Ventas ($)</TableHead>
+                      <TableHead className="font-semibold">Meta de Utilidad ($)</TableHead>
                       <TableHead className="text-right font-semibold">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -378,6 +408,19 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                                 onBlur={(e) => {
                                   const newVal = Number(e.target.value);
                                   if (newVal !== user.performance.salesGoal) handleUpdateGoal(user.id, newVal);
+                                }}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                className="w-28 h-8"
+                                defaultValue={user.performance.utilidadGoal}
+                                onBlur={(e) => {
+                                  const newVal = Number(e.target.value);
+                                  if (newVal !== user.performance.utilidadGoal) handleUpdateUtilidadGoal(user.id, newVal);
                                 }}
                               />
                             </div>
@@ -453,6 +496,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                     {userGoalsTimeline.map((g) => {
                       const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
                       const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
+                      const uPct = g.metaUtilidad > 0 ? Math.min(100, Math.round((g.utilidad / g.metaUtilidad) * 100)) : 0;
                       const label = `${MONTHS[g.month - 1]} ${g.year}`;
                       const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
                         : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
@@ -466,12 +510,20 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                             <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>{badgeLabel}</Badge>
                           </div>
                           <div className="flex justify-between text-[11px] text-slate-500">
-                            <span>Meta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
+                            <span>Meta venta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
                             <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
                             <span className="font-bold">{pct}%</span>
                           </div>
                           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                             <div className={`h-full rounded-full transition-all ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <div className="flex justify-between text-[11px] text-slate-500 pt-1 border-t">
+                            <span>Meta util.: <span className="font-semibold text-slate-700">${g.metaUtilidad.toLocaleString()}</span></span>
+                            <span>Utilidad: <span className="font-semibold text-slate-700">${g.utilidad.toLocaleString()}</span></span>
+                            <span className="font-bold">{uPct}%</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${uPct}%` }} />
                           </div>
                         </div>
                       );
@@ -937,7 +989,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                   <div className="grid gap-2">
                     <label className="text-sm font-medium text-white/90">Sucursal</label>
                     <Select value={branchGoal.sucursalId} onValueChange={(val) => setBranchGoal({ ...branchGoal, sucursalId: val })}>
@@ -968,12 +1020,22 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-sm font-medium text-white/90">Meta ($)</label>
+                    <label className="text-sm font-medium text-white/90">Meta venta ($)</label>
                     <Input
                       type="number"
                       placeholder="50000"
                       value={branchGoal.amount || ""}
                       onChange={(e) => setBranchGoal({ ...branchGoal, amount: Number(e.target.value) })}
+                      className="bg-white text-foreground border-transparent placeholder:text-muted-foreground"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium text-white/90">Meta utilidad ($)</label>
+                    <Input
+                      type="number"
+                      placeholder="15000"
+                      value={branchGoal.utilidadAmount || ""}
+                      onChange={(e) => setBranchGoal({ ...branchGoal, utilidadAmount: Number(e.target.value) })}
                       className="bg-white text-foreground border-transparent placeholder:text-muted-foreground"
                     />
                   </div>
@@ -984,7 +1046,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                   </p>
                 )}
                 <div className="mt-4">
-                  <Button onClick={handleSetBranchGoal} disabled={!branchGoal.sucursalId || !branchGoal.amount} className="gap-2">
+                  <Button onClick={handleSetBranchGoal} disabled={!branchGoal.sucursalId || (!branchGoal.amount && !branchGoal.utilidadAmount)} className="gap-2">
                     <Target className="w-4 h-4" />
                     Aplicar Meta
                   </Button>
@@ -1007,7 +1069,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       <TableRow className="bg-slate-50/50">
                         <TableHead className="font-semibold">Sucursal</TableHead>
                         <TableHead className="font-semibold">Vendedor</TableHead>
-                        <TableHead className="font-semibold text-right">Meta Actual ($)</TableHead>
+                        <TableHead className="font-semibold text-right">Meta Venta ($)</TableHead>
+                        <TableHead className="font-semibold text-right">Meta Utilidad ($)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1021,12 +1084,15 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                               <TableCell className="text-right font-mono">
                                 {u.performance.salesGoal ? `$${u.performance.salesGoal.toLocaleString()}` : <span className="text-slate-400 text-xs">Sin meta</span>}
                               </TableCell>
+                              <TableCell className="text-right font-mono">
+                                {u.performance.utilidadGoal ? `$${u.performance.utilidadGoal.toLocaleString()}` : <span className="text-slate-400 text-xs">Sin meta</span>}
+                              </TableCell>
                             </TableRow>
                           ))
                       )}
                       {users.filter((u) => u.role === "Seller").length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={3} className="h-24 text-center text-slate-400">No hay vendedores activos.</TableCell>
+                          <TableCell colSpan={4} className="h-24 text-center text-slate-400">No hay vendedores activos.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -1036,6 +1102,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
             </Card>
           </div>
         )}
+
+        {subTab === "rentabilidad" && <RentabilidadReport />}
       </div>
     </>
   );

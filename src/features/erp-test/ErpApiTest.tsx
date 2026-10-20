@@ -12,9 +12,10 @@ import { useState } from "react";
 import VentasPorVendedor from "./VentasPorVendedor";
 import ClientesPorSegmento from "./ClientesPorSegmento";
 import ReporteAnualCliente from "./ReporteAnualCliente";
+import RentabilidadVendedores from "./RentabilidadVendedores";
 import RawConsole from "./RawConsole";
 
-type Tab = "ventas" | "clientes" | "reporte" | "consola";
+type Tab = "ventas" | "clientes" | "reporte" | "rentabilidad" | "consola";
 
 export default function ErpApiTest() {
   const [tab, setTab] = useState<Tab>("ventas");
@@ -34,7 +35,7 @@ export default function ErpApiTest() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid #e2e8f0" }}>
-          {([["ventas", "Ventas por vendedor"], ["clientes", "Clientes por segmento"], ["reporte", "Reporte anual"], ["consola", "Consola API"]] as [Tab, string][]).map(([key, label]) => (
+          {([["ventas", "Ventas por vendedor"], ["clientes", "Clientes por segmento"], ["reporte", "Reporte anual"], ["rentabilidad", "Rentabilidad"], ["consola", "Consola API"]] as [Tab, string][]).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -50,7 +51,7 @@ export default function ErpApiTest() {
           ))}
         </div>
 
-        {tab === "ventas" ? <VentasPorVendedor /> : tab === "clientes" ? <ClientesPorSegmento /> : tab === "reporte" ? <ReporteAnualCliente /> : <RawConsole />}
+        {tab === "ventas" ? <VentasPorVendedor /> : tab === "clientes" ? <ClientesPorSegmento /> : tab === "reporte" ? <ReporteAnualCliente /> : tab === "rentabilidad" ? <RentabilidadVendedores /> : <RawConsole />}
       </div>
     </div>
   );

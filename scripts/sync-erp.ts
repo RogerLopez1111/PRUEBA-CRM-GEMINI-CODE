@@ -22,6 +22,7 @@ import {
   getErpClientsRaw,
   getProductosRaw,
   getVentasClienteMensual,
+  getRentabilidadVendedorMensual,
 } from '../src/sqlserver.js';
 
 // Sync runs locally / via scheduler with full DB access. Uses the service role
@@ -336,6 +337,56 @@ async function syncVentasClienteMensual() {
 }
 
 // ---------------------------------------------------------------------------
+// Rentabilidad por vendedor/mes — materializes the ManagementPro
+// "REPORTE DE RENTABILIDAD" (por Vendedor) so the report tab reads one Supabase
+// table (no ERP API). Recomputed over the same rolling window each sync, so
+// backdated ventas / notas de crédito in closed months are picked up.
+// ---------------------------------------------------------------------------
+async function syncRentabilidadVendedorMensual() {
+  const now = new Date();
+  const fromYear = now.getFullYear() - VENTAS_REPORTE_YEARS_BACK;
+  const desde = `${fromYear}-01-01`;
+  const hasta = `${now.getFullYear() + 1}-01-01`; // exclusive upper bound
+
+  const rows = await getRentabilidadVendedorMensual(desde, hasta);
+  if (!rows.length) {
+    console.warn('⚠  No rentabilidad (vendedor/mes) returned from SQL Server');
+    return;
+  }
+
+  // Replace the window (same rationale as ventas-cliente-mensual): delete the
+  // periodos we're about to rewrite, then insert fresh — so a sale/NC cancelled
+  // since last sync drops its contribution and leaves no stale row.
+  const periodoDesde = `${fromYear}-01`;
+  const { error: delErr } = await supabase
+    .from('erp_rentabilidad_vendedor_mensual')
+    .delete()
+    .gte('periodo', periodoDesde);
+  if (delErr) { console.error('✗ rentabilidad-vendedor-mensual delete:', delErr.message); return; }
+
+  const payload = rows.map((r) => ({
+    vendedor_id: r.vendedorId,
+    vendedor_nombre: r.vendedorNombre,
+    periodo: r.periodo,
+    venta_importe: r.ventaImporte,
+    venta_costo: r.ventaCosto,
+    dev_importe: r.devImporte,
+    dev_costo: r.devCosto,
+    boni_importe: r.boniImporte,
+  }));
+
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < payload.length; i += CHUNK) {
+    const chunk = payload.slice(i, i + CHUNK);
+    const { error } = await supabase.from('erp_rentabilidad_vendedor_mensual').insert(chunk);
+    if (error) console.error(`✗ rentabilidad-vendedor-mensual chunk ${i}–${i + chunk.length}:`, error.message);
+    else inserted += chunk.length;
+  }
+  console.log(`✓ rentabilidad-vendedor-mensual inserted: ${inserted} / ${payload.length} (desde ${periodoDesde})`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -346,6 +397,7 @@ async function main() {
   await syncClients();
   await syncProductos();
   await syncVentasClienteMensual();
+  await syncRentabilidadVendedorMensual();
   console.log('── done ──\n');
   process.exit(0);
 }

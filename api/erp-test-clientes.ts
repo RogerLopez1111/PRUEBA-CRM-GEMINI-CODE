@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { callErp, erpConfigured, ERP_MAX_REGISTROS } from "./erp-client.js";
 import { mapLimit } from "./erp-ventas-core.js";
 import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
+import { fetchRentabilidadRows, groupRentabilidadAnual } from "./rentabilidad-core.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -219,6 +220,40 @@ router.post("/api/erp-test/reporte/anual", async (req, res) => {
     res.json({ vendedor: { id: vendedor }, anio, ...groupReporteAnual(rows) });
   } catch (err: any) {
     res.status(500).json({ error: `No se pudo leer el reporte: ${err?.message || err}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// REPORTE DE RENTABILIDAD (POR VENDEDOR) — read entirely from the mirror table
+// erp_rentabilidad_vendedor_mensual (populated by sync-erp). No ERP API call.
+// All vendedores at once, matrix vendedor × ENE…DIC, cell = % rentabilidad neta.
+// ---------------------------------------------------------------------------
+
+// Years available for the picker — derived from the fact table's min/max periodo.
+router.get("/api/erp-test/rentabilidad/anios", async (_req, res) => {
+  const [{ data: minRow }, { data: maxRow }] = await Promise.all([
+    supabase.from("erp_rentabilidad_vendedor_mensual").select("periodo").order("periodo", { ascending: true }).limit(1),
+    supabase.from("erp_rentabilidad_vendedor_mensual").select("periodo").order("periodo", { ascending: false }).limit(1),
+  ]);
+  const minY = Number(String(minRow?.[0]?.periodo || "").slice(0, 4));
+  const maxY = Number(String(maxRow?.[0]?.periodo || "").slice(0, 4));
+  const anios: string[] = [];
+  if (minY && maxY) for (let y = maxY; y >= minY; y--) anios.push(String(y));
+  res.json({ anios });
+});
+
+// The rentabilidad matrix for one year: every vendedor × 12 months.
+router.post("/api/erp-test/rentabilidad/mensual", async (req, res) => {
+  const anio = String(req.body?.anio || "").trim();
+  if (!/^\d{4}$/.test(anio)) {
+    res.status(400).json({ error: "Falta 'anio' (YYYY)." });
+    return;
+  }
+  try {
+    const rows = await fetchRentabilidadRows(supabase, anio);
+    res.json({ anio, ...groupRentabilidadAnual(rows) });
+  } catch (err: any) {
+    res.status(500).json({ error: `No se pudo leer la rentabilidad: ${err?.message || err}` });
   }
 });
 
