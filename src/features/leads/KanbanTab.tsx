@@ -190,7 +190,7 @@ interface KanbanTabProps {
 }
 
 export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
-  const { leads, users, sucursales, segmentos, currentUser, refetchAll } = useAppData();
+  const { leads, users, sucursales, segmentos, currentUser, refetchAll, leadsDesde, loadingOlderLeads, loadOlderLeads } = useAppData();
 
   const [filterSeller, setFilterSeller] = useState<string>("all");
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
@@ -426,6 +426,19 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
                 })}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-brand-gray ml-1">
+              Historial desde {(() => { const [y, m] = leadsDesde.split("-").map(Number); return `${MESES[m - 1]} ${y}`; })()}
+            </p>
+            <button
+              onClick={loadOlderLeads}
+              disabled={loadingOlderLeads}
+              title="Carga 3 meses más de leads cerrados (entregados/rechazados). Los leads activos siempre se muestran."
+              className="flex items-center gap-1.5 h-9 px-3 border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 rounded-md whitespace-nowrap"
+            >
+              {loadingOlderLeads ? "Cargando…" : "+ Meses anteriores"}
+            </button>
           </div>
           {currentUser?.role === "Admin" && (
             <div className="space-y-1">

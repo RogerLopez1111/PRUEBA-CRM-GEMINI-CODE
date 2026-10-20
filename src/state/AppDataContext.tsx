@@ -12,6 +12,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -47,6 +48,12 @@ interface AppData {
   // Lifecycle
   loading: boolean;
 
+  // Leads load window: `leadsDesde` is the earliest month start currently loaded
+  // (closed leads before it aren't fetched yet); loadOlderLeads walks it back.
+  leadsDesde: string;
+  loadingOlderLeads: boolean;
+  loadOlderLeads: () => Promise<void>;
+
   // Refetchers — granular for the hot paths, refetchAll for everything else
   refetchAll: () => Promise<void>;
   refetchLeads: () => Promise<void>;
@@ -68,6 +75,25 @@ const safeJson = async <T,>(res: Response, fallback: T): Promise<T> => {
   }
 };
 
+// Leads are loaded in a rolling time window: open leads always come back, but
+// closed (entregado/rechazado) history only from `desde` onward. The default
+// window is the current month + the 2 prior (≈3 months); "cargar meses
+// anteriores" walks `desde` back CHUNK_MONTHS at a time.
+const WINDOW_MONTHS = 3;
+const CHUNK_MONTHS = 3;
+
+// First day (YYYY-MM-01) of the month `n` months before the given month start.
+function firstOfMonthsBefore(iso: string, n: number): string {
+  const [y, m] = iso.split("-").map(Number);
+  const d = new Date(y, m - 1 - n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function currentMonthStart(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+const DEFAULT_LEADS_DESDE = firstOfMonthsBefore(currentMonthStart(), WINDOW_MONTHS - 1);
+
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -81,6 +107,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [currentUserState, setCurrentUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Rolling window start for the leads load. A ref mirrors it so the stable
+  // refetchers read the current value without re-creating their identity.
+  const [leadsDesde, setLeadsDesde] = useState<string>(DEFAULT_LEADS_DESDE);
+  const [loadingOlderLeads, setLoadingOlderLeads] = useState(false);
+  const leadsDesdeRef = useRef(leadsDesde);
+  useEffect(() => { leadsDesdeRef.current = leadsDesde; }, [leadsDesde]);
 
   // Auth setter persists to localStorage so refresh keeps the session.
   // Clearing the user also clears the stored token — they're a unit.
@@ -99,8 +132,23 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refetchLeads = useCallback(async () => {
-    const res = await apiFetch("/api/leads");
+    const res = await apiFetch(`/api/leads?desde=${leadsDesdeRef.current}`);
     setLeads(await safeJson<Lead[]>(res, []));
+  }, []);
+
+  // Extend the window CHUNK_MONTHS further back and reload (the wider window is a
+  // superset, so we replace rather than merge). Used by "cargar meses anteriores".
+  const loadOlderLeads = useCallback(async () => {
+    setLoadingOlderLeads(true);
+    const next = firstOfMonthsBefore(leadsDesdeRef.current, CHUNK_MONTHS);
+    try {
+      const res = await apiFetch(`/api/leads?desde=${next}`);
+      const data = await safeJson<Lead[]>(res, []);
+      setLeads(data);
+      setLeadsDesde(next);
+    } finally {
+      setLoadingOlderLeads(false);
+    }
   }, []);
 
   const refetchUsers = useCallback(async () => {
@@ -129,7 +177,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         leadsRes, usersRes, clientsRes, sucursalesRes, segmentosRes,
         motivosRes, productosRes, faltantesRes, pedidosRes, tareasRes,
       ] = await Promise.all([
-        apiFetch("/api/leads"),
+        apiFetch(`/api/leads?desde=${leadsDesdeRef.current}`),
         apiFetch("/api/users"),
         apiFetch("/api/clients"),
         apiFetch("/api/lookups/sucursales"),
@@ -204,6 +252,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       currentUser: currentUserState,
       setCurrentUser,
       loading,
+      leadsDesde,
+      loadingOlderLeads,
+      loadOlderLeads,
       refetchAll,
       refetchLeads,
       refetchUsers,
@@ -214,6 +265,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [
       leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, tareas, rechazoMotivos,
       currentUserState, setCurrentUser, loading,
+      leadsDesde, loadingOlderLeads, loadOlderLeads,
       refetchAll, refetchLeads, refetchUsers, refetchFaltantes, refetchPedidos, refetchTareas,
     ]
   );

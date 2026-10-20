@@ -149,25 +149,50 @@ async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
 // the server-side enforcement of "sellers see only their own leads" (admins
 // call it with no filter to get everything). Combined with idx_leads_vendedor
 // the scoped query is a fast indexed lookup instead of a full-table scan.
-async function getLeadsWithHistory(filters: { vendedorId?: string } = {}) {
-  let leadsQuery = supabase
-    .from("leads")
-    .select(`
-      *,
-      clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-      lead_history(*, rechazo_motivos(descripcion))
-    `)
-    .order("Cl_CreatedAt_CRM", { ascending: false });
-  if (filters.vendedorId) leadsQuery = leadsQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
+// Closed statuses — leads here are terminal history; everything else is "open"
+// (still in the active pipeline) and always loaded regardless of age.
+const CLOSED_STATUSES = ["ENTREGADO", "RECHAZADO"];
 
-  const [leadsResult, sucursalesMap, segmentosMap] = await Promise.all([
-    leadsQuery,
+async function getLeadsWithHistory(filters: { vendedorId?: string; desde?: string } = {}) {
+  // Supabase caps a single select at ~1000 rows. A seller's own leads stay well
+  // under that, but the admin view (no vendedor filter) spans the whole company
+  // and WILL exceed it — so page through, or admins silently lose every lead
+  // past the newest 1000 (older COTIZADO/FACTURADO disappear from the pipeline).
+  //
+  // `desde` windows the load: OPEN leads always load (an active deal must never
+  // vanish, no matter how old), while CLOSED (entregado/rechazado) leads load
+  // only from `desde` onward. The client pages further back on demand.
+  const PAGE = 1000;
+  const leadsData: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let leadsQuery = supabase
+      .from("leads")
+      .select(`
+        *,
+        clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
+        lead_history(*, rechazo_motivos(descripcion))
+      `)
+      .order("Cl_CreatedAt_CRM", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (filters.vendedorId) leadsQuery = leadsQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
+    if (filters.desde) {
+      leadsQuery = leadsQuery.or(
+        `Cl_Status_CRM.not.in.(${CLOSED_STATUSES.join(",")}),Cl_CreatedAt_CRM.gte.${filters.desde}`
+      );
+    }
+    const { data, error } = await leadsQuery;
+    if (error) { console.error("[getLeadsWithHistory]", error.message); break; }
+    if (!data || data.length === 0) break;
+    leadsData.push(...data);
+    if (data.length < PAGE) break;
+  }
+
+  const [sucursalesMap, segmentosMap] = await Promise.all([
     getSucursalesMap(),
     getSegmentosMap(),
   ]);
 
-  const leadsData = leadsResult.data;
-  if (!leadsData) return [];
+  if (leadsData.length === 0) return [];
 
   return leadsData.map((l) => ({
     id: l.id,
@@ -667,7 +692,11 @@ app.get("/api/performance/reporte-anual", requireAuth, async (req, res) => {
 app.get("/api/leads", requireAuth, async (req, res) => {
   // Admins see every lead; sellers see only the leads assigned to them.
   const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
-  res.json(await getLeadsWithHistory({ vendedorId }));
+  // Optional time window (YYYY-MM-DD): closed leads only from `desde` onward;
+  // open leads always load. Omitted → full history.
+  const desdeRaw = typeof req.query.desde === "string" ? req.query.desde : "";
+  const desde = /^\d{4}-\d{2}-\d{2}$/.test(desdeRaw) ? desdeRaw : undefined;
+  res.json(await getLeadsWithHistory({ vendedorId, desde }));
 });
 
 app.post("/api/leads", requireAuth, async (req, res) => {
