@@ -153,48 +153,16 @@ async function getUsersWithPerformance(filters: { vendedorId?: string } = {}) {
 // (still in the active pipeline) and always loaded regardless of age.
 const CLOSED_STATUSES = ["ENTREGADO", "RECHAZADO"];
 
-async function getLeadsWithHistory(filters: { vendedorId?: string; desde?: string } = {}) {
-  // Supabase caps a single select at ~1000 rows. A seller's own leads stay well
-  // under that, but the admin view (no vendedor filter) spans the whole company
-  // and WILL exceed it — so page through, or admins silently lose every lead
-  // past the newest 1000 (older COTIZADO/FACTURADO disappear from the pipeline).
-  //
-  // `desde` windows the load: OPEN leads always load (an active deal must never
-  // vanish, no matter how old), while CLOSED (entregado/rechazado) leads load
-  // only from `desde` onward. The client pages further back on demand.
-  const PAGE = 1000;
-  const leadsData: any[] = [];
-  for (let from = 0; ; from += PAGE) {
-    let leadsQuery = supabase
-      .from("leads")
-      .select(`
-        *,
-        clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
-        lead_history(*, rechazo_motivos(descripcion))
-      `)
-      .order("Cl_CreatedAt_CRM", { ascending: false })
-      .range(from, from + PAGE - 1);
-    if (filters.vendedorId) leadsQuery = leadsQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
-    if (filters.desde) {
-      leadsQuery = leadsQuery.or(
-        `Cl_Status_CRM.not.in.(${CLOSED_STATUSES.join(",")}),Cl_CreatedAt_CRM.gte.${filters.desde}`
-      );
-    }
-    const { data, error } = await leadsQuery;
-    if (error) { console.error("[getLeadsWithHistory]", error.message); break; }
-    if (!data || data.length === 0) break;
-    leadsData.push(...data);
-    if (data.length < PAGE) break;
-  }
+const LEAD_SELECT = `
+  *,
+  clientes(Cl_Contacto_1, Cl_email_contacto_1, Cl_Razon_Social),
+  lead_history(*, rechazo_motivos(descripcion))
+`;
 
-  const [sucursalesMap, segmentosMap] = await Promise.all([
-    getSucursalesMap(),
-    getSegmentosMap(),
-  ]);
-
-  if (leadsData.length === 0) return [];
-
-  return leadsData.map((l) => ({
+// Map one raw joined leads row → the client Lead shape. Shared by the list fetch
+// and the single-lead fetch so they never diverge.
+function mapLeadRow(l: any, sucursalesMap: Record<string, string>, segmentosMap: Record<string, string>) {
+  return {
     id: l.id,
     clientId: l.Cl_Cve_Cliente,
     name: (l.clientes as any)?.Cl_Contacto_1 || "",
@@ -229,7 +197,59 @@ async function getLeadsWithHistory(filters: { vendedorId?: string; desde?: strin
         updatedBy: h.updated_by,
         timestamp: h.timestamp,
       })),
-  }));
+  };
+}
+
+// Fetch a SINGLE lead with its history — used by mutation endpoints to return
+// the affected lead. Avoids re-scanning the whole leads table (which, paginated,
+// is 4500+ rows × history) on every status change / create.
+async function getLeadWithHistory(id: string) {
+  const [{ data: l }, sucursalesMap, segmentosMap] = await Promise.all([
+    supabase.from("leads").select(LEAD_SELECT).eq("id", id).maybeSingle(),
+    getSucursalesMap(),
+    getSegmentosMap(),
+  ]);
+  return l ? mapLeadRow(l, sucursalesMap, segmentosMap) : null;
+}
+
+async function getLeadsWithHistory(filters: { vendedorId?: string; desde?: string } = {}) {
+  // Supabase caps a single select at ~1000 rows. A seller's own leads stay well
+  // under that, but the admin view (no vendedor filter) spans the whole company
+  // and WILL exceed it — so page through, or admins silently lose every lead
+  // past the newest 1000 (older COTIZADO/FACTURADO disappear from the pipeline).
+  //
+  // `desde` windows the load: OPEN leads always load (an active deal must never
+  // vanish, no matter how old), while CLOSED (entregado/rechazado) leads load
+  // only from `desde` onward. The client pages further back on demand.
+  const PAGE = 1000;
+  const leadsData: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let leadsQuery = supabase
+      .from("leads")
+      .select(LEAD_SELECT)
+      .order("Cl_CreatedAt_CRM", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (filters.vendedorId) leadsQuery = leadsQuery.eq("Vn_Cve_Vendedor", filters.vendedorId);
+    if (filters.desde) {
+      leadsQuery = leadsQuery.or(
+        `Cl_Status_CRM.not.in.(${CLOSED_STATUSES.join(",")}),Cl_CreatedAt_CRM.gte.${filters.desde}`
+      );
+    }
+    const { data, error } = await leadsQuery;
+    if (error) { console.error("[getLeadsWithHistory]", error.message); break; }
+    if (!data || data.length === 0) break;
+    leadsData.push(...data);
+    if (data.length < PAGE) break;
+  }
+
+  const [sucursalesMap, segmentosMap] = await Promise.all([
+    getSucursalesMap(),
+    getSegmentosMap(),
+  ]);
+
+  if (leadsData.length === 0) return [];
+
+  return leadsData.map((l) => mapLeadRow(l, sucursalesMap, segmentosMap));
 }
 
 // ---------------------------------------------------------------------------
@@ -825,9 +845,7 @@ app.post("/api/leads", requireAuth, async (req, res) => {
     timestamp: now,
   });
 
-  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
-  const leads = await getLeadsWithHistory({ vendedorId });
-  res.status(201).json(leads.find((l) => l.id === leadId));
+  res.status(201).json(await getLeadWithHistory(leadId));
 });
 
 // Admin-only delete: removes the lead and its history. Refuses if any
@@ -881,8 +899,7 @@ app.post("/api/leads/:id/assign", requireAdmin, async (req, res) => {
   const { error } = await supabase.from("leads").update(updates).eq("id", id);
 
   if (!error) {
-    const leads = await getLeadsWithHistory();
-    res.json(leads.find((l) => l.id === id));
+    res.json(await getLeadWithHistory(id));
   } else {
     res.status(404).json({ error: "Lead not found" });
   }
@@ -963,9 +980,69 @@ app.post("/api/leads/:id/status", requireAuth, async (req, res) => {
     timestamp: now,
   });
 
-  const vendedorId = req.user!.role === "Admin" ? undefined : req.user!.sub;
-  const leads = await getLeadsWithHistory({ vendedorId });
-  res.json(leads.find((l) => l.id === id));
+  res.json(await getLeadWithHistory(id));
+});
+
+// Bulk-reject stale leads in a couple of batched queries instead of one HTTP
+// request (each a full-table scan) per lead — the old fan-out from "Rechazar
+// inactivos" overwhelmed Postgres (statement timeouts) once the pagination fix
+// surfaced the full stale set. The client sends the ids it flagged; we validate
+// them server-side (role scope + still-open, never re-closing a lead).
+app.post("/api/leads/bulk-reject", requireAuth, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? [...new Set(req.body.ids.map((x: any) => String(x)).filter(Boolean))]
+    : [];
+  if (ids.length === 0) {
+    res.status(400).json({ error: "ids (array) es obligatorio." });
+    return;
+  }
+
+  const isAdmin = req.user!.role === "Admin";
+  const NON_STALE = new Set(["FACTURADO", "ENTREGADO", "RECHAZADO"]); // match the UI's stale filter
+  const CHUNK = 200; // keep each .in() list well within PostgREST URL limits
+
+  // 1) Validate candidates: must be open (not already closed/invoiced) and, for
+  //    sellers, assigned to them.
+  const eligibleIds: string[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("id, Vn_Cve_Vendedor, Cl_Status_CRM")
+      .in("id", ids.slice(i, i + CHUNK));
+    if (error) { res.status(500).json({ error: error.message }); return; }
+    for (const l of data || []) {
+      if (NON_STALE.has(String(l.Cl_Status_CRM))) continue;
+      if (!isAdmin && l.Vn_Cve_Vendedor !== req.user!.sub) continue;
+      eligibleIds.push(l.id);
+    }
+  }
+  if (eligibleIds.length === 0) { res.json({ rejected: 0 }); return; }
+
+  // 2) Flip status + append a history row, in batches.
+  const now = new Date().toISOString();
+  let rejected = 0;
+  for (let i = 0; i < eligibleIds.length; i += CHUNK) {
+    const batch = eligibleIds.slice(i, i + CHUNK);
+    const { error: updErr } = await supabase
+      .from("leads")
+      .update({ Cl_Status_CRM: "RECHAZADO", Cl_UpdatedAt_CRM: now })
+      .in("id", batch);
+    if (updErr) { res.status(500).json({ error: updErr.message }); return; }
+
+    const history = batch.map((leadId) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      lead_id: leadId,
+      status: "RECHAZADO",
+      comment: "Rechazado por inactividad (30+ días sin actividad)",
+      updated_by: req.user!.sub || "System",
+      timestamp: now,
+    }));
+    const { error: histErr } = await supabase.from("lead_history").insert(history);
+    if (histErr) console.error("[bulk-reject] history insert:", histErr.message);
+    rejected += batch.length;
+  }
+
+  res.json({ rejected });
 });
 
 // ---------------------------------------------------------------------------

@@ -219,14 +219,12 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   const handleBulkReject = async () => {
     setBulkRejectState("busy");
-    await Promise.all(
-      staleLeads.map(l =>
-        apiFetch(`/api/leads/${l.id}/status`, {
-          method: "POST",
-          body: JSON.stringify({ status: "RECHAZADO" }),
-        })
-      )
-    );
+    // One request, batched server-side — NOT one request per lead (that fan-out
+    // triggered Postgres statement timeouts once the full stale set loaded).
+    await apiFetch(`/api/leads/bulk-reject`, {
+      method: "POST",
+      body: JSON.stringify({ ids: staleLeads.map(l => l.id) }),
+    });
     await refetchAll();
     setBulkRejectState("idle");
   };
