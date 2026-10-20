@@ -2,6 +2,7 @@ import { Router } from "express";
 import { createClient } from "@supabase/supabase-js";
 import { callErp, erpConfigured, ERP_MAX_REGISTROS } from "./erp-client.js";
 import { mapLimit } from "./erp-ventas-core.js";
+import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -213,77 +214,12 @@ router.post("/api/erp-test/reporte/anual", async (req, res) => {
     res.status(400).json({ error: "Faltan 'vendedor' y 'anio' (YYYY)." });
     return;
   }
-
-  // Pull every (cliente, periodo) row for this seller/year. A big seller's year
-  // can exceed Supabase's 1000-row cap, so page through until a short page.
-  const PAGE = 1000;
-  const data: any[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data: page, error } = await supabase
-      .from("erp_ventas_cliente_mensual")
-      .select("segmento_id, segmento_nombre, cliente_id, cliente_nombre, razon_social, periodo, importe")
-      .eq("vendedor_id", vendedor)
-      .gte("periodo", `${anio}-01`)
-      .lte("periodo", `${anio}-12`)
-      .range(from, from + PAGE - 1);
-    if (error) {
-      res.status(500).json({ error: `No se pudo leer el reporte: ${error.message}` });
-      return;
-    }
-    if (!page || page.length === 0) break;
-    data.push(...page);
-    if (page.length < PAGE) break;
+  try {
+    const rows = await fetchReporteAnualRows(supabase, vendedor, anio);
+    res.json({ vendedor: { id: vendedor }, anio, ...groupReporteAnual(rows) });
+  } catch (err: any) {
+    res.status(500).json({ error: `No se pudo leer el reporte: ${err?.message || err}` });
   }
-
-  // Group: segmento → cliente → 12-month array.
-  type Cli = { clave: string; nombre: string; razonSocial: string; meses: number[]; total: number };
-  type Seg = { id: string; name: string; clientes: Map<string, Cli>; totalesMes: number[]; total: number };
-  const segs = new Map<string, Seg>();
-  const grandMes = new Array(12).fill(0);
-  let grandTotal = 0;
-
-  for (const r of data || []) {
-    const m = Number(String(r.periodo).slice(5, 7)) - 1; // 0..11
-    if (m < 0 || m > 11) continue;
-    const imp = Number(r.importe) || 0;
-    const segId = String(r.segmento_id || "—");
-    let seg = segs.get(segId);
-    if (!seg) {
-      seg = { id: segId, name: String(r.segmento_nombre || segId), clientes: new Map(), totalesMes: new Array(12).fill(0), total: 0 };
-      segs.set(segId, seg);
-    }
-    const cliId = String(r.cliente_id);
-    let cli = seg.clientes.get(cliId);
-    if (!cli) {
-      cli = { clave: cliId, nombre: String(r.cliente_nombre || ""), razonSocial: String(r.razon_social || ""), meses: new Array(12).fill(0), total: 0 };
-      seg.clientes.set(cliId, cli);
-    }
-    cli.meses[m] += imp;
-    cli.total += imp;
-    seg.totalesMes[m] += imp;
-    seg.total += imp;
-    grandMes[m] += imp;
-    grandTotal += imp;
-  }
-
-  const segmentos = [...segs.values()]
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      total: s.total,
-      totalesMes: s.totalesMes,
-      clientes: [...s.clientes.values()].sort((a, b) => b.total - a.total),
-    }));
-
-  res.json({
-    vendedor: { id: vendedor },
-    anio,
-    segmentos,
-    totalesMes: grandMes,
-    total: grandTotal,
-    clientesConVenta: segmentos.reduce((n, s) => n + s.clientes.length, 0),
-  });
 });
 
 export default router;

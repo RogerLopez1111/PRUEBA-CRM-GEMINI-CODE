@@ -44,6 +44,7 @@ import {
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { SalesGoal, User } from "../../types";
+import { ReporteAnualCard } from "./ReporteAnualCard";
 
 const STAGE_COLOR: Record<string, string> = {
   ASIGNADO: "bg-slate-400",
@@ -670,6 +671,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             )}
           </CardContent>
         </Card>
+
+        {/* Annual sales-by-client report (ManagementPro REPORTE ANALÍTICO) */}
+        <ReporteAnualCard userId={user.id} filterMonth={filterMonth} />
       </div>
     </div>
   );

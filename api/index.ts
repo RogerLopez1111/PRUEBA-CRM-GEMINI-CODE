@@ -9,6 +9,7 @@ import erpVentasRouter from "./erp-ventas.js";
 import erpTestClientesRouter from "./erp-test-clientes.js";
 import { erpConfigured } from "./erp-client.js";
 import { aggregateVentas, ISO_DATE } from "./erp-ventas-core.js";
+import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -629,6 +630,34 @@ app.get("/api/performance/ventas-stored", requireAuth, async (req, res) => {
     if (!newest || r.updated_at > newest) newest = r.updated_at;
   }
   res.json({ periodo, byVendedor, updatedAt: newest });
+});
+
+// Annual "REPORTE ANALÍTICO DE VENTAS ANUAL (CLIENTE)" for one seller — clients
+// grouped by segmento with monthly importes. Read from the materialized mirror
+// (erp_ventas_cliente_mensual), so it needs NO ERP access and works on every
+// build. Role-scoped: a seller only ever sees their own report; an admin may
+// request any seller via ?vendedor=.
+app.get("/api/performance/reporte-anual", requireAuth, async (req, res) => {
+  const anio = String(req.query.anio || "");
+  if (!/^\d{4}$/.test(anio)) {
+    res.status(400).json({ error: "anio (YYYY) es obligatorio." });
+    return;
+  }
+  const vendedor = req.user!.role === "Admin"
+    ? String(req.query.vendedor || "").trim()
+    : req.user!.sub;
+  if (!vendedor) {
+    res.status(400).json({ error: "vendedor es obligatorio." });
+    return;
+  }
+  try {
+    const rows = await fetchReporteAnualRows(supabase, vendedor, anio);
+    res.json({ vendedor: { id: vendedor }, anio, ...groupReporteAnual(rows) });
+  } catch (err: any) {
+    // Degrade to an empty report (e.g. table missing) rather than erroring the tab.
+    console.error("[performance/reporte-anual]", err?.message || err);
+    res.json({ vendedor: { id: vendedor }, anio, segmentos: [], totalesMes: new Array(12).fill(0), total: 0, clientesConVenta: 0 });
+  }
 });
 
 // ---------------------------------------------------------------------------
