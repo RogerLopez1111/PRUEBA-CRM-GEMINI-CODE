@@ -725,9 +725,10 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
               {/* Ventas y utilidad del mes */}
               <Card className="bg-white">
-                <CardContent className="pt-6">
+                <CardContent className="px-6 py-3">
                   <div className="flex items-center justify-between">
                     <div>
+                      <span className="inline-block text-[10px] font-bold tracking-wider uppercase text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 mb-1">Mes</span>
                       <p className="text-sm font-medium text-slate-500">Ventas · {MESES[wlMonth - 1]}</p>
                       <h3 className="text-2xl font-bold">{mxn0.format(ventas.mes.importe)}</h3>
                       <p className="text-[11px] text-slate-400 mt-0.5">
@@ -741,9 +742,10 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
               {/* Ventas y utilidad del año */}
               <Card className="bg-brand-navy text-white border-none">
-                <CardContent className="pt-6">
+                <CardContent className="px-6 py-3">
                   <div className="flex items-center justify-between">
                     <div>
+                      <span className="inline-block text-[10px] font-bold tracking-wider uppercase text-white bg-white/15 border border-white/25 rounded px-1.5 py-0.5 mb-1">Año</span>
                       <p className="text-sm font-medium text-white/70">Ventas · {wlYear}</p>
                       <h3 className="text-2xl font-bold">{mxn0.format(ventas.anio.importe)}</h3>
                       <p className="text-[11px] text-white/60 mt-0.5">
@@ -1034,12 +1036,25 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
             </Card>
           </div>
 
-          {/* Actualizaciones por etapa */}
+          {/* Actualizaciones por etapa — clic = filtro rápido de la línea de tiempo */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {STAGE_OPTIONS.map((opt) => {
               const n = updateStats.counts[opt.value] || 0;
+              const active = filterStages.has(opt.value);
               return (
-                <Card key={opt.value} className={cn("bg-white", n === 0 && "opacity-60")}>
+                <Card
+                  key={opt.value}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleStage(opt.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleStage(opt.value); } }}
+                  title={active ? `Quitar filtro: ${opt.label}` : `Filtrar la línea de tiempo por: ${opt.label}`}
+                  className={cn(
+                    "bg-white cursor-pointer transition-all select-none hover:border-slate-300 hover:shadow-sm",
+                    active && "ring-2 ring-primary border-primary shadow-sm",
+                    n === 0 && !active && "opacity-60"
+                  )}
+                >
                   <CardContent className="py-3 px-3 text-center">
                     <div className="mb-1 flex justify-center">{getStatusBadge(opt.value)}</div>
                     <h4 className="text-xl font-bold leading-none">{n}</h4>
@@ -1048,6 +1063,11 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
               );
             })}
           </div>
+          {filterStages.size > 0 && (
+            <p className="-mt-3 text-[11px] text-slate-400">
+              Filtrando por {filterStages.size} etapa{filterStages.size > 1 ? "s" : ""} · clic de nuevo para quitar
+            </p>
+          )}
 
           <Card className="bg-white">
             <CardHeader className="pb-2">

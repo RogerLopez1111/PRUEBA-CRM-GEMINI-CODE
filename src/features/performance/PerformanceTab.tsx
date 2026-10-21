@@ -336,9 +336,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <CheckCircle2 className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Vendido (leads)</p>
+              <p className="text-sm font-semibold text-slate-700">Vendido (leads)</p>
               <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{soldCount} tratos cerrados</p>
+              <p className="text-xs font-medium text-slate-600">{soldCount} tratos cerrados</p>
             </div>
           </CardContent>
         </Card>
@@ -348,9 +348,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <FileText className="w-6 h-6 text-amber-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Total Cotizado</p>
+              <p className="text-sm font-semibold text-slate-700">Total Cotizado</p>
               <p className="text-xl font-bold text-amber-600">${quotedValue.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{quotedCount} cotizaciones activas</p>
+              <p className="text-xs font-medium text-slate-600">{quotedCount} cotizaciones activas</p>
             </div>
           </CardContent>
         </Card>
@@ -360,9 +360,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <AlertCircle className="w-6 h-6 text-red-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Total Perdido</p>
+              <p className="text-sm font-semibold text-slate-700">Total Perdido</p>
               <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{lostCount} tratos perdidos</p>
+              <p className="text-xs font-medium text-slate-600">{lostCount} tratos perdidos</p>
             </div>
           </CardContent>
         </Card>
@@ -372,9 +372,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <TrendingUp className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Meta de Ventas</p>
+              <p className="text-sm font-semibold text-slate-700">Meta de Ventas</p>
               <p className="text-xl font-bold text-slate-900">${effectiveSalesGoal.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}% · ${metaVentas.toLocaleString()} ventas ERP</p>
+              <p className="text-xs font-medium text-slate-600">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}% · ${metaVentas.toLocaleString()} ventas ERP</p>
             </div>
           </CardContent>
         </Card>
@@ -384,9 +384,9 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
               <TrendingUp className="w-6 h-6 text-emerald-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-brand-gray">Meta de Utilidad</p>
+              <p className="text-sm font-semibold text-slate-700">Meta de Utilidad</p>
               <p className="text-xl font-bold text-slate-900">${effectiveUtilidadGoal.toLocaleString()}</p>
-              <p className="text-[10px] text-slate-400">{utilidadPct}% · ${utilidadReal.toLocaleString()} utilidad ERP</p>
+              <p className="text-xs font-medium text-slate-600">{utilidadPct}% · ${utilidadReal.toLocaleString()} utilidad ERP</p>
             </div>
           </CardContent>
         </Card>
