@@ -107,6 +107,26 @@ export const getStuckLevel = (updatedAt: string) => {
   return "normal";
 };
 
+// The true "last activity" of a lead: the most recent of its creation, its
+// Cl_UpdatedAt_CRM, and EVERY history entry's timestamp. `updatedAt` alone is
+// unreliable for staleness — it doesn't move for every stage movement / comment
+// path, so a lead that was actually worked still looks stuck. Any history row
+// (a stage move, a note, evidence) counts as a genuine update. Use this instead
+// of `updatedAt` wherever "sin actualizar" / stuck is measured.
+export const getLeadLastActivity = (lead: Lead): string => {
+  let latest = lead.createdAt;
+  let latestMs = new Date(lead.createdAt).getTime();
+  if (isNaN(latestMs)) latestMs = 0;
+  const consider = (ts?: string) => {
+    if (!ts) return;
+    const ms = new Date(ts).getTime();
+    if (!isNaN(ms) && ms > latestMs) { latestMs = ms; latest = ts; }
+  };
+  consider(lead.updatedAt);
+  for (const h of lead.history || []) consider(h.timestamp);
+  return latest;
+};
+
 // Median days between the first ASIGNADO and the first CONTACTADO history entry.
 export function timeToFirstContact(leads: Lead[]): { median: number | null; count: number } {
   const days: number[] = [];

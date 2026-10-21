@@ -4,6 +4,7 @@ import { callErp, erpConfigured, ERP_MAX_REGISTROS } from "./erp-client.js";
 import { mapLimit } from "./erp-ventas-core.js";
 import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
 import { fetchRentabilidadRows, groupRentabilidadAnual } from "./rentabilidad-core.js";
+import { fetchRentabilidadDiarioRows, groupRentabilidadDiaria } from "./rentabilidad-diario-core.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -254,6 +255,51 @@ router.post("/api/erp-test/rentabilidad/mensual", async (req, res) => {
     res.json({ anio, ...groupRentabilidadAnual(rows) });
   } catch (err: any) {
     res.status(500).json({ error: `No se pudo leer la rentabilidad: ${err?.message || err}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// RENTABILIDAD DIARIA (POR DÍA) — read from the mirror table
+// erp_rentabilidad_vendedor_diario (rolling window, populated by sync-erp). One
+// row per day for a chosen month; optionally filtered to a single vendedor.
+// ---------------------------------------------------------------------------
+
+// Months available for the picker — distinct 'YYYY-MM' present in the daily table.
+router.get("/api/erp-test/rentabilidad/diario/meses", async (_req, res) => {
+  const [{ data: minRow }, { data: maxRow }] = await Promise.all([
+    supabase.from("erp_rentabilidad_vendedor_diario").select("fecha").order("fecha", { ascending: true }).limit(1),
+    supabase.from("erp_rentabilidad_vendedor_diario").select("fecha").order("fecha", { ascending: false }).limit(1),
+  ]);
+  const min = String(minRow?.[0]?.fecha || "").slice(0, 7); // 'YYYY-MM'
+  const max = String(maxRow?.[0]?.fecha || "").slice(0, 7);
+  const meses: string[] = [];
+  if (min && max) {
+    let y = Number(max.slice(0, 4));
+    let m = Number(max.slice(5, 7));
+    const minY = Number(min.slice(0, 4));
+    const minM = Number(min.slice(5, 7));
+    while (y > minY || (y === minY && m >= minM)) {
+      meses.push(`${y}-${String(m).padStart(2, "0")}`);
+      m -= 1;
+      if (m === 0) { m = 12; y -= 1; }
+    }
+  }
+  res.json({ meses });
+});
+
+// Daily rentabilidad for one month ('YYYY-MM'), optionally one vendedor.
+router.post("/api/erp-test/rentabilidad/diario", async (req, res) => {
+  const mes = String(req.body?.mes || "").trim();
+  const vendedorId = req.body?.vendedorId ? String(req.body.vendedorId).trim() : undefined;
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    res.status(400).json({ error: "Falta 'mes' (YYYY-MM)." });
+    return;
+  }
+  try {
+    const rows = await fetchRentabilidadDiarioRows(supabase, mes);
+    res.json({ mes, vendedorId: vendedorId || "", ...groupRentabilidadDiaria(rows, vendedorId) });
+  } catch (err: any) {
+    res.status(500).json({ error: `No se pudo leer la rentabilidad diaria: ${err?.message || err}` });
   }
 });
 

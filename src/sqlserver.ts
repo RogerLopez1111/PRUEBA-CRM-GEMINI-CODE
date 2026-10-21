@@ -329,6 +329,122 @@ export async function getRentabilidadVendedorMensual(
 }
 
 // ---------------------------------------------------------------------------
+// Rentabilidad por vendedor/DÍA — daily-grain twin of the monthly query above,
+// feeding erp_rentabilidad_vendedor_diario. Identical RPVNA06 logic; the only
+// change is the date truncation: CONVERT(char(10), ..., 126) → 'YYYY-MM-DD'
+// instead of char(7). One row per (vendedor, día).
+// ---------------------------------------------------------------------------
+export type RentabilidadVendedorDiario = {
+  vendedorId: string;
+  vendedorNombre: string;
+  fecha: string; // 'YYYY-MM-DD'
+  ventaImporte: number;
+  ventaCosto: number;
+  devImporte: number;
+  devCosto: number;
+  boniImporte: number;
+};
+
+export async function getRentabilidadVendedorDiario(
+  desde: string, // 'YYYY-MM-DD' inclusive
+  hasta: string  // 'YYYY-MM-DD' exclusive
+): Promise<RentabilidadVendedorDiario[]> {
+  try {
+    const p = await getPool();
+    const req = p.request();
+    req.input('desde', sql.DateTime, new Date(desde));
+    req.input('hasta', sql.DateTime, new Date(hasta));
+    const r = await req.query(`
+      WITH V AS (
+        SELECT
+          ve.Vn_Cve_Vendedor                  AS vendedorId,
+          CONVERT(char(10), ve.Vn_Fecha, 126) AS fecha,
+          SUM(ve.Vn_Costo_Importe)            AS ventaCosto,
+          SUM((ve.Vn_Precio_Descontado_Importe - ve.Vn_Descuento_Global_Importe) * ve.Vn_Tipo_Cambio) AS ventaImporte
+        FROM Venta ve
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = ve.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = ve.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = ve.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = ve.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = ve.Vn_Cve_Vendedor
+        WHERE ve.Vn_Fecha >= @desde AND ve.Vn_Fecha < @hasta
+          AND ve.Es_Cve_Estado <> 'CA'
+        GROUP BY ve.Vn_Cve_Vendedor, CONVERT(char(10), ve.Vn_Fecha, 126)
+      ),
+      D AS (
+        SELECT
+          nc.Vn_Cve_Vendedor                  AS vendedorId,
+          CONVERT(char(10), nc.Nc_Fecha, 126) AS fecha,
+          SUM(nc.Nc_Costo_Importe)            AS devCosto,
+          SUM((nc.Nc_Precio_Descontado_Importe - nc.Nc_Descuento_Global_Importe) * nc.Nc_Tipo_Cambio) AS devImporte
+        FROM Nota_Credito nc
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = nc.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = nc.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = nc.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = nc.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = nc.Vn_Cve_Vendedor
+        WHERE nc.Nc_Fecha >= @desde AND nc.Nc_Fecha < @hasta
+          AND nc.Es_Cve_Estado <> 'CA'
+          AND nc.Nc_Tabla IN ('ACUSE_RECIBO','DEVOLUCION_CLIENTE')
+        GROUP BY nc.Vn_Cve_Vendedor, CONVERT(char(10), nc.Nc_Fecha, 126)
+      ),
+      B AS (
+        SELECT
+          nc.Vn_Cve_Vendedor                  AS vendedorId,
+          CONVERT(char(10), nc.Nc_Fecha, 126) AS fecha,
+          SUM((nc.Nc_Precio_Descontado_Importe - nc.Nc_Descuento_Global_Importe) * nc.Nc_Tipo_Cambio) AS boniImporte
+        FROM Nota_Credito nc
+          INNER JOIN Sucursal su ON su.Sc_Cve_Sucursal = nc.Sc_Cve_Sucursal
+          INNER JOIN Almacen  al ON al.Al_Cve_Almacen  = nc.Al_Cve_Almacen AND al.Sc_Cve_Sucursal = su.Sc_Cve_Sucursal
+          INNER JOIN Cliente  cl ON cl.Cl_Cve_Cliente  = nc.Cl_Cve_Cliente
+          INNER JOIN Ruta     ru ON ru.Rt_Cve_Ruta     = cl.Rt_Cve_Ruta
+          INNER JOIN Producto pr ON pr.Pr_Cve_Producto = nc.Pr_Cve_Producto
+          INNER JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = nc.Vn_Cve_Vendedor
+        WHERE nc.Nc_Fecha >= @desde AND nc.Nc_Fecha < @hasta
+          AND nc.Es_Cve_Estado <> 'CA'
+          AND nc.Nc_Tabla NOT IN ('ACUSE_RECIBO','DEVOLUCION_CLIENTE')
+        GROUP BY nc.Vn_Cve_Vendedor, CONVERT(char(10), nc.Nc_Fecha, 126)
+      ),
+      K AS (
+        SELECT vendedorId, fecha FROM V
+        UNION SELECT vendedorId, fecha FROM D
+        UNION SELECT vendedorId, fecha FROM B
+      )
+      SELECT
+        K.vendedorId                          AS vendedorId,
+        LTRIM(RTRIM(vn.Vn_Descripcion))       AS vendedorNombre,
+        K.fecha                               AS fecha,
+        ISNULL(V.ventaImporte, 0)             AS ventaImporte,
+        ISNULL(V.ventaCosto, 0)               AS ventaCosto,
+        ISNULL(D.devImporte, 0)               AS devImporte,
+        ISNULL(D.devCosto, 0)                 AS devCosto,
+        ISNULL(B.boniImporte, 0)              AS boniImporte
+      FROM K
+        LEFT JOIN V ON V.vendedorId = K.vendedorId AND V.fecha = K.fecha
+        LEFT JOIN D ON D.vendedorId = K.vendedorId AND D.fecha = K.fecha
+        LEFT JOIN B ON B.vendedorId = K.vendedorId AND B.fecha = K.fecha
+        LEFT JOIN Vendedor vn ON vn.Vn_Cve_Vendedor = K.vendedorId
+      ORDER BY K.vendedorId, K.fecha
+    `);
+    return r.recordset.map((row) => ({
+      vendedorId: String(row.vendedorId ?? ''),
+      vendedorNombre: String(row.vendedorNombre ?? ''),
+      fecha: String(row.fecha ?? ''),
+      ventaImporte: Number(row.ventaImporte) || 0,
+      ventaCosto: Number(row.ventaCosto) || 0,
+      devImporte: Number(row.devImporte) || 0,
+      devCosto: Number(row.devCosto) || 0,
+      boniImporte: Number(row.boniImporte) || 0,
+    }));
+  } catch (err) {
+    console.error('[MSSQL] getRentabilidadVendedorDiario:', err);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Clients (read-only from ERP)
 // ---------------------------------------------------------------------------
 

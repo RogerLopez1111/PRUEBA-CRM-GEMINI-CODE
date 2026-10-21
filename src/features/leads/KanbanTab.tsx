@@ -7,7 +7,8 @@
  * dialog.
  */
 import { useMemo, useRef, useState, useCallback } from "react";
-import { Clock, Filter } from "lucide-react";
+import { Clock, Filter, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import {
   DndContext,
   DragOverlay,
@@ -37,10 +38,26 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES } from "../../lib/helpers";
+import { MESES, getLeadLastActivity, getStuckLevel } from "../../lib/helpers";
 import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Lead, LeadStatus, User } from "../../types";
+
+// Stale applies only to leads still in the active pipeline — a FACTURADO /
+// ENTREGADO / RECHAZADO lead is done, not "sin actualizar".
+const CLOSED_STATUSES = new Set<LeadStatus>(["FACTURADO", "ENTREGADO", "RECHAZADO"]);
+
+// Shared stale definition with the admin Carga de Trabajo tab: warning > 24 h,
+// critical > 72 h since the lead's last real activity (newest history entry).
+function leadStuckLevel(lead: Lead): "normal" | "warning" | "critical" {
+  if (CLOSED_STATUSES.has(lead.status)) return "normal";
+  return getStuckLevel(getLeadLastActivity(lead));
+}
+
+const STALE_STYLE = {
+  warning: { pill: "text-amber-700 bg-amber-50 border-amber-200", label: "Retrasado", time: "text-amber-600" },
+  critical: { pill: "text-red-700 bg-red-50 border-red-200", label: "Crítico", time: "text-red-500" },
+} as const;
 
 const STATUS_ACCENT: Record<LeadStatus, { bar: string; valueBg: string; valueText: string }> = {
   ASIGNADO:    { bar: "bg-slate-400",   valueBg: "bg-slate-50",   valueText: "text-slate-700"  },
@@ -70,8 +87,12 @@ function SortableLeadCard({ lead, users, onUpdate }: { key?: string; lead: Lead;
   const seller = lead.assignedTo ? users.find(u => u.id === lead.assignedTo) : null;
   const accent = STATUS_ACCENT[lead.status] || STATUS_ACCENT.ASIGNADO;
 
-  const daysSince = Math.floor((Date.now() - new Date(lead.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
-  const isStale = (lead.status === "ASIGNADO" && daysSince >= 3) || (lead.status === "COTIZADO" && daysSince >= 5);
+  // Last-activity based (newest history entry), consistent with the admin tab —
+  // not Cl_UpdatedAt_CRM, which doesn't move on every stage change / comment.
+  const lastActivity = getLeadLastActivity(lead);
+  const daysSince = Math.floor((Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24));
+  const stuckLevel = leadStuckLevel(lead);
+  const stale = stuckLevel !== "normal" ? STALE_STYLE[stuckLevel] : null;
   const timeLabel = daysSince === 0 ? "Hoy" : daysSince === 1 ? "Ayer" : `${daysSince}d`;
 
   return (
@@ -95,8 +116,14 @@ function SortableLeadCard({ lead, users, onUpdate }: { key?: string; lead: Lead;
           </span>
         </div>
 
-        {(lead.segmento || lead.sucursal || lead.mostrador) && (
+        {(stale || lead.segmento || lead.sucursal || lead.mostrador) && (
           <div className="flex flex-wrap gap-1.5 mb-3">
+            {stale && (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wide ${stale.pill}`}>
+                <AlertTriangle className="w-2.5 h-2.5" />
+                {stale.label}
+              </span>
+            )}
             {lead.mostrador && (
               <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase tracking-wide">
                 Mostrador
@@ -131,7 +158,7 @@ function SortableLeadCard({ lead, users, onUpdate }: { key?: string; lead: Lead;
               <span className="text-[10px] italic text-slate-400">Sin asignar</span>
             )}
           </div>
-          <div className={`flex items-center gap-1 text-[10px] font-medium shrink-0 ${isStale ? "text-red-500" : "text-slate-400"}`}>
+          <div className={`flex items-center gap-1 text-[10px] font-medium shrink-0 ${stale ? stale.time : "text-slate-400"}`}>
             <Clock className="w-3 h-3" />
             <span>{timeLabel}</span>
           </div>
@@ -195,6 +222,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
   const [filterSeller, setFilterSeller] = useState<string>("all");
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
   const [filterSegmento, setFilterSegmento] = useState<string>("all");
+  const [filterStale, setFilterStale] = useState<"all" | "stale" | "critical">("all");
   const [search, setSearch] = useState("");
   const [filterMonth, setFilterMonth] = useState<string>(() => {
     const d = new Date();
@@ -209,9 +237,10 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
 
   const staleLeads = useMemo(() => {
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const closedStatuses = new Set(["FACTURADO", "ENTREGADO", "RECHAZADO"]);
+    // Measure inactivity from real last activity, not Cl_UpdatedAt_CRM — so a
+    // lead with a recent history entry isn't bulk-rejected as "inactive".
     return leads.filter(
-      (l: Lead) => !closedStatuses.has(l.status) && new Date(l.updatedAt).getTime() < cutoff
+      (l: Lead) => !CLOSED_STATUSES.has(l.status) && new Date(getLeadLastActivity(l)).getTime() < cutoff
     );
   }, [leads]);
 
@@ -293,8 +322,33 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     if (newStatus) {
       const lead = leads.find(l => l.id === leadId);
       if (lead && lead.status !== newStatus) {
-        openStatusUpdate(lead, newStatus);
+        // Facturado → Entregado is a plain hand-off with no extra data to
+        // capture, so submit it straight through instead of popping the
+        // comment dialog.
+        if (lead.status === "FACTURADO" && newStatus === "ENTREGADO") {
+          void submitEntregado(lead);
+        } else {
+          openStatusUpdate(lead, newStatus);
+        }
       }
+    }
+  };
+
+  const submitEntregado = async (lead: Lead) => {
+    try {
+      const res = await apiFetch(`/api/leads/${lead.id}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: "ENTREGADO" }),
+      });
+      if (res.ok) {
+        toast.success("Lead marcado como ENTREGADO");
+        await refetchAll();
+      } else {
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        toast.error(data.error || "No se pudo actualizar el estado");
+      }
+    } catch {
+      toast.error("No se pudo actualizar el estado");
     }
   };
 
@@ -337,8 +391,16 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
     if (filterNewClient && !l.newClient) return false;
     if (filterTransferidoWhatsappRoger && !l.transferidoWhatsappRoger) return false;
 
+    // Antigüedad: "stale" keeps warning+critical, "critical" keeps only critical.
+    // Closed leads never qualify (leadStuckLevel returns "normal" for them).
+    if (filterStale !== "all") {
+      const lvl = leadStuckLevel(l);
+      if (filterStale === "stale" && lvl === "normal") return false;
+      if (filterStale === "critical" && lvl !== "critical") return false;
+    }
+
     return true;
-  }), [leads, currentUser, filterSeller, search, filterSucursal, filterSegmento, filterMonth, filterClientInitiated, filterMostrador, filterNewClient, filterTransferidoWhatsappRoger]);
+  }), [leads, currentUser, filterSeller, search, filterSucursal, filterSegmento, filterMonth, filterClientInitiated, filterMostrador, filterNewClient, filterTransferidoWhatsappRoger, filterStale]);
 
   return (
     <>
@@ -386,6 +448,19 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
                 {segmentos.map(s => (
                   <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-brand-gray ml-1">Antigüedad</p>
+            <Select value={filterStale} onValueChange={(v) => setFilterStale(v as "all" | "stale" | "critical")}>
+              <SelectTrigger className="w-[150px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="stale">Retrasadas (+1d)</SelectItem>
+                <SelectItem value="critical">Críticas (+3d)</SelectItem>
               </SelectContent>
             </Select>
           </div>

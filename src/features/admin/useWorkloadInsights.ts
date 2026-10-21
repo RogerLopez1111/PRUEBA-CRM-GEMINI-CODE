@@ -1,24 +1,24 @@
 /**
  * Admin "Carga de Trabajo" insights — per-vendedor stats and the stuck-leads
- * intervention pile. Filters come from the screen's filter row.
+ * intervention pile. Filters come from the screen's filter row (period +
+ * vendedor + sucursal).
  *
- * Origin filters (clientInitiated / mostrador) intersect with the other
- * filters; estado is intentionally not used here (workload is about active
- * and stuck leads, not arbitrary statuses).
+ * Staleness ("stuck") is measured from each lead's REAL last activity — the
+ * newest of its history timestamps, not Cl_UpdatedAt_CRM, which doesn't move on
+ * every stage movement / comment. See getLeadLastActivity.
+ *
+ * "Cerrados del mes" is bucketed by the month the sale landed (FACTURADO /
+ * ENTREGADO invoice date), scoped to the period the screen is viewing.
  */
 import { useMemo } from "react";
 import { useAppData } from "../../state/AppDataContext";
-import { getStuckLevel } from "../../lib/helpers";
+import { getStuckLevel, getLeadLastActivity, facturadoMonth } from "../../lib/helpers";
 import type { Lead, LeadStatus, User } from "../../types";
 
 export interface WorkloadFilterState {
   vendedor: string;             // "all" | "unassigned" | vendedor id
   sucursal: string;             // "all" or sucursal name
-  search: string;
-  clientInitiated: boolean;
-  mostrador: boolean;
-  newClient: boolean;
-  transferidoWhatsappRoger: boolean;
+  ym: string;                   // selected period, "YYYY-MM"
 }
 
 export interface WorkloadStat {
@@ -45,46 +45,30 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
   const { leads, users, sucursales } = useAppData();
 
   return useMemo<WorkloadInsights>(() => {
-    const now = new Date();
-    const currYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
     const sucursalIdFilter: string | null =
       filter.sucursal === "all"
         ? null
         : sucursales.find((s) => s.name === filter.sucursal)?.id || null;
     const vendedorIdFilter: string | null =
       filter.vendedor !== "all" && filter.vendedor !== "unassigned" ? filter.vendedor : null;
-    const q = filter.search.trim().toLowerCase();
-
-    const matchUserSearch = (u: User) => !q || u.name.toLowerCase().includes(q);
 
     const filteredUsers: User[] = users.filter((u) => {
       if (sucursalIdFilter && u.sucursalId !== sucursalIdFilter) return false;
       if (vendedorIdFilter && u.id !== vendedorIdFilter) return false;
-      if (!matchUserSearch(u)) return false;
       return true;
     });
 
-    const matchesOrigin = (l: Lead) => {
-      if (filter.clientInitiated && !l.clientInitiated) return false;
-      if (filter.mostrador && !l.mostrador) return false;
-      if (filter.newClient && !l.newClient) return false;
-      if (filter.transferidoWhatsappRoger && !l.transferidoWhatsappRoger) return false;
-      return true;
-    };
-
     const stats: WorkloadStat[] = filteredUsers
       .map((u) => {
-        const userLeads = leads.filter((l) => l.assignedTo === u.id && matchesOrigin(l));
+        const userLeads = leads.filter((l) => l.assignedTo === u.id);
         const activeLeads = userLeads.filter((l) => isActive(l.status));
         const pipelineValue = activeLeads.reduce((acc, l) => acc + (l.value || 0), 0);
-        const stuckCount = activeLeads.filter((l) => getStuckLevel(l.updatedAt) !== "normal").length;
-        const closedThisMonth = userLeads.filter((l) => {
-          if (!isClosed(l.status)) return false;
-          const d = new Date(l.updatedAt);
-          if (isNaN(d.getTime())) return false;
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` === currYm;
-        }).length;
+        const stuckCount = activeLeads.filter((l) => getStuckLevel(getLeadLastActivity(l)) !== "normal").length;
+        // Cerrados del mes: bucketed by the month the sale was invoiced, scoped
+        // to the period the screen is viewing (not "current month").
+        const closedThisMonth = userLeads.filter(
+          (l) => isClosed(l.status) && facturadoMonth(l) === filter.ym
+        ).length;
         const closedTotal = userLeads.filter((l) => isClosed(l.status)).length;
         const convPct = userLeads.length ? Math.round((closedTotal / userLeads.length) * 100) : 0;
         return {
@@ -106,27 +90,22 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
     const stuckLeads: Lead[] = leads
       .filter((l) => {
         if (!isActive(l.status)) return false;
-        if (getStuckLevel(l.updatedAt) === "normal") return false;
+        if (getStuckLevel(getLeadLastActivity(l)) === "normal") return false;
         if (vendedorIdFilter && l.assignedTo !== vendedorIdFilter) return false;
         if (filter.vendedor === "unassigned" && l.assignedTo) return false;
         if (sucursalIdFilter) {
           const owner = users.find((u) => u.id === l.assignedTo);
           if (!owner || owner.sucursalId !== sucursalIdFilter) return false;
         }
-        if (q && !l.name.toLowerCase().includes(q) && !l.company.toLowerCase().includes(q)) return false;
-        if (!matchesOrigin(l)) return false;
         return true;
       })
       .sort((a, b) => {
-        const la = getStuckLevel(a.updatedAt);
-        const lb = getStuckLevel(b.updatedAt);
+        const la = getStuckLevel(getLeadLastActivity(a));
+        const lb = getStuckLevel(getLeadLastActivity(b));
         if (rank(la) !== rank(lb)) return rank(la) - rank(lb);
-        return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        return new Date(getLeadLastActivity(a)).getTime() - new Date(getLeadLastActivity(b)).getTime();
       });
 
     return { stats, teamAvgConv, stuckLeads };
-  }, [
-    leads, users, sucursales,
-    filter.vendedor, filter.sucursal, filter.search, filter.clientInitiated, filter.mostrador, filter.newClient, filter.transferidoWhatsappRoger,
-  ]);
+  }, [leads, users, sucursales, filter.vendedor, filter.sucursal, filter.ym]);
 }

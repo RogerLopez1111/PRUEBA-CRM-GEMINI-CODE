@@ -11,6 +11,7 @@ import { erpConfigured } from "./erp-client.js";
 import { aggregateVentas, ISO_DATE } from "./erp-ventas-core.js";
 import { fetchReporteAnualRows, groupReporteAnual } from "./reporte-anual-core.js";
 import { fetchRentabilidadRows, groupRentabilidadAnual } from "./rentabilidad-core.js";
+import { fetchRentabilidadDiarioRange, groupRentabilidadDiaria } from "./rentabilidad-diario-core.js";
 
 // Server runs queries on behalf of users authenticated by our own login route,
 // so we use the service role key (server-only secret). This bypasses RLS by
@@ -838,6 +839,29 @@ app.get("/api/performance/rentabilidad/anios", requireAdmin, async (_req, res) =
   } catch (err: any) {
     console.error("[performance/rentabilidad/anios]", err?.message || err);
     res.json({ anios: [] });
+  }
+});
+
+// Daily ventas/utilidad over a date range (Actividad Global dashboard). Reads the
+// daily mirror (erp_rentabilidad_vendedor_diario). `vendedor` optional → single
+// seller; omitted → company total. Net of devoluciones/rechazos y bonificaciones.
+app.get("/api/performance/rentabilidad/diario", requireAdmin, async (req, res) => {
+  const desde = String(req.query.desde || "");
+  const hasta = String(req.query.hasta || "");
+  const vendedor = req.query.vendedor ? String(req.query.vendedor) : undefined;
+  const empty = { importe: 0, costo: 0, utilidad: 0, rentabilidad: 0 };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+    res.status(400).json({ error: "desde/hasta (YYYY-MM-DD) son obligatorios." });
+    return;
+  }
+  try {
+    const rows = await fetchRentabilidadDiarioRange(supabase, desde, hasta);
+    const { total } = groupRentabilidadDiaria(rows, vendedor);
+    res.json({ desde, hasta, vendedor: vendedor || "", total });
+  } catch (err: any) {
+    // Degrade to an empty total (e.g. table missing) rather than erroring the tab.
+    console.error("[performance/rentabilidad/diario]", err?.message || err);
+    res.json({ desde, hasta, vendedor: vendedor || "", total: empty });
   }
 });
 

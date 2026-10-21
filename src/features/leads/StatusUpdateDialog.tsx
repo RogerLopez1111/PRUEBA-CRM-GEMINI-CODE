@@ -106,9 +106,11 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
       if (res.ok) {
         if (f.status === "FACTURADO") toast.success("Lead facturado y vinculado al cliente ERP");
         else toast.success(`Lead marcado como ${f.status}`);
+        // Only close here. Resetting the form synchronously flips `sameStatus`
+        // (form.status "" ≠ lead.status) while the dialog is still playing its
+        // close animation, flashing the "Nueva Actualización" panel. The open()
+        // handler re-initializes the form on every open, so no reset is needed.
         setIsOpen(false);
-        setForm(emptyForm);
-        setErpClientSearch("");
         refetchAll();
       } else {
         const data = await res.json().catch(() => ({} as { error?: string }));

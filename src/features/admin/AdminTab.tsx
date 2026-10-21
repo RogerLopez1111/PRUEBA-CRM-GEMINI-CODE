@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Settings, UserPlus, Users, Filter, AlertTriangle, CheckCircle2, Clock, History, Target, Building2, TrendingUp,
+  Settings, UserPlus, Users, AlertTriangle, CheckCircle2, Clock, History, Target, Building2, TrendingUp, Wallet, PackageX, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES, getStuckLevel, getTimeStuck } from "../../lib/helpers";
+import { MESES, getStuckLevel, getTimeStuck, getLeadLastActivity, facturadoMonth } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { Lead, LeadStatus, SalesGoal, User } from "../../types";
@@ -29,6 +29,27 @@ import { getStatusBadge } from "../leads/getStatusBadge";
 export interface AdminTabProps {
   openStatusUpdate: (lead: Lead) => void;
 }
+
+// Pesos formatter for the workload KPI cards (ventas / utilidad), whole pesos.
+const mxn0 = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
+
+// Actividad Global defaults to a recent window so the first render stays light —
+// the lead history ships with /api/leads, and showing every update at once lags.
+const ACTIVITY_DEFAULT_DAYS = 5;
+const daysAgoStr = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toLocaleDateString("en-CA"); // 'YYYY-MM-DD' local
+};
+
+// Shape of GET /api/performance/rentabilidad?anio=YYYY (admin). Each cell is net
+// of devoluciones/rechazos y bonificaciones — `importe` is "ventas" (importe
+// neto), `utilidad` is utilidad bruta. Both the monthly and yearly KPI cards are
+// derived from a single year fetch.
+type RentCelda = { importe: number; costo: number; utilidad: number; rentabilidad: number };
+type RentVendedor = { id: string; nombre: string; meses: RentCelda[]; total: RentCelda };
+type RentResp = { anio: string; vendedores: RentVendedor[]; totalesMes: RentCelda[]; total: RentCelda };
+const EMPTY_VENTA = { importe: 0, utilidad: 0 };
 
 const NEW_USER_BLANK = { name: "", email: "", role: "Seller" as "Admin" | "Seller" | "Compras", salesGoal: 50000, utilidadGoal: 0, sucursal: "" };
 const STAGE_OPTIONS: { value: LeadStatus; label: string }[] = [
@@ -49,7 +70,7 @@ const BRANCH_GOAL_BLANK = () => ({
 });
 
 export function AdminTab({ openStatusUpdate }: AdminTabProps) {
-  const { leads, users, sucursales, segmentos, refetchAll } = useAppData();
+  const { leads, users, sucursales, segmentos, faltantes, refetchAll } = useAppData();
 
   // Sub-tab routing
   const [subTab, setSubTab] = useState<string>("users");
@@ -58,14 +79,19 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const [filterSeller, setFilterSeller] = useState<string>("all");
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
   const [filterSegmento, setFilterSegmento] = useState<string>("all");
-  const [search, setSearch] = useState<string>("");
-  const [filterClientInitiated, setFilterClientInitiated] = useState(false);
-  const [filterMostrador, setFilterMostrador] = useState(false);
-  const [filterNewClient, setFilterNewClient] = useState(false);
-  const [filterTransferidoWhatsappRoger, setFilterTransferidoWhatsappRoger] = useState(false);
 
-  // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">)
-  const [activityFrom, setActivityFrom] = useState<string>("");
+  // Workload period selector — drives the KPI cards (new leads, ventas/utilidad,
+  // cerrados) and the "cerrados del mes" column. Defaults to the current month.
+  const now = new Date();
+  const [wlYear, setWlYear] = useState<number>(now.getFullYear());
+  const [wlMonth, setWlMonth] = useState<number>(now.getMonth() + 1); // 1-12
+  const wlYm = `${wlYear}-${String(wlMonth).padStart(2, "0")}`;
+  const yearOpts = Array.from({ length: 5 }, (_, i) => now.getFullYear() - i);
+
+  // Actividad Global date interval (YYYY-MM-DD strings from <input type="date">).
+  // Defaults to the last ACTIVITY_DEFAULT_DAYS so the timeline loads a light,
+  // recent window instead of every update ever recorded.
+  const [activityFrom, setActivityFrom] = useState<string>(() => daysAgoStr(ACTIVITY_DEFAULT_DAYS));
   const [activityTo, setActivityTo] = useState<string>("");
   // Actividad Global pipeline-stage filter — empty set = show all stages
   const [filterStages, setFilterStages] = useState<Set<LeadStatus>>(new Set());
@@ -95,12 +121,135 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   const workloadInsights = useWorkloadInsights({
     vendedor: filterSeller,
     sucursal: filterSucursal,
-    search,
-    clientInitiated: filterClientInitiated,
-    mostrador: filterMostrador,
-    newClient: filterNewClient,
-    transferidoWhatsappRoger: filterTransferidoWhatsappRoger,
+    ym: wlYm,
   });
+
+  // Ventas (importe neto) y utilidad bruta del año seleccionado, de la mirror
+  // materializada. Una sola llamada por año alimenta las tarjetas de mes y año.
+  const [rentResp, setRentResp] = useState<RentResp | null>(null);
+  useEffect(() => {
+    if (subTab !== "workload") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/performance/rentabilidad?anio=${wlYear}`);
+        const json = await r.json();
+        if (!cancelled && r.ok) setRentResp(json);
+      } catch {
+        if (!cancelled) setRentResp(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [subTab, wlYear]);
+
+  // Resolve the sucursal name-filter to its id once (vendedor rows carry ids).
+  const sucursalIdFilter: string | null =
+    filterSucursal === "all" ? null : sucursales.find((s) => s.name === filterSucursal)?.id || null;
+
+  // A lead passes the vendedor + sucursal scope used by the KPI cards.
+  const leadInScope = (l: Lead) => {
+    if (filterSeller === "unassigned") { if (l.assignedTo) return false; }
+    else if (filterSeller !== "all") { if (l.assignedTo !== filterSeller) return false; }
+    if (sucursalIdFilter) {
+      const owner = users.find((u) => u.id === l.assignedTo);
+      if (!owner || owner.sucursalId !== sucursalIdFilter) return false;
+    }
+    return true;
+  };
+
+  // KPI card numbers from CRM leads, scoped by vendedor + sucursal + period.
+  const newLeadsThisMonth = leads.filter(
+    (l) => leadInScope(l) && String(l.createdAt).slice(0, 7) === wlYm
+  ).length;
+  const closedThisMonth = leads.filter(
+    (l) => leadInScope(l) && (l.status === "FACTURADO" || l.status === "ENTREGADO") && facturadoMonth(l) === wlYm
+  ).length;
+
+  // Ventas/utilidad del mes y del año, respetando vendedor + sucursal. Importe
+  // neto = "ventas"; utilidad bruta = "utilidad". "Sin asignar" no tiene ventas.
+  const ventas = useMemo(() => {
+    if (!rentResp || filterSeller === "unassigned") return { mes: EMPTY_VENTA, anio: EMPTY_VENTA };
+    const m = wlMonth - 1;
+    const pick = (c?: RentCelda) => ({ importe: c?.importe || 0, utilidad: c?.utilidad || 0 });
+    const sum = (vs: RentVendedor[], get: (v: RentVendedor) => RentCelda) =>
+      vs.reduce((a, v) => { const c = get(v); return { importe: a.importe + c.importe, utilidad: a.utilidad + c.utilidad }; }, { ...EMPTY_VENTA });
+
+    if (filterSeller !== "all") {
+      const v = rentResp.vendedores.find((x) => x.id === filterSeller);
+      return { mes: pick(v?.meses[m]), anio: pick(v?.total) };
+    }
+    if (sucursalIdFilter) {
+      const ids = new Set(users.filter((u) => u.sucursalId === sucursalIdFilter).map((u) => u.id));
+      const vs = rentResp.vendedores.filter((v) => ids.has(v.id));
+      return { mes: sum(vs, (v) => v.meses[m]), anio: sum(vs, (v) => v.total) };
+    }
+    return { mes: pick(rentResp.totalesMes[m]), anio: pick(rentResp.total) };
+  }, [rentResp, wlMonth, filterSeller, sucursalIdFilter, users]);
+
+  // ── Actividad Global dashboard (día) ──────────────────────────────────────
+  // Effective day/range for the KPI header: the date filters when set, else hoy.
+  // From-only ⇒ that single day; From+To ⇒ the range. Mirrors the timeline table.
+  const todayStr = new Date().toLocaleDateString("en-CA"); // 'YYYY-MM-DD' local
+  const dayFrom = activityFrom || todayStr;
+  const dayTo = activityTo || todayStr;
+  const isSingleDay = dayFrom === dayTo;
+
+  // True if an ISO timestamp falls within [dayFrom 00:00, dayTo 23:59:59.999].
+  const inDayRange = (iso: string) => {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return false;
+    return (
+      t >= new Date(dayFrom + "T00:00:00").getTime() &&
+      t <= new Date(dayTo + "T23:59:59.999").getTime()
+    );
+  };
+
+  // Ventas (importe neto) y utilidad bruta del día/rango, de la mirror diaria.
+  const [dailyRent, setDailyRent] = useState(EMPTY_VENTA);
+  useEffect(() => {
+    if (subTab !== "activity") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({ desde: dayFrom, hasta: dayTo });
+        if (filterSeller !== "all") params.set("vendedor", filterSeller);
+        const r = await apiFetch(`/api/performance/rentabilidad/diario?${params.toString()}`);
+        const json = await r.json();
+        if (!cancelled && r.ok) setDailyRent({ importe: json.total?.importe || 0, utilidad: json.total?.utilidad || 0 });
+        else if (!cancelled) setDailyRent(EMPTY_VENTA);
+      } catch {
+        if (!cancelled) setDailyRent(EMPTY_VENTA);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [subTab, dayFrom, dayTo, filterSeller]);
+
+  // Contador de actualizaciones del día/rango, por etapa — del historial de leads.
+  const updateStats = useMemo(() => {
+    const counts = Object.fromEntries(STAGE_OPTIONS.map((s) => [s.value, 0])) as Record<LeadStatus, number>;
+    let total = 0;
+    for (const l of leads) {
+      for (const h of l.history) {
+        if (filterSeller !== "all" && h.updatedBy !== filterSeller) continue;
+        if (!inDayRange(h.timestamp)) continue;
+        if (counts[h.status] !== undefined) counts[h.status]++;
+        total++;
+      }
+    }
+    return { counts, total };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, filterSeller, dayFrom, dayTo]);
+
+  // Contador de productos marcados como faltante ese día/rango (cuántos, no monto).
+  const faltanteCount = useMemo(
+    () =>
+      faltantes.filter((f) => {
+        if (filterSeller !== "all" && f.vendedorId !== filterSeller) return false;
+        return inDayRange(f.createdAt);
+      }).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [faltantes, filterSeller, dayFrom, dayTo]
+  );
 
   const fetchGoalsTimeline = async (userId: string) => {
     setGoalsLoading(true);
@@ -554,47 +703,62 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
         {subTab === "workload" && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Nuevos leads del periodo seleccionado */}
               <Card className="bg-white">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-500">Total de Leads</p>
-                      <h3 className="text-2xl font-bold">{leads.length}</h3>
+                      <p className="text-sm font-medium text-slate-500">Nuevos Leads · {MESES[wlMonth - 1]}</p>
+                      <h3 className="text-2xl font-bold">{newLeadsThisMonth}</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Creados en {MESES[wlMonth - 1]} {wlYear}</p>
                     </div>
-                    <div className="bg-blue-50 p-2 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
+                    <div className="bg-blue-50 p-2 rounded-lg"><UserPlus className="w-5 h-5 text-blue-600" /></div>
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Ventas y utilidad del mes */}
               <Card className="bg-white">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-500">Nuevos Leads</p>
-                      <h3 className="text-2xl font-bold">{leads.filter((l) => l.status === "ASIGNADO").length}</h3>
+                      <p className="text-sm font-medium text-slate-500">Ventas · {MESES[wlMonth - 1]}</p>
+                      <h3 className="text-2xl font-bold">{mxn0.format(ventas.mes.importe)}</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Utilidad <span className={ventas.mes.utilidad < 0 ? "text-red-600 font-semibold" : "text-emerald-700 font-semibold"}>{mxn0.format(ventas.mes.utilidad)}</span>
+                      </p>
                     </div>
-                    <div className="bg-orange-50 p-2 rounded-lg"><Clock className="w-5 h-5 text-orange-600" /></div>
+                    <div className="bg-emerald-50 p-2 rounded-lg"><Wallet className="w-5 h-5 text-emerald-600" /></div>
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Ventas y utilidad del año */}
+              <Card className="bg-brand-navy text-white border-none">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white/70">Ventas · {wlYear}</p>
+                      <h3 className="text-2xl font-bold">{mxn0.format(ventas.anio.importe)}</h3>
+                      <p className="text-[11px] text-white/60 mt-0.5">
+                        Utilidad <span className="font-semibold text-white">{mxn0.format(ventas.anio.utilidad)}</span>
+                      </p>
+                    </div>
+                    <div className="bg-white/10 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-white" /></div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Tratos cerrados del mes (facturado + entregado) */}
               <Card className="bg-white">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-500">Tratos Cerrados</p>
-                      <h3 className="text-2xl font-bold">{leads.filter((l) => l.status === "ENTREGADO").length}</h3>
+                      <p className="text-sm font-medium text-slate-500">Cerrados · {MESES[wlMonth - 1]}</p>
+                      <h3 className="text-2xl font-bold">{closedThisMonth}</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Facturado + Entregado</p>
                     </div>
                     <div className="bg-green-50 p-2 rounded-lg"><CheckCircle2 className="w-5 h-5 text-green-600" /></div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-500">Pipeline Total</p>
-                      <h3 className="text-2xl font-bold">${leads.reduce((acc, l) => acc + l.value, 0).toLocaleString()}</h3>
-                    </div>
-                    <div className="bg-indigo-50 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-indigo-600" /></div>
                   </div>
                 </CardContent>
               </Card>
@@ -608,10 +772,20 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
 
               <div className="flex flex-wrap items-center gap-4">
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-brand-gray ml-1">Buscar</p>
-                  <div className="relative w-full md:w-64">
-                    <Filter className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                    <Input placeholder="Buscar leads o empresas..." className="pl-9 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  <p className="text-xs font-medium text-brand-gray ml-1">Periodo</p>
+                  <div className="flex gap-2">
+                    <Select value={String(wlMonth)} onValueChange={(v) => setWlMonth(Number(v))}>
+                      <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MESES.map((m, i) => (<SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={String(wlYear)} onValueChange={(v) => setWlYear(Number(v))}>
+                      <SelectTrigger className="w-[90px] h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {yearOpts.map((y) => (<SelectItem key={y} value={String(y)}>{y}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -636,27 +810,6 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       {sucursales.map((s) => (<SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-brand-gray ml-1">Origen</p>
-                  <div className="flex items-center gap-3 h-9 px-3 rounded-md border border-input bg-white">
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterClientInitiated} onChange={(e) => setFilterClientInitiated(e.target.checked)} />
-                      <span className="text-xs text-slate-700">Cliente contactó</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterMostrador} onChange={(e) => setFilterMostrador(e.target.checked)} />
-                      <span className="text-xs text-slate-700">Mostrador</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterNewClient} onChange={(e) => setFilterNewClient(e.target.checked)} />
-                      <span className="text-xs text-slate-700">Cliente nuevo</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input type="checkbox" className="h-4 w-4 accent-primary" checked={filterTransferidoWhatsappRoger} onChange={(e) => setFilterTransferidoWhatsappRoger(e.target.checked)} />
-                      <span className="text-xs text-slate-700">WA Roger</span>
-                    </label>
-                  </div>
                 </div>
               </div>
             </div>
@@ -740,7 +893,8 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                   </div>
                 ) : (
                   workloadInsights.stuckLeads.map((lead) => {
-                    const stuckLevel = getStuckLevel(lead.updatedAt);
+                    const lastActivity = getLeadLastActivity(lead);
+                    const stuckLevel = getStuckLevel(lastActivity);
                     return (
                       <Card
                         key={lead.id}
@@ -787,7 +941,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                               </div>
                               <div className="flex items-center gap-1 text-[10px] text-slate-400">
                                 <Clock className="w-3 h-3" />
-                                <span>{new Date(lead.updatedAt).toLocaleDateString()}</span>
+                                <span>{new Date(lastActivity).toLocaleDateString()}</span>
                               </div>
                             </div>
                             <div className="flex items-center justify-between bg-slate-50/50 p-2 rounded-lg">
@@ -798,7 +952,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                                   "text-[10px] font-bold",
                                   stuckLevel === "critical" ? "text-red-600" : "text-orange-600"
                                 )}>
-                                  {getTimeStuck(lead.updatedAt)}
+                                  {getTimeStuck(lastActivity)}
                                 </span>
                               </div>
                             </div>
@@ -814,6 +968,81 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
         )}
 
         {subTab === "activity" && (
+          <div className="space-y-6">
+          {/* Resumen del día / periodo seleccionado */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Ventas diarias */}
+            <Card className="bg-brand-navy text-white border-none">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white/70">
+                      {isSingleDay ? "Ventas del día" : "Ventas del periodo"}
+                    </p>
+                    <h3 className="text-2xl font-bold mt-0.5">{mxn0.format(dailyRent.importe)}</h3>
+                    <p className="text-[11px] text-white/60 mt-1">
+                      Utilidad <span className="font-semibold text-white">{mxn0.format(dailyRent.utilidad)}</span>
+                    </p>
+                    <p className="text-[10px] text-white/50 mt-1">
+                      {isSingleDay
+                        ? new Date(dayFrom + "T00:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })
+                        : `${new Date(dayFrom + "T00:00:00").toLocaleDateString("es-MX")} – ${new Date(dayTo + "T00:00:00").toLocaleDateString("es-MX")}`}
+                      {filterSeller !== "all" && ` · ${users.find((u) => u.id === filterSeller)?.name || ""}`}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 p-2 rounded-lg"><Wallet className="w-5 h-5 text-white" /></div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Actualizaciones del día (total) */}
+            <Card className="bg-white">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500">Actualizaciones</p>
+                    <h3 className="text-2xl font-bold mt-0.5">{updateStats.total}</h3>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {isSingleDay ? "Registradas en el día" : "Registradas en el periodo"}
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 p-2 rounded-lg"><Activity className="w-5 h-5 text-blue-600" /></div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Productos marcados como faltante */}
+            <Card className="bg-white">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500">Productos faltantes</p>
+                    <h3 className="text-2xl font-bold mt-0.5">{faltanteCount}</h3>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {isSingleDay ? "Marcados en el día" : "Marcados en el periodo"}
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 p-2 rounded-lg"><PackageX className="w-5 h-5 text-amber-600" /></div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Actualizaciones por etapa */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            {STAGE_OPTIONS.map((opt) => {
+              const n = updateStats.counts[opt.value] || 0;
+              return (
+                <Card key={opt.value} className={cn("bg-white", n === 0 && "opacity-60")}>
+                  <CardContent className="py-3 px-3 text-center">
+                    <div className="mb-1 flex justify-center">{getStatusBadge(opt.value)}</div>
+                    <h4 className="text-xl font-bold leading-none">{n}</h4>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
           <Card className="bg-white">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -850,7 +1079,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 text-xs"
-                      onClick={() => { setActivityFrom(""); setActivityTo(""); setFilterStages(new Set()); }}
+                      onClick={() => { setActivityFrom(daysAgoStr(ACTIVITY_DEFAULT_DAYS)); setActivityTo(""); setFilterStages(new Set()); }}
                     >
                       Limpiar
                     </Button>
@@ -920,7 +1149,15 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       })
                       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                       .map((update) => (
-                        <TableRow key={update.id} className="group hover:bg-slate-50/50 transition-colors">
+                        <TableRow
+                          key={update.id}
+                          className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            const lead = leads.find((l) => l.id === update.leadId);
+                            if (lead) openStatusUpdate(lead);
+                          }}
+                          title="Ver historial y agregar comentario"
+                        >
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
@@ -974,6 +1211,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
               </div>
             </CardContent>
           </Card>
+          </div>
         )}
 
         {subTab === "goals" && (

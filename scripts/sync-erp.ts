@@ -23,6 +23,7 @@ import {
   getProductosRaw,
   getVentasClienteMensual,
   getRentabilidadVendedorMensual,
+  getRentabilidadVendedorDiario,
 } from '../src/sqlserver.js';
 
 // Sync runs locally / via scheduler with full DB access. Uses the service role
@@ -387,6 +388,60 @@ async function syncRentabilidadVendedorMensual() {
 }
 
 // ---------------------------------------------------------------------------
+// Rentabilidad por vendedor/DÍA — daily-grain twin of the monthly sync above.
+// Daily rows are ~30× the monthly volume, so instead of a multi-year window this
+// keeps only a bounded rolling window of recent days (enough for a daily trend),
+// recomputed each sync so backdated ventas / notas de crédito are picked up.
+// ---------------------------------------------------------------------------
+const DIARIO_DAYS_BACK = 180; // rolling window of daily rows to keep fresh
+
+async function syncRentabilidadVendedorDiario() {
+  const now = new Date();
+  const desdeDate = new Date(now);
+  desdeDate.setDate(desdeDate.getDate() - DIARIO_DAYS_BACK);
+  const desde = desdeDate.toISOString().slice(0, 10); // 'YYYY-MM-DD' inclusive
+  const hasta = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10); // tomorrow, exclusive upper bound → includes today
+
+  const rows = await getRentabilidadVendedorDiario(desde, hasta);
+  if (!rows.length) {
+    console.warn('⚠  No rentabilidad (vendedor/día) returned from SQL Server');
+    return;
+  }
+
+  // Replace the window (same rationale as the monthly syncs): delete the days
+  // we're about to rewrite, then insert fresh — so a sale/NC cancelled since the
+  // last sync drops its contribution and leaves no stale row.
+  const { error: delErr } = await supabase
+    .from('erp_rentabilidad_vendedor_diario')
+    .delete()
+    .gte('fecha', desde);
+  if (delErr) { console.error('✗ rentabilidad-vendedor-diario delete:', delErr.message); return; }
+
+  const payload = rows.map((r) => ({
+    vendedor_id: r.vendedorId,
+    vendedor_nombre: r.vendedorNombre,
+    fecha: r.fecha,
+    venta_importe: r.ventaImporte,
+    venta_costo: r.ventaCosto,
+    dev_importe: r.devImporte,
+    dev_costo: r.devCosto,
+    boni_importe: r.boniImporte,
+  }));
+
+  const CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < payload.length; i += CHUNK) {
+    const chunk = payload.slice(i, i + CHUNK);
+    const { error } = await supabase.from('erp_rentabilidad_vendedor_diario').insert(chunk);
+    if (error) console.error(`✗ rentabilidad-vendedor-diario chunk ${i}–${i + chunk.length}:`, error.message);
+    else inserted += chunk.length;
+  }
+  console.log(`✓ rentabilidad-vendedor-diario inserted: ${inserted} / ${payload.length} (desde ${desde})`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -398,6 +453,7 @@ async function main() {
   await syncProductos();
   await syncVentasClienteMensual();
   await syncRentabilidadVendedorMensual();
+  await syncRentabilidadVendedorDiario();
   console.log('── done ──\n');
   process.exit(0);
 }
