@@ -93,6 +93,10 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   // recent window instead of every update ever recorded.
   const [activityFrom, setActivityFrom] = useState<string>(() => daysAgoStr(ACTIVITY_DEFAULT_DAYS));
   const [activityTo, setActivityTo] = useState<string>("");
+  // The timeline table below spans the date filter (5 días por defecto), but the
+  // KPI cards summarize hoy only until the user actively engages the date filter.
+  // False on initial load and after "Limpiar" ⇒ cards collapse to the current day.
+  const [dateFilterTouched, setDateFilterTouched] = useState<boolean>(false);
   // Actividad Global pipeline-stage filter — empty set = show all stages
   const [filterStages, setFilterStages] = useState<Set<LeadStatus>>(new Set());
 
@@ -187,11 +191,13 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
   }, [rentResp, wlMonth, filterSeller, sucursalIdFilter, users]);
 
   // ── Actividad Global dashboard (día) ──────────────────────────────────────
-  // Effective day/range for the KPI header: the date filters when set, else hoy.
-  // From-only ⇒ that single day; From+To ⇒ the range. Mirrors the timeline table.
+  // Effective day/range for the KPI cards. Until the user actively engages the
+  // date filter (dateFilterTouched), the cards show hoy only — even though the
+  // timeline table below spans the default 5-day window. Once touched: From-only
+  // ⇒ that single day, From+To ⇒ the range, mirroring the table.
   const todayStr = new Date().toLocaleDateString("en-CA"); // 'YYYY-MM-DD' local
-  const dayFrom = activityFrom || todayStr;
-  const dayTo = activityTo || todayStr;
+  const dayFrom = dateFilterTouched ? (activityFrom || todayStr) : todayStr;
+  const dayTo = dateFilterTouched ? (activityTo || todayStr) : todayStr;
   const isSingleDay = dayFrom === dayTo;
 
   // True if an ISO timestamp falls within [dayFrom 00:00, dayTo 23:59:59.999].
@@ -1060,7 +1066,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       type="date"
                       value={activityFrom}
                       max={activityTo || undefined}
-                      onChange={(e) => setActivityFrom(e.target.value)}
+                      onChange={(e) => { setDateFilterTouched(true); setActivityFrom(e.target.value); }}
                       className="h-8 text-xs w-[140px]"
                     />
                   </div>
@@ -1070,7 +1076,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       type="date"
                       value={activityTo}
                       min={activityFrom || undefined}
-                      onChange={(e) => setActivityTo(e.target.value)}
+                      onChange={(e) => { setDateFilterTouched(true); setActivityTo(e.target.value); }}
                       className="h-8 text-xs w-[140px]"
                     />
                   </div>
@@ -1079,7 +1085,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 text-xs"
-                      onClick={() => { setActivityFrom(daysAgoStr(ACTIVITY_DEFAULT_DAYS)); setActivityTo(""); setFilterStages(new Set()); }}
+                      onClick={() => { setActivityFrom(daysAgoStr(ACTIVITY_DEFAULT_DAYS)); setActivityTo(""); setFilterStages(new Set()); setDateFilterTouched(false); }}
                     >
                       Limpiar
                     </Button>
