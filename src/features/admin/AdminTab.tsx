@@ -28,6 +28,10 @@ import { getStatusBadge } from "../leads/getStatusBadge";
 
 export interface AdminTabProps {
   openStatusUpdate: (lead: Lead) => void;
+  // Sub-tab selection is lifted to App so the lateral "Panel Admin" dropdown and
+  // the in-place sub-tab header below stay in sync.
+  subTab: string;
+  setSubTab: (v: string) => void;
 }
 
 // Pesos formatter for the workload KPI cards (ventas / utilidad), whole pesos.
@@ -69,11 +73,8 @@ const BRANCH_GOAL_BLANK = () => ({
   utilidadAmount: 0,
 });
 
-export function AdminTab({ openStatusUpdate }: AdminTabProps) {
+export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps) {
   const { leads, users, sucursales, segmentos, faltantes, refetchAll } = useAppData();
-
-  // Sub-tab routing
-  const [subTab, setSubTab] = useState<string>("users");
 
   // Filters shared by Users / Workload / Activity
   const [filterSeller, setFilterSeller] = useState<string>("all");
@@ -891,7 +892,7 @@ export function AdminTab({ openStatusUpdate }: AdminTabProps) {
                   {workloadInsights.stuckLeads.length} {workloadInsights.stuckLeads.length === 1 ? "lead" : "leads"}
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500 -mt-1">Leads activos sin actualización en más de 24 h. Críticos rojos: sin movimiento en más de 3 días.</p>
+              <p className="text-xs text-slate-500 -mt-1">Leads activos sin actualización en más de 3 días. Críticos rojos: sin movimiento en más de 7 días.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {workloadInsights.stuckLeads.length === 0 ? (
