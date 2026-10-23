@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, BarChart3, UserCheck, ShieldCheck, Kanban, Clock, ListChecks,
   ChevronDown, Menu, Users, Activity, Target, TrendingUp, X,
@@ -53,7 +53,7 @@ export default function App() {
   // Main navigation is a controlled Tabs so the lateral sidebar buttons and the
   // Admin dropdown sub-items can drive the active section directly.
   const [activeTab, setActiveTab] = useState<string>(
-    currentUser?.role === "Compras" ? "faltantes" : currentUser?.role === "Admin" ? "admin" : "my-leads"
+    currentUser?.role === "Compras" ? "faltantes" : currentUser?.role === "Admin" ? "performance" : "my-leads"
   );
   // Admin sub-tab is lifted here so the sidebar dropdown and AdminTab's own
   // in-place sub-tab header share the same selection.
@@ -63,6 +63,21 @@ export default function App() {
   // Sidebar is a slide-in drawer, hidden by default and auto-closed after the
   // user picks a section (same behavior on mobile and desktop).
   const [navOpen, setNavOpen] = useState(false);
+
+  // currentUser is null on first render (rehydrated async from /api/me or set
+  // by login), so the useState initializer above can't key off the role — it
+  // always falls through to "my-leads". Apply the role's landing section once,
+  // the first time the user becomes known. Reset on logout so a different role
+  // lands correctly on the next login.
+  const landedRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser) { landedRef.current = false; return; }
+    if (landedRef.current) return;
+    landedRef.current = true;
+    if (currentUser.role === "Admin") setActiveTab("performance");
+    else if (currentUser.role === "Compras") setActiveTab("faltantes");
+    // Sellers keep the "my-leads" default.
+  }, [currentUser]);
 
   if (!currentUser) return <LoginScreen />;
 
