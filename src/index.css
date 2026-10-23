@@ -196,6 +196,29 @@
   .ring-brand-navy   { --tw-ring-color: var(--brand-navy); }
 }
 
+/* ── Legibility pass ─────────────────────────────────────────────────────────
+   App-wide readability fix for the small, low-contrast grey text. Rather than
+   editing ~380 utility occurrences by hand, we redefine what the muted-grey and
+   tiniest font-size utilities resolve to. These live in `@layer utilities` after
+   `@import "tailwindcss"`, so for equal (single-class) specificity our rules win
+   by source order — every grey shifts darker and every sub-11px size gets a
+   floor, uniformly, so the relative visual hierarchy is preserved.
+
+   Greys are each darkened ~one notch but kept distinct from one another and from
+   the slate-600/700 body tones, so secondary text still reads as subordinate. */
+@layer utilities {
+  .text-slate-300 { color: #aab4c2; }   /* was #cbd5e1 */
+  .text-slate-400 { color: #71809a; }   /* was #94a3b8 */
+  .text-slate-500 { color: #505e76; }   /* was #64748b */
+  /* slate-600 (#475569) and darker already read well — left untouched */
+  .text-brand-gray { color: #525252; }  /* brand #686868 → darker for body use */
+
+  /* Size floor — lift only the two smallest tiers; 11px / text-xs stay put so
+     dense tables and badges don't reflow. */
+  .text-\[9px\]  { font-size: 10px; }
+  .text-\[10px\] { font-size: 11px; }
+}
+
 /* Flat aesthetic — strip every drop shadow / elevation across the app.
    Zero out --tw-shadow with !important so it beats Tailwind's per-class
    override; ring shadows ride on a separate variable and stay intact. */

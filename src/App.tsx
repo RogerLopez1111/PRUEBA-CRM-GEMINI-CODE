@@ -53,7 +53,7 @@ export default function App() {
   // Main navigation is a controlled Tabs so the lateral sidebar buttons and the
   // Admin dropdown sub-items can drive the active section directly.
   const [activeTab, setActiveTab] = useState<string>(
-    currentUser?.role === "Compras" ? "pedidos" : currentUser?.role === "Admin" ? "admin" : "my-leads"
+    currentUser?.role === "Compras" ? "faltantes" : currentUser?.role === "Admin" ? "admin" : "my-leads"
   );
   // Admin sub-tab is lifted here so the sidebar dropdown and AdminTab's own
   // in-place sub-tab header share the same selection.
