@@ -1604,7 +1604,7 @@ async function fetchFaltantes(filters: { vendedorId?: string } = {}) {
     .from("productos_faltantes")
     .select(`
       id, Vn_Cve_Vendedor, Sc_Cve_Sucursal, Cl_Cve_Cliente, Pr_Cve_Producto,
-      producto_descripcion, cantidad, comentario, estado, created_at, updated_at,
+      producto_descripcion, cantidad, comentario, comentario_comprador, estado, created_at, updated_at,
       vendedores(Vn_Descripcion),
       sucursales(Sc_Descripcion),
       clientes(Cl_Razon_Social, Cl_Descripcion)
@@ -1627,6 +1627,7 @@ async function fetchFaltantes(filters: { vendedorId?: string } = {}) {
     productoDescripcion: r.producto_descripcion || "",
     cantidad: Number(r.cantidad || 0),
     comentario: r.comentario || "",
+    comentarioComprador: r.comentario_comprador || "",
     estado: r.estado as "pendiente" | "resuelto",
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -1681,7 +1682,7 @@ app.post("/api/productos-faltantes", requireAuth, async (req, res) => {
 
 app.patch("/api/productos-faltantes/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { estado, comentario, productoId, productoDescripcion, cantidad, clienteId } = req.body;
+  const { estado, comentario, comentarioComprador, productoId, productoDescripcion, cantidad, clienteId } = req.body;
 
   // Sellers can only mutate their own faltantes; Admin/Compras can touch any.
   if (req.user!.role === "Seller") {
@@ -1699,6 +1700,7 @@ app.patch("/api/productos-faltantes/:id", requireAuth, async (req, res) => {
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
   if (estado === "pendiente" || estado === "resuelto") updates.estado = estado;
   if (typeof comentario === "string") updates.comentario = comentario.trim();
+  if (typeof comentarioComprador === "string") updates.comentario_comprador = comentarioComprador.trim();
   if (productoId !== undefined) updates.Pr_Cve_Producto = productoId || null;
   if (typeof productoDescripcion === "string") {
     if (!productoDescripcion.trim()) {

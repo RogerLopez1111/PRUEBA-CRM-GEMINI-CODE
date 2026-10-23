@@ -155,7 +155,8 @@ export interface ProductoFaltante {
   productoId?: string | null; // Pr_Cve_Producto — null when free-typed
   productoDescripcion: string; // snapshot at log time
   cantidad: number;
-  comentario: string;
+  comentario: string;              // reason given by the seller when logging
+  comentarioComprador?: string;    // comment the Compras (comprador) role writes back on review
   estado: ProductoFaltanteEstado;
   createdAt: string;
   updatedAt: string;

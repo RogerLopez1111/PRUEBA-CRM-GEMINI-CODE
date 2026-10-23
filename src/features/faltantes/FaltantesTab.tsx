@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, AlertTriangle } from "lucide-react";
+import { Plus, Search, AlertTriangle, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +55,11 @@ export function FaltantesTab() {
   const [newFaltante, setNewFaltante] = useState<NewFaltanteForm>(emptyForm);
   const [editingFaltanteId, setEditingFaltanteId] = useState<string | null>(null);
 
+  // Comprador (Compras) comment — inline per-card editor keyed by faltante id.
+  const [comentarioEditId, setComentarioEditId] = useState<string | null>(null);
+  const [comentarioDraft, setComentarioDraft] = useState("");
+  const [savingComentario, setSavingComentario] = useState(false);
+
   // Filter state
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
   const [filterMonth, setFilterMonth] = useState<string>("all");
@@ -67,6 +72,9 @@ export function FaltantesTab() {
   });
 
   if (!currentUser) return null;
+
+  // Only the Compras (comprador) role — and Admin — may write the buyer comment.
+  const canComment = currentUser.role === "Compras" || currentUser.role === "Admin";
 
   const resetFaltanteForm = () => {
     setEditingFaltanteId(null);
@@ -136,6 +144,38 @@ export function FaltantesTab() {
       }
     } catch {
       toast.error(isEdit ? "Error al actualizar faltante" : "Error al registrar faltante");
+    }
+  };
+
+  const startComentarioComprador = (f: ProductoFaltante) => {
+    setComentarioEditId(f.id);
+    setComentarioDraft(f.comentarioComprador || "");
+  };
+
+  const cancelComentarioComprador = () => {
+    setComentarioEditId(null);
+    setComentarioDraft("");
+  };
+
+  const saveComentarioComprador = async (f: ProductoFaltante) => {
+    setSavingComentario(true);
+    try {
+      const res = await apiFetch(`/api/productos-faltantes/${f.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ comentarioComprador: comentarioDraft }),
+      });
+      if (res.ok) {
+        toast.success("Comentario guardado");
+        cancelComentarioComprador();
+        await refetchFaltantes();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Error al guardar comentario");
+      }
+    } catch {
+      toast.error("Error al guardar comentario");
+    } finally {
+      setSavingComentario(false);
     }
   };
 
@@ -643,8 +683,52 @@ export function FaltantesTab() {
                   {f.comentario && (
                     <p className="text-xs text-slate-600 italic mt-2 leading-snug">{f.comentario}</p>
                   )}
+
+                  {/* Comprador (Compras) comment — shown to everyone, edited by Compras/Admin */}
+                  {f.comentarioComprador && comentarioEditId !== f.id && (
+                    <div className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" /> Comentario de Compras
+                      </p>
+                      <p className="text-xs text-sky-900 mt-0.5 leading-snug whitespace-pre-wrap">{f.comentarioComprador}</p>
+                    </div>
+                  )}
+
+                  {canComment && comentarioEditId === f.id && (
+                    <div className="mt-2 space-y-2">
+                      <label className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" /> Comentario de Compras
+                      </label>
+                      <Textarea
+                        placeholder="Ej. pedido al proveedor, llega la próxima semana; descontinuado, sugerir sustituto..."
+                        value={comentarioDraft}
+                        onChange={(e) => setComentarioDraft(e.target.value)}
+                        rows={3}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => saveComentarioComprador(f)} disabled={savingComentario}>
+                          {savingComentario ? "Guardando..." : "Guardar comentario"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={cancelComentarioComprador} disabled={savingComentario}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  {canComment && comentarioEditId !== f.id && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => startComentarioComprador(f)}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {f.comentarioComprador ? "Editar comentario" : "Comentar"}
+                    </Button>
+                  )}
                   {currentUser.role === "Admin" && (
                     <Button
                       size="sm"
