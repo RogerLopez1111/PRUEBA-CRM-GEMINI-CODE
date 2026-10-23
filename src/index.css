@@ -208,9 +208,10 @@
    the slate-600/700 body tones, so secondary text still reads as subordinate. */
 @layer utilities {
   .text-slate-300 { color: #aab4c2; }   /* was #cbd5e1 */
-  .text-slate-400 { color: #71809a; }   /* was #94a3b8 */
+  .text-slate-400 { color: #000; }      /* forced to black */
   .text-slate-500 { color: #505e76; }   /* was #64748b */
-  /* slate-600 (#475569) and darker already read well — left untouched */
+  /* slate-600 (#475569) already reads well — left untouched */
+  .text-slate-700 { color: #000; }      /* forced to black */
   .text-brand-gray { color: #525252; }  /* brand #686868 → darker for body use */
 
   /* Size floor — lift only the two smallest tiers; 11px / text-xs stay put so
