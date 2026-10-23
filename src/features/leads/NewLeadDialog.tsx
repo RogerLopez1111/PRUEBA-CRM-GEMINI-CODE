@@ -23,7 +23,7 @@ import {
 
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
-import type { Client } from "../../types";
+import type { Client, Lead } from "../../types";
 
 const norm = (v?: string) => (/^\d+$/.test(v || "") ? String(parseInt(v!, 10)) : (v || "").trim());
 
@@ -54,7 +54,7 @@ function emptyForm(): NewLeadForm {
 }
 
 export function NewLeadDialog() {
-  const { clients, users, sucursales, segmentos, tareas, currentUser, refetchAll } = useAppData();
+  const { clients, users, sucursales, segmentos, tareas, currentUser, upsertLead } = useAppData();
 
   // Open tasks the current user can link a new lead to. Sellers only receive
   // their own assigned tasks from the API; admins receive all, so both cases
@@ -107,10 +107,11 @@ export function NewLeadDialog() {
         body: JSON.stringify(form),
       });
       if (res.ok) {
+        const saved: Lead = await res.json();
+        upsertLead(saved); // show the new lead instantly — no full refetch
         toast.success(currentUser?.role === "Seller" ? "Lead creado y asignado a ti" : "Nuevo lead creado");
         setIsOpen(false);
         resetForm();
-        refetchAll();
       } else {
         const data = await res.json().catch(() => ({} as { error?: string }));
         toast.error(data.error || "Error al crear lead");

@@ -98,12 +98,17 @@ export const getTimeStuck = (updatedAt: string) => {
   return `${diffInMinutes}m`;
 };
 
+// Staleness thresholds for the "atrasado" metric, in days since a lead's last
+// real activity. warning = "Retrasado", critical = "Retraso Crítico".
+export const STUCK_WARNING_DAYS = 3;
+export const STUCK_CRITICAL_DAYS = 7;
+
 export const getStuckLevel = (updatedAt: string) => {
   const lastUpdate = new Date(updatedAt).getTime();
   const now = new Date().getTime();
   const diffInHours = (now - lastUpdate) / (1000 * 60 * 60);
-  if (diffInHours > 72) return "critical";
-  if (diffInHours > 24) return "warning";
+  if (diffInHours > STUCK_CRITICAL_DAYS * 24) return "critical";
+  if (diffInHours > STUCK_WARNING_DAYS * 24) return "warning";
   return "normal";
 };
 

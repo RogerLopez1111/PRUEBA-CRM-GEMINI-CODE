@@ -54,6 +54,13 @@ interface AppData {
   loadingOlderLeads: boolean;
   loadOlderLeads: () => Promise<void>;
 
+  // Optimistic cache mutators — patch a single lead in place from a write
+  // response (the create/update/delete hot path) instead of refetching the
+  // whole dataset. The write endpoints return the authoritative lead row with
+  // history, so the UI can update instantly with zero extra round-trips.
+  upsertLead: (lead: Lead) => void;
+  removeLead: (id: string) => void;
+
   // Refetchers — granular for the hot paths, refetchAll for everything else
   refetchAll: () => Promise<void>;
   refetchLeads: () => Promise<void>;
@@ -134,6 +141,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const refetchLeads = useCallback(async () => {
     const res = await apiFetch(`/api/leads?desde=${leadsDesdeRef.current}`);
     setLeads(await safeJson<Lead[]>(res, []));
+  }, []);
+
+  // Patch one lead in place (or prepend if new). Keyed by id; a freshly created
+  // lead lands at the top of the list where "most recent" belongs.
+  const upsertLead = useCallback((lead: Lead) => {
+    setLeads((prev) => {
+      const i = prev.findIndex((l) => l.id === lead.id);
+      if (i === -1) return [lead, ...prev];
+      const next = [...prev];
+      next[i] = lead;
+      return next;
+    });
+  }, []);
+
+  const removeLead = useCallback((id: string) => {
+    setLeads((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
   // Extend the window CHUNK_MONTHS further back and reload (the wider window is a
@@ -255,6 +278,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       leadsDesde,
       loadingOlderLeads,
       loadOlderLeads,
+      upsertLead,
+      removeLead,
       refetchAll,
       refetchLeads,
       refetchUsers,
@@ -266,6 +291,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       leads, users, clients, sucursales, segmentos, productos, faltantes, pedidos, tareas, rechazoMotivos,
       currentUserState, setCurrentUser, loading,
       leadsDesde, loadingOlderLeads, loadOlderLeads,
+      upsertLead, removeLead,
       refetchAll, refetchLeads, refetchUsers, refetchFaltantes, refetchPedidos, refetchTareas,
     ]
   );

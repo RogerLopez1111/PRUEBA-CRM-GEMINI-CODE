@@ -47,8 +47,8 @@ import type { Lead, LeadStatus, User } from "../../types";
 // ENTREGADO / RECHAZADO lead is done, not "sin actualizar".
 const CLOSED_STATUSES = new Set<LeadStatus>(["FACTURADO", "ENTREGADO", "RECHAZADO"]);
 
-// Shared stale definition with the admin Carga de Trabajo tab: warning > 24 h,
-// critical > 72 h since the lead's last real activity (newest history entry).
+// Shared stale definition with the admin Carga de Trabajo tab: warning > 3 d,
+// critical > 7 d since the lead's last real activity (newest history entry).
 function leadStuckLevel(lead: Lead): "normal" | "warning" | "critical" {
   if (CLOSED_STATUSES.has(lead.status)) return "normal";
   return getStuckLevel(getLeadLastActivity(lead));
@@ -213,11 +213,11 @@ function KanbanColumn({ status, leads, users, onUpdate }: { key?: string; status
 }
 
 interface KanbanTabProps {
-  openStatusUpdate: (lead: Lead, newStatus?: LeadStatus) => void;
+  openStatusUpdate: (lead: Lead, newStatus?: LeadStatus, opts?: { forceStageForm?: boolean }) => void;
 }
 
 export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
-  const { leads, users, sucursales, segmentos, currentUser, refetchAll, leadsDesde, loadingOlderLeads, loadOlderLeads } = useAppData();
+  const { leads, users, sucursales, segmentos, currentUser, upsertLead, refetchLeads, leadsDesde, loadingOlderLeads, loadOlderLeads } = useAppData();
 
   const [filterSeller, setFilterSeller] = useState<string>("all");
   const [filterSucursal, setFilterSucursal] = useState<string>("all");
@@ -254,7 +254,9 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
       method: "POST",
       body: JSON.stringify({ ids: staleLeads.map(l => l.id) }),
     });
-    await refetchAll();
+    // Bulk-reject returns only a count, so reload leads (1 request) rather than
+    // the full 10-endpoint refetchAll — only the leads changed.
+    await refetchLeads();
     setBulkRejectState("idle");
   };
 
@@ -341,8 +343,9 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
         body: JSON.stringify({ status: "ENTREGADO" }),
       });
       if (res.ok) {
+        const saved: Lead = await res.json();
+        upsertLead(saved); // card moves to ENTREGADO instantly
         toast.success("Lead marcado como ENTREGADO");
-        await refetchAll();
       } else {
         const data = await res.json().catch(() => ({} as { error?: string }));
         toast.error(data.error || "No se pudo actualizar el estado");
@@ -582,7 +585,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
               status={status}
               leads={visibleLeads}
               users={users}
-              onUpdate={(lead) => openStatusUpdate(lead)}
+              onUpdate={(lead) => openStatusUpdate(lead, undefined, { forceStageForm: true })}
             />
           ))}
           <DragOverlay>

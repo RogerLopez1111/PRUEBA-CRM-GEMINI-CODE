@@ -12,7 +12,7 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import {
   History, MessageSquare, Plus, Trash2, TrendingUp, FileText, XCircle,
-  CheckCircle2, Search, Building2, Paperclip, Loader2,
+  CheckCircle2, Search, Building2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,13 +38,15 @@ import type { Client, Lead, LeadStatus } from "../../types";
 import { getStatusBadge } from "./getStatusBadge";
 
 export interface StatusUpdateDialogHandle {
-  open: (lead: Lead, newStatus?: LeadStatus) => void;
+  // `forceStageForm` makes the dialog always show the "Nueva Actualización"
+  // stage-dropdown panel even when no status change was preselected. The Kanban
+  // uses it so a card click there never falls back to the comment-only panel.
+  open: (lead: Lead, newStatus?: LeadStatus, opts?: { forceStageForm?: boolean }) => void;
 }
 
 interface FormState {
   status: LeadStatus;
   comment: string;
-  evidenceUrl: string;
   quotedAmount: number;
   invoicedAmount: number;
   rechazoMotivoId: number;
@@ -54,7 +56,6 @@ interface FormState {
 const emptyForm: FormState = {
   status: "" as LeadStatus,
   comment: "",
-  evidenceUrl: "",
   quotedAmount: 0,
   invoicedAmount: 0,
   rechazoMotivoId: 0,
@@ -62,21 +63,22 @@ const emptyForm: FormState = {
 };
 
 export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) => {
-  const { users, clients, rechazoMotivos, currentUser, refetchAll } = useAppData();
+  const { users, clients, rechazoMotivos, currentUser, upsertLead, removeLead } = useAppData();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [forceStageForm, setForceStageForm] = useState(false);
   const [isErpClientSearchOpen, setIsErpClientSearchOpen] = useState(false);
   const [erpClientSearch, setErpClientSearch] = useState("");
 
   useImperativeHandle(ref, () => ({
-    open: (lead, newStatus) => {
+    open: (lead, newStatus, opts) => {
       setSelectedLead(lead);
+      setForceStageForm(opts?.forceStageForm ?? false);
       setForm({
         status: newStatus || lead.status,
         comment: "",
-        evidenceUrl: "",
         quotedAmount: lead.quotedAmount || 0,
         invoicedAmount: lead.invoicedAmount || 0,
         rechazoMotivoId: 0,
@@ -96,7 +98,6 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
         body: JSON.stringify({
           status: f.status,
           comment: f.comment,
-          evidenceUrl: f.evidenceUrl,
           quotedAmount: f.quotedAmount,
           invoicedAmount: f.invoicedAmount,
           rechazoMotivoId: f.rechazoMotivoId || undefined,
@@ -104,6 +105,8 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
         }),
       });
       if (res.ok) {
+        const saved: Lead = await res.json();
+        upsertLead(saved); // move the card / refresh its history instantly
         if (f.status === "FACTURADO") toast.success("Lead facturado y vinculado al cliente ERP");
         else toast.success(`Lead marcado como ${f.status}`);
         // Only close here. Resetting the form synchronously flips `sameStatus`
@@ -111,7 +114,6 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
         // close animation, flashing the "Nueva Actualización" panel. The open()
         // handler re-initializes the form on every open, so no reset is needed.
         setIsOpen(false);
-        refetchAll();
       } else {
         const data = await res.json().catch(() => ({} as { error?: string }));
         toast.error(data.error || "Failed to update status");
@@ -134,15 +136,18 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
         return;
       }
       toast.success("Lead eliminado");
+      removeLead(selectedLead.id); // drop it from the board instantly
       setIsOpen(false);
       setSelectedLead(null);
-      refetchAll();
     } catch (e) {
       toast.error("No se pudo eliminar el lead");
     }
   };
 
-  const sameStatus = form.status === selectedLead?.status;
+  // When `forceStageForm` is set (Kanban), always show the stage-dropdown panel
+  // instead of the comment-only panel — even if the dropdown still reads the
+  // current stage.
+  const sameStatus = !forceStageForm && form.status === selectedLead?.status;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -462,19 +467,6 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
                     </Select>
                   </div>
                 )}
-
-                <div className="grid gap-2">
-                  <label className="text-sm font-semibold text-brand-navy flex items-center gap-2">
-                    <Paperclip className="w-3 h-3" />
-                    URL de Evidencia (Opcional)
-                  </label>
-                  <Input
-                    placeholder="https://example.com/evidencia.pdf"
-                    value={form.evidenceUrl}
-                    onChange={(e) => setForm({ ...form, evidenceUrl: e.target.value })}
-                    className="bg-white h-8 text-sm"
-                  />
-                </div>
               </div>
               <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
                 <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>Cancelar</Button>
