@@ -71,6 +71,7 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
   const [forceStageForm, setForceStageForm] = useState(false);
   const [isErpClientSearchOpen, setIsErpClientSearchOpen] = useState(false);
   const [erpClientSearch, setErpClientSearch] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useImperativeHandle(ref, () => ({
     open: (lead, newStatus, opts) => {
@@ -91,7 +92,9 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
 
   const submitStatusChange = async (overrides?: Partial<FormState>) => {
     if (!selectedLead) return;
+    if (isSubmitting) return; // guard against double-clicks firing duplicate POSTs
     const f = { ...form, ...overrides };
+    setIsSubmitting(true);
     try {
       const res = await apiFetch(`/api/leads/${selectedLead.id}/status`, {
         method: "POST",
@@ -120,6 +123,8 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
       }
     } catch (e) {
       toast.error("Failed to update status");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -258,7 +263,7 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
                     <Button variant="outline" size="sm" onClick={() => setIsOpen(false)}>Cerrar</Button>
                     <Button
                       size="sm"
-                      disabled={!form.comment.trim()}
+                      disabled={!form.comment.trim() || isSubmitting}
                       onClick={() => submitStatusChange({ status: selectedLead!.status })}
                       className="gap-2"
                     >
@@ -474,6 +479,7 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
                   size="sm"
                   onClick={() => submitStatusChange()}
                   disabled={
+                    isSubmitting ||
                     !form.comment ||
                     (form.status === "RECHAZADO" && !form.rechazoMotivoId) ||
                     (form.status === "FACTURADO" && selectedLead != null && isCrmClientId(selectedLead.clientId) && !form.erpClientId)

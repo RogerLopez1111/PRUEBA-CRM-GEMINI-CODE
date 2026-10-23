@@ -1127,18 +1127,44 @@ app.post("/api/leads/:id/status", requireAuth, async (req, res) => {
 
   await supabase.from("leads").update(updates).eq("id", id);
 
-  await supabase.from("lead_history").insert({
-    id: Math.random().toString(36).substr(2, 9),
-    lead_id: id,
-    status,
-    comment: comment || `Status updated to ${status}`,
-    evidence_url: evidenceUrl || null,
-    quoted_amount: status === "COTIZADO" ? effectiveQuotedAmount : null,
-    invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
-    rechazo_motivo_id: status === "RECHAZADO" ? (rechazoMotivoId ?? null) : null,
-    updated_by: userId || "System",
-    timestamp: now,
-  });
+  const historyComment = comment || `Status updated to ${status}`;
+  const updatedBy = userId || "System";
+
+  // Dedup guard: a rapid double-click (or a retried request) can fire several
+  // identical POSTs within the same second. The client disables its buttons
+  // while a request is in flight, but that doesn't cover retries or multiple
+  // tabs, so we also drop a history insert here when the lead's most recent
+  // entry is identical (same author, status and comment) and under 10s old.
+  const { data: lastEntry } = await supabase
+    .from("lead_history")
+    .select("status, comment, updated_by, timestamp")
+    .eq("lead_id", id)
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const isDuplicate =
+    lastEntry != null &&
+    lastEntry.status === status &&
+    (lastEntry.comment || "") === historyComment &&
+    lastEntry.updated_by === updatedBy &&
+    lastEntry.timestamp != null &&
+    Date.now() - new Date(lastEntry.timestamp).getTime() < 10_000;
+
+  if (!isDuplicate) {
+    await supabase.from("lead_history").insert({
+      id: Math.random().toString(36).substr(2, 9),
+      lead_id: id,
+      status,
+      comment: historyComment,
+      evidence_url: evidenceUrl || null,
+      quoted_amount: status === "COTIZADO" ? effectiveQuotedAmount : null,
+      invoiced_amount: status === "FACTURADO" ? invoicedAmount : null,
+      rechazo_motivo_id: status === "RECHAZADO" ? (rechazoMotivoId ?? null) : null,
+      updated_by: updatedBy,
+      timestamp: now,
+    });
+  }
 
   res.json(await getLeadWithHistory(id));
 });
