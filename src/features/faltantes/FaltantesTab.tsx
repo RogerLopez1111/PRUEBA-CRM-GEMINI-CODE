@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Search, AlertTriangle, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
@@ -70,6 +70,19 @@ export function FaltantesTab() {
     month: filterMonth,
     estado: filterEstado,
   });
+
+  // Resolve the human-friendly product code (clave) from the ERP catalog by productoId.
+  const productById = useMemo(() => {
+    const m = new Map<string, Product>();
+    for (const p of productos) m.set(p.id, p);
+    return m;
+  }, [productos]);
+
+  const productoCodigo = (productoId?: string | null) => {
+    if (!productoId) return null;
+    const p = productById.get(productoId);
+    return p?.claveCorta || p?.numeroParte || productoId;
+  };
 
   if (!currentUser) return null;
 
@@ -671,7 +684,9 @@ export function FaltantesTab() {
                     <Badge variant="outline" className={f.estado === "pendiente" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}>
                       {f.estado === "pendiente" ? "Pendiente" : "Resuelto"}
                     </Badge>
-                    {f.productoId && <span className="text-[10px] font-mono text-slate-400">ERP {f.productoId}</span>}
+                    {f.productoId && (
+                      <span className="text-[10px] font-mono text-slate-500">Código {productoCodigo(f.productoId)}</span>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                     <span>Cantidad: <span className="font-semibold text-slate-700">{f.cantidad}</span></span>
