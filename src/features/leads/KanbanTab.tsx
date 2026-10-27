@@ -462,8 +462,8 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="stale">Retrasadas (+1d)</SelectItem>
-                <SelectItem value="critical">Críticas (+3d)</SelectItem>
+                <SelectItem value="stale">Retrasadas (+3d)</SelectItem>
+                <SelectItem value="critical">Críticas (+7d)</SelectItem>
               </SelectContent>
             </Select>
           </div>
