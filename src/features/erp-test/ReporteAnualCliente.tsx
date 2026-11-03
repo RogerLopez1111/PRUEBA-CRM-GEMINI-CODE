@@ -6,6 +6,7 @@
  * importe (sin IVA, facturado) per month ENE…DIC + TOTAL.
  */
 import { useEffect, useState, type CSSProperties } from "react";
+import { fmtMoney } from "../../lib/helpers";
 
 type Vendedor = { id: string; name: string };
 type Cliente = { clave: string; nombre: string; razonSocial: string; meses: number[]; total: number };
@@ -20,8 +21,7 @@ type Resp = {
 };
 
 const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const money = (n: number) => (n ? mxn.format(n) : "–");
+const money = (n: number) => (n ? fmtMoney(n) : "–");
 
 export default function ReporteAnualCliente() {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
@@ -123,7 +123,7 @@ export default function ReporteAnualCliente() {
             <Stat label="Vendedor" value={vendedorName} big />
             <Stat label="Año" value={resp.anio} />
             <Stat label="Clientes con venta" value={String(resp.clientesConVenta)} />
-            <Stat label="Total anual" value={mxn.format(resp.total)} big />
+            <Stat label="Total anual" value={fmtMoney(resp.total)} big />
           </div>
 
           {resp.segmentos.length === 0 && (
@@ -138,7 +138,7 @@ export default function ReporteAnualCliente() {
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#141456", letterSpacing: 0.5 }}>SEGMENTO</span>
                 <span style={{ fontSize: 14, fontWeight: 800 }}>{s.id} · {s.name}</span>
                 <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#475569" }}>
-                  {s.clientes.length} cliente{s.clientes.length === 1 ? "" : "s"} · {mxn.format(s.total)}
+                  {s.clientes.length} cliente{s.clientes.length === 1 ? "" : "s"} · {fmtMoney(s.total)}
                 </span>
               </div>
               <div style={{ overflowX: "auto" }}>
@@ -159,7 +159,7 @@ export default function ReporteAnualCliente() {
                         {c.meses.map((v, i) => (
                           <td key={i} style={{ ...num, color: v ? "#0f172a" : "#cbd5e1" }}>{money(v)}</td>
                         ))}
-                        <td style={{ ...num, fontWeight: 700 }}>{mxn.format(c.total)}</td>
+                        <td style={{ ...num, fontWeight: 700 }}>{fmtMoney(c.total)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -167,7 +167,7 @@ export default function ReporteAnualCliente() {
                     <tr style={{ background: "#f8fafc", fontWeight: 700 }}>
                       <td style={{ ...td, position: "sticky", left: 0, background: "#f8fafc" }} colSpan={2}>TOTAL: {s.clientes.length}</td>
                       {s.totalesMes.map((v, i) => <td key={i} style={num}>{money(v)}</td>)}
-                      <td style={num}>{mxn.format(s.total)}</td>
+                      <td style={num}>{fmtMoney(s.total)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -186,7 +186,7 @@ export default function ReporteAnualCliente() {
                       {resp.totalesMes.map((v, i) => (
                         <td key={i} style={{ ...num, borderBottom: "none", color: "#fff" }}>{money(v)}</td>
                       ))}
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{mxn.format(resp.total)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtMoney(resp.total)}</td>
                     </tr>
                   </tbody>
                 </table>

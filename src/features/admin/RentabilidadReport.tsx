@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { apiFetch } from "../../lib/api";
+import { fmtMoney, fmtPct } from "../../lib/helpers";
 
 type Celda = { importe: number; costo: number; utilidad: number; rentabilidad: number };
 type Vendedor = { id: string; nombre: string; meses: Celda[]; total: Celda };
@@ -27,9 +28,6 @@ type Resp = {
 };
 
 const MESES_CORTOS = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
-const mxn2 = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const pct = new Intl.NumberFormat("es-MX", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 // Utilidad cell color: red if negative, muted if empty, slate otherwise.
 function utilColor(has: boolean, u: number): string {
@@ -123,13 +121,13 @@ export function RentabilidadReport() {
             <Card className="bg-white">
               <CardContent className="pt-6">
                 <p className="text-sm font-medium text-slate-500">Importe neto</p>
-                <h3 className="text-2xl font-bold">{mxn.format(resp.total.importe)}</h3>
+                <h3 className="text-2xl font-bold">{fmtMoney(resp.total.importe)}</h3>
               </CardContent>
             </Card>
             <Card className="bg-brand-navy text-white border-none">
               <CardContent className="pt-6">
                 <p className="text-sm font-medium text-white/70">Utilidad bruta</p>
-                <h3 className="text-2xl font-bold">{mxn.format(resp.total.utilidad)}</h3>
+                <h3 className="text-2xl font-bold">{fmtMoney(resp.total.utilidad)}</h3>
               </CardContent>
             </Card>
             <Card className="bg-white">
@@ -137,7 +135,7 @@ export function RentabilidadReport() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-slate-500">% Rentabilidad</p>
-                    <h3 className="text-2xl font-bold">{pct.format(resp.total.rentabilidad)}</h3>
+                    <h3 className="text-2xl font-bold">{fmtPct(resp.total.rentabilidad)}</h3>
                   </div>
                   <div className="bg-emerald-50 p-2 rounded-lg"><Percent className="w-5 h-5 text-emerald-600" /></div>
                 </div>
@@ -182,17 +180,17 @@ export function RentabilidadReport() {
                               <TableCell
                                 key={i}
                                 className={`text-right text-xs tabular-nums ${utilColor(has, c.utilidad)}`}
-                                title={has ? `Importe ${mxn2.format(c.importe)} · Costo ${mxn2.format(c.costo)} · ${pct.format(c.rentabilidad)}` : "Sin ventas"}
+                                title={has ? `Importe ${fmtMoney(c.importe)} · Costo ${fmtMoney(c.costo)} · ${fmtPct(c.rentabilidad)}` : "Sin ventas"}
                               >
-                                {has ? mxn.format(c.utilidad) : "–"}
+                                {has ? fmtMoney(c.utilidad) : "–"}
                               </TableCell>
                             );
                           })}
-                          <TableCell className="text-right text-xs tabular-nums border-l">{mxn.format(v.total.importe)}</TableCell>
-                          <TableCell className="text-right text-xs tabular-nums text-slate-500">{mxn.format(v.total.costo)}</TableCell>
-                          <TableCell className="text-right text-xs tabular-nums font-bold">{mxn.format(v.total.utilidad)}</TableCell>
+                          <TableCell className="text-right text-xs tabular-nums border-l">{fmtMoney(v.total.importe)}</TableCell>
+                          <TableCell className="text-right text-xs tabular-nums text-slate-500">{fmtMoney(v.total.costo)}</TableCell>
+                          <TableCell className="text-right text-xs tabular-nums font-bold">{fmtMoney(v.total.utilidad)}</TableCell>
                           <TableCell className={`text-right text-xs tabular-nums font-semibold ${v.total.utilidad < 0 ? "text-red-600" : "text-emerald-700"}`}>
-                            {v.total.importe !== 0 ? pct.format(v.total.rentabilidad) : "–"}
+                            {v.total.importe !== 0 ? fmtPct(v.total.rentabilidad) : "–"}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -201,13 +199,13 @@ export function RentabilidadReport() {
                         <TableCell className="text-xs font-bold text-white sticky left-0 bg-brand-navy">TOTAL GENERAL</TableCell>
                         {resp.totalesMes.map((c, i) => (
                           <TableCell key={i} className="text-right text-xs tabular-nums font-semibold text-white">
-                            {c.importe !== 0 || c.costo !== 0 ? mxn.format(c.utilidad) : "–"}
+                            {c.importe !== 0 || c.costo !== 0 ? fmtMoney(c.utilidad) : "–"}
                           </TableCell>
                         ))}
-                        <TableCell className="text-right text-xs tabular-nums font-bold text-white border-l border-white/20">{mxn.format(resp.total.importe)}</TableCell>
-                        <TableCell className="text-right text-xs tabular-nums text-white/70">{mxn.format(resp.total.costo)}</TableCell>
-                        <TableCell className="text-right text-xs tabular-nums font-bold text-white">{mxn.format(resp.total.utilidad)}</TableCell>
-                        <TableCell className="text-right text-xs tabular-nums font-bold text-white">{pct.format(resp.total.rentabilidad)}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums font-bold text-white border-l border-white/20">{fmtMoney(resp.total.importe)}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums text-white/70">{fmtMoney(resp.total.costo)}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums font-bold text-white">{fmtMoney(resp.total.utilidad)}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums font-bold text-white">{fmtPct(resp.total.rentabilidad)}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>

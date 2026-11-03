@@ -5,6 +5,7 @@
  * list and each client's segmento come straight from the WServices HTTP API.
  */
 import { useEffect, useState, type CSSProperties } from "react";
+import { fmtNum } from "../../lib/helpers";
 
 type Vendedor = { id: string; name: string };
 type Cliente = { clave: string; nombre: string; razonSocial: string; error?: string };
@@ -107,7 +108,7 @@ export default function ClientesPorSegmento() {
             <Stat label="Vendedor" value={resp.vendedor.name} big />
             <Stat label="Clientes" value={String(resp.totals.clientes)} />
             <Stat label="Segmentos" value={String(resp.totals.segmentos)} />
-            <Stat label="Tiempo" value={`${(resp.meta.elapsedMs / 1000).toFixed(1)} s`} />
+            <Stat label="Tiempo" value={`${fmtNum(resp.meta.elapsedMs / 1000)} s`} />
           </div>
 
           {resp.meta.errors > 0 && (

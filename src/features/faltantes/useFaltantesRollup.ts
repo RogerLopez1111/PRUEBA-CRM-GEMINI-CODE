@@ -152,7 +152,7 @@ export function useFaltantesRollup(filter: FaltantesFilterState) {
       .slice(0, 8);
 
     const totalIncidentes = filtered.length;
-    const freeTextPct = totalIncidentes ? Math.round((freeTextCount / totalIncidentes) * 100) : 0;
+    const freeTextPct = totalIncidentes ? (freeTextCount / totalIncidentes) * 100 : 0;
 
     // Cross-month subset for recurrencia & productos-nuevos — month filter not applied.
     const norm = (v?: string) => (v || "").trim();

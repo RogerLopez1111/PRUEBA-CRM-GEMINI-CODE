@@ -93,10 +93,10 @@ export function usePedidosRollup(filter: PedidosFilterState) {
 
     const aprobadosMasRechazados = aprobados + rechazados;
     const aprobacionPct = aprobadosMasRechazados
-      ? Math.round((aprobados / aprobadosMasRechazados) * 100)
+      ? (aprobados / aprobadosMasRechazados) * 100
       : 0;
     const tiempoPromedioDias = resolutionDays.length
-      ? Math.round((resolutionDays.reduce((a, b) => a + b, 0) / resolutionDays.length) * 10) / 10
+      ? resolutionDays.reduce((a, b) => a + b, 0) / resolutionDays.length
       : null;
 
     return { pendientes, aprobados, rechazados, valorAprobadoMes, valorPendienteTotal, aprobacionPct, tiempoPromedioDias };

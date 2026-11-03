@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { MESES } from "../../lib/helpers";
+import { MESES, fmtMoney } from "../../lib/helpers";
 import { apiFetch } from "../../lib/api";
 
 type Cliente = { clave: string; nombre: string; razonSocial: string; meses: number[]; total: number };
@@ -21,8 +21,7 @@ type Reporte = { anio: string; segmentos: Segmento[]; totalesMes: number[]; tota
 
 type Filtro = "todos" | "compraron" | "sin";
 
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
-const money = (n: number) => (n ? mxn.format(n) : "–");
+const money = (n: number) => (n ? fmtMoney(n) : "–");
 
 export function ReporteAnualCard({ userId, filterMonth }: { userId: string; filterMonth: string }) {
   const anio = filterMonth.slice(0, 4);
@@ -138,7 +137,7 @@ export function ReporteAnualCard({ userId, filterMonth }: { userId: string; filt
                   <span className="text-[10px] font-bold text-brand-navy tracking-wide">SEGMENTO</span>
                   <span className="text-sm font-bold text-slate-800">{s.id} · {s.name}</span>
                   <span className="ml-auto text-[11px] font-semibold text-slate-500">
-                    {s.clientes.length} cliente{s.clientes.length === 1 ? "" : "s"} · {mxn.format(s.total)}
+                    {s.clientes.length} cliente{s.clientes.length === 1 ? "" : "s"} · {fmtMoney(s.total)}
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-100">
@@ -162,7 +161,7 @@ export function ReporteAnualCard({ userId, filterMonth }: { userId: string; filt
                           {c.meses.map((v, i) => (
                             <td key={i} className={cn("text-right px-2 py-1.5 tabular-nums whitespace-nowrap", i === monthIdx ? "bg-indigo-50/60" : "", v ? "text-slate-700" : "text-slate-300")}>{money(v)}</td>
                           ))}
-                          <td className="text-right px-2 py-1.5 font-bold tabular-nums whitespace-nowrap">{mxn.format(c.total)}</td>
+                          <td className="text-right px-2 py-1.5 font-bold tabular-nums whitespace-nowrap">{fmtMoney(c.total)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -172,7 +171,7 @@ export function ReporteAnualCard({ userId, filterMonth }: { userId: string; filt
                         {s.totalesMes.map((v, i) => (
                           <td key={i} className={cn("text-right px-2 py-1.5 tabular-nums whitespace-nowrap", i === monthIdx ? "bg-indigo-50" : "")}>{money(v)}</td>
                         ))}
-                        <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">{mxn.format(s.total)}</td>
+                        <td className="text-right px-2 py-1.5 tabular-nums whitespace-nowrap">{fmtMoney(s.total)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -189,7 +188,7 @@ export function ReporteAnualCard({ userId, filterMonth }: { userId: string; filt
                     {view.totalesMes.map((v, i) => (
                       <td key={i} className="text-right px-2 py-2 tabular-nums whitespace-nowrap">{money(v)}</td>
                     ))}
-                    <td className="text-right px-2 py-2 tabular-nums whitespace-nowrap">{mxn.format(view.total)}</td>
+                    <td className="text-right px-2 py-2 tabular-nums whitespace-nowrap">{fmtMoney(view.total)}</td>
                   </tr>
                 </tbody>
               </table>

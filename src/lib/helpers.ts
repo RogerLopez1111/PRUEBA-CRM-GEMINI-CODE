@@ -198,6 +198,29 @@ export function funnelByStage(leads: Lead[]): { stage: LeadStatus; count: number
   });
 }
 
+// ── Number formatting ────────────────────────────────────────────────────────
+// Business rule: amounts show exactly 2 decimals and are TRUNCATED, never
+// rounded ($1,234.567 → $1,234.56; -0.019 → -0.01).
+// toPrecision(15) strips binary-float noise first, so 1.13 * 100 = 112.99999…
+// still truncates to 1.13 rather than 1.12.
+export const trunc2 = (n: number): number =>
+  Math.trunc(Number((n * 100).toPrecision(15))) / 100;
+
+const num2 = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const mxn2 = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Plain number, grouped, 2 truncated decimals. Callers prepend "$" / append "%".
+export const fmtNum = (n: number | null | undefined): string =>
+  num2.format(trunc2(Number(n) || 0));
+
+// MXN currency, 2 truncated decimals.
+export const fmtMoney = (n: number | null | undefined): string =>
+  mxn2.format(trunc2(Number(n) || 0));
+
+// Ratio → percent (0.12345 → "12.34%"), 2 truncated decimals.
+export const fmtPct = (ratio: number | null | undefined): string =>
+  `${fmtNum((Number(ratio) || 0) * 100)}%`;
+
 export const formatDays = (d: number) => {
   if (d < 1) {
     const hours = Math.round(d * 24);

@@ -4,6 +4,7 @@
  * the ERP once per seller (date-ranged) and caches each result ~10 min.
  */
 import { useState, type CSSProperties } from "react";
+import { fmtNum, fmtMoney } from "../../lib/helpers";
 
 type Row = {
   vendedorId: string;
@@ -23,7 +24,6 @@ type Resp = {
   meta: { vendedorCount: number; withSales: number; errors: number; elapsedMs: number };
 };
 
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
 function firstOfMonthISO(): string {
   const d = new Date();
@@ -156,11 +156,11 @@ export default function VentasPorVendedor() {
         <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
           {/* Summary bar */}
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", padding: "16px 20px", background: "#141456", color: "#fff" }}>
-            <Stat label="Total vendido" value={mxn.format(resp.grand.total)} big />
-            <Stat label="Subtotal (sin IVA)" value={mxn.format(resp.grand.subtotal)} />
+            <Stat label="Total vendido" value={fmtMoney(resp.grand.total)} big />
+            <Stat label="Subtotal (sin IVA)" value={fmtMoney(resp.grand.subtotal)} />
             <Stat label="Ventas" value={String(resp.grand.count)} />
             <Stat label="Vendedores con venta" value={`${resp.meta.withSales} / ${resp.meta.vendedorCount}`} />
-            <Stat label="Tiempo" value={`${(resp.meta.elapsedMs / 1000).toFixed(1)} s`} />
+            <Stat label="Tiempo" value={`${fmtNum(resp.meta.elapsedMs / 1000)} s`} />
           </div>
 
           {resp.meta.errors > 0 && (
@@ -198,8 +198,8 @@ export default function VentasPorVendedor() {
                       {v.truncated && <span style={{ color: "#b45309", fontSize: 11, marginLeft: 8 }}>⚠ truncado</span>}
                     </td>
                     <td style={num}>{v.count}</td>
-                    <td style={{ ...num, color: "#64748b" }}>{mxn.format(v.subtotal)}</td>
-                    <td style={{ ...num, fontWeight: 700 }}>{mxn.format(v.total)}</td>
+                    <td style={{ ...num, color: "#64748b" }}>{fmtMoney(v.subtotal)}</td>
+                    <td style={{ ...num, fontWeight: 700 }}>{fmtMoney(v.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -208,8 +208,8 @@ export default function VentasPorVendedor() {
                   <td style={td}></td>
                   <td style={td}>TOTAL</td>
                   <td style={num}>{resp.grand.count}</td>
-                  <td style={num}>{mxn.format(resp.grand.subtotal)}</td>
-                  <td style={num}>{mxn.format(resp.grand.total)}</td>
+                  <td style={num}>{fmtMoney(resp.grand.subtotal)}</td>
+                  <td style={num}>{fmtMoney(resp.grand.total)}</td>
                 </tr>
               </tfoot>
             </table>

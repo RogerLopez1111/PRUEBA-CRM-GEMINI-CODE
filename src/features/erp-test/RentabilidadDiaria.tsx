@@ -6,6 +6,7 @@
  * vendedor); one row per day: importe neto, costo, utilidad y % de rentabilidad.
  */
 import { useEffect, useState, type CSSProperties } from "react";
+import { fmtMoney, fmtPct } from "../../lib/helpers";
 
 type CeldaDia = { fecha: string; importe: number; costo: number; utilidad: number; rentabilidad: number };
 type Celda = { importe: number; costo: number; utilidad: number; rentabilidad: number };
@@ -17,9 +18,7 @@ type Resp = {
   vendedores: { id: string; nombre: string }[];
 };
 
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const pct = new Intl.NumberFormat("es-MX", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const money = (n: number) => (n ? mxn.format(n) : "–");
+const money = (n: number) => (n ? fmtMoney(n) : "–");
 
 // 'YYYY-MM' → 'octubre 2026'
 function mesLabel(mes: string): string {
@@ -140,9 +139,9 @@ export default function RentabilidadDiaria() {
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", padding: "16px 20px", background: "#141456", color: "#fff", borderRadius: 10, marginBottom: 16 }}>
             <Stat label="Mes" value={mesLabel(resp.mes)} />
             <Stat label="Días con venta" value={String(resp.dias.length)} />
-            <Stat label="Importe neto" value={mxn.format(resp.total.importe)} big />
-            <Stat label="Utilidad bruta" value={mxn.format(resp.total.utilidad)} big />
-            <Stat label="% Rentabilidad" value={pct.format(resp.total.rentabilidad)} big />
+            <Stat label="Importe neto" value={fmtMoney(resp.total.importe)} big />
+            <Stat label="Utilidad bruta" value={fmtMoney(resp.total.utilidad)} big />
+            <Stat label="% Rentabilidad" value={fmtPct(resp.total.rentabilidad)} big />
           </div>
 
           {resp.dias.length === 0 && (
@@ -176,7 +175,7 @@ export default function RentabilidadDiaria() {
                           <td style={{ ...num, color: "#64748b" }}>{money(d.costo)}</td>
                           <td style={{ ...num, fontWeight: 700 }}>{money(d.utilidad)}</td>
                           <td style={{ ...num, ...pctColor(has, d.rentabilidad) }}>
-                            {has ? pct.format(d.rentabilidad) : "–"}
+                            {has ? fmtPct(d.rentabilidad) : "–"}
                           </td>
                         </tr>
                       );
@@ -185,10 +184,10 @@ export default function RentabilidadDiaria() {
                   <tfoot>
                     <tr style={{ background: "#141456", color: "#fff", fontWeight: 800 }}>
                       <td style={{ ...td, borderBottom: "none", color: "#fff", position: "sticky", left: 0, background: "#141456" }}>TOTAL MES</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{mxn.format(resp.total.importe)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#c7d2fe" }}>{mxn.format(resp.total.costo)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{mxn.format(resp.total.utilidad)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{pct.format(resp.total.rentabilidad)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtMoney(resp.total.importe)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#c7d2fe" }}>{fmtMoney(resp.total.costo)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtMoney(resp.total.utilidad)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtPct(resp.total.rentabilidad)}</td>
                     </tr>
                   </tfoot>
                 </table>

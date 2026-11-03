@@ -51,8 +51,10 @@ const daysAgo = (iso: string): number => {
   return Math.max(0, Math.floor((Date.now() - d) / (1000 * 60 * 60 * 24)));
 };
 
+// 2 decimals, truncated (not rounded) — same rule as fmtMoney in src/lib/helpers.ts.
 const moneyMx = (n: number): string =>
-  n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+  (Math.trunc(Number(((Number(n) || 0) * 100).toPrecision(15))) / 100)
+    .toLocaleString('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 async function fetchActivePedidos(supabase: SupabaseClient): Promise<PedidoRow[]> {
   const { data, error } = await supabase

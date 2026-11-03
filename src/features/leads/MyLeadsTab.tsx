@@ -19,6 +19,7 @@ import {
 import { useAppData } from "../../state/AppDataContext";
 import type { Lead, LeadStatus } from "../../types";
 import { getStatusBadge } from "./getStatusBadge";
+import { fmtNum } from "../../lib/helpers";
 
 interface MyLeadsTabProps {
   openStatusUpdate: (lead: Lead, newStatus?: LeadStatus) => void;
@@ -116,7 +117,7 @@ export function MyLeadsTab({ openStatusUpdate }: MyLeadsTabProps) {
                         )}
                       </div>
                       <p className="text-slate-500 text-sm">{lead.company} • {lead.email}</p>
-                      <p className="text-primary font-mono font-bold mt-2">${lead.value.toLocaleString()}</p>
+                      <p className="text-primary font-mono font-bold mt-2">${fmtNum(lead.value)}</p>
                     </div>
                   </div>
 

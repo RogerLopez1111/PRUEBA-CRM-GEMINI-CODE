@@ -28,6 +28,7 @@ import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import { getStatusBadge } from "../leads/getStatusBadge";
 import type { Lead, Product, Tarea, TareaEstado } from "../../types";
+import { fmtNum } from "../../lib/helpers";
 
 const estadoStyles: Record<string, string> = {
   abierta: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -554,7 +555,7 @@ export function TareasTab() {
                         <div className="shrink-0">{getStatusBadge(l.status)}</div>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-2">
-                        <span>Valor: <span className="font-semibold text-slate-700">${l.value.toLocaleString()}</span></span>
+                        <span>Valor: <span className="font-semibold text-slate-700">${fmtNum(l.value)}</span></span>
                         {isAdmin && <span>Vendedor: <span className="font-medium text-slate-700">{seller?.name || l.assignedTo || "—"}</span></span>}
                         {sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{sucursalName}</span></span>}
                         {l.segmento && <span>Segmento: <span className="font-medium text-slate-700">{l.segmento}</span></span>}

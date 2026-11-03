@@ -70,7 +70,7 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
           (l) => isClosed(l.status) && facturadoMonth(l) === filter.ym
         ).length;
         const closedTotal = userLeads.filter((l) => isClosed(l.status)).length;
-        const convPct = userLeads.length ? Math.round((closedTotal / userLeads.length) * 100) : 0;
+        const convPct = userLeads.length ? (closedTotal / userLeads.length) * 100 : 0;
         return {
           user: u,
           sucursalName: sucursales.find((s) => s.id === u.sucursalId)?.name || "—",
@@ -84,7 +84,7 @@ export function useWorkloadInsights(filter: WorkloadFilterState): WorkloadInsigh
       .sort((a, b) => b.activeLeads - a.activeLeads || b.pipelineValue - a.pipelineValue);
 
     const teamAvgConv = stats.length
-      ? Math.round(stats.reduce((acc, x) => acc + x.convPct, 0) / stats.length)
+      ? stats.reduce((acc, x) => acc + x.convPct, 0) / stats.length
       : 0;
 
     const stuckLeads: Lead[] = leads

@@ -9,6 +9,7 @@
  * bonificaciones, exactly like the ERP.
  */
 import { useEffect, useState, type CSSProperties } from "react";
+import { fmtMoney, fmtPct } from "../../lib/helpers";
 
 type Celda = { importe: number; costo: number; utilidad: number; rentabilidad: number };
 type Vendedor = { id: string; nombre: string; meses: Celda[]; total: Celda };
@@ -21,9 +22,7 @@ type Resp = {
 };
 
 const MESES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const pct = new Intl.NumberFormat("es-MX", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const money = (n: number) => (n ? mxn.format(n) : "–");
+const money = (n: number) => (n ? fmtMoney(n) : "–");
 
 // Color a % rentabilidad cell: red for negative/thin margins, deepening green as
 // the margin improves. Empty cells (no sales) stay muted.
@@ -122,9 +121,9 @@ export default function RentabilidadVendedores() {
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", padding: "16px 20px", background: "#141456", color: "#fff", borderRadius: 10, marginBottom: 16 }}>
             <Stat label="Año" value={resp.anio} />
             <Stat label="Vendedores con venta" value={String(resp.vendedoresConVenta)} />
-            <Stat label="Importe neto" value={mxn.format(resp.total.importe)} big />
-            <Stat label="Utilidad bruta" value={mxn.format(resp.total.utilidad)} big />
-            <Stat label="% Rentabilidad" value={pct.format(resp.total.rentabilidad)} big />
+            <Stat label="Importe neto" value={fmtMoney(resp.total.importe)} big />
+            <Stat label="Utilidad bruta" value={fmtMoney(resp.total.utilidad)} big />
+            <Stat label="% Rentabilidad" value={fmtPct(resp.total.rentabilidad)} big />
           </div>
 
           {resp.vendedores.length === 0 && (
@@ -157,7 +156,7 @@ export default function RentabilidadVendedores() {
                           const has = c.importe !== 0 || c.costo !== 0;
                           return (
                             <td key={i} style={{ ...num, ...pctColor(has, c.rentabilidad) }} title={has ? `Importe ${money(c.importe)} · Utilidad ${money(c.utilidad)}` : "Sin ventas"}>
-                              {has ? pct.format(c.rentabilidad) : "–"}
+                              {has ? fmtPct(c.rentabilidad) : "–"}
                             </td>
                           );
                         })}
@@ -165,7 +164,7 @@ export default function RentabilidadVendedores() {
                         <td style={{ ...num, color: "#64748b" }}>{money(v.total.costo)}</td>
                         <td style={{ ...num, fontWeight: 700 }}>{money(v.total.utilidad)}</td>
                         <td style={{ ...num, ...pctColor(v.total.importe !== 0, v.total.rentabilidad) }}>
-                          {v.total.importe !== 0 ? pct.format(v.total.rentabilidad) : "–"}
+                          {v.total.importe !== 0 ? fmtPct(v.total.rentabilidad) : "–"}
                         </td>
                       </tr>
                     ))}
@@ -175,13 +174,13 @@ export default function RentabilidadVendedores() {
                       <td style={{ ...td, borderBottom: "none", color: "#fff", position: "sticky", left: 0, background: "#141456" }}>TOTAL GENERAL</td>
                       {resp.totalesMes.map((c, i) => (
                         <td key={i} style={{ ...num, borderBottom: "none", color: "#fff" }}>
-                          {c.importe !== 0 || c.costo !== 0 ? pct.format(c.rentabilidad) : "–"}
+                          {c.importe !== 0 || c.costo !== 0 ? fmtPct(c.rentabilidad) : "–"}
                         </td>
                       ))}
-                      <td style={{ ...num, borderBottom: "none", color: "#fff", borderLeft: "2px solid #3730a3" }}>{mxn.format(resp.total.importe)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#c7d2fe" }}>{mxn.format(resp.total.costo)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{mxn.format(resp.total.utilidad)}</td>
-                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{pct.format(resp.total.rentabilidad)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff", borderLeft: "2px solid #3730a3" }}>{fmtMoney(resp.total.importe)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#c7d2fe" }}>{fmtMoney(resp.total.costo)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtMoney(resp.total.utilidad)}</td>
+                      <td style={{ ...num, borderBottom: "none", color: "#fff" }}>{fmtPct(resp.total.rentabilidad)}</td>
                     </tr>
                   </tfoot>
                 </table>

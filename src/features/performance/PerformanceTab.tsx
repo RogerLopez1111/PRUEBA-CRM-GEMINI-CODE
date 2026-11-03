@@ -40,6 +40,7 @@ import {
   rechazoMotivosPareto,
   funnelByStage,
   formatDays,
+  fmtNum,
 } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
@@ -176,9 +177,9 @@ function ErpVentasBanner({ live, available, loading, onRetry, fromDevice, fetche
               )
             ) : (
               <>
-                <p className="text-2xl font-bold text-indigo-700">${subtotal.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-indigo-700">${fmtNum(subtotal)}</p>
                 <p className="text-[11px] text-slate-500">
-                  {facturas} facturas este mes · con IVA ${total.toLocaleString()}
+                  {facturas} facturas este mes · con IVA ${fmtNum(total)}
                 </p>
                 {/* Live value from this device's cache — offer a live refresh. */}
                 {hasLive && fromDevice && (
@@ -264,7 +265,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   const clientInitiatedCount = userLeads.filter(l => l.clientInitiated).length;
   const sellerInitiatedCount = userLeads.length - clientInitiatedCount;
   const clientInitiatedPct = userLeads.length > 0
-    ? Math.round((clientInitiatedCount / userLeads.length) * 100)
+    ? (clientInitiatedCount / userLeads.length) * 100
     : 0;
 
   const userFaltantes = faltantesAll.filter(f => f.vendedorId === user.id);
@@ -297,7 +298,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   const newClientsTotal = [...newClientCounts.values()].reduce((a, b) => a + b, 0);
   const convertedForMonth = convertedCounts.get(filterMonth) || 0;
   const convertedTotal = [...convertedCounts.values()].reduce((a, b) => a + b, 0);
-  const convertedPct = newClientsTotal > 0 ? Math.round((convertedTotal / newClientsTotal) * 100) : 0;
+  const convertedPct = newClientsTotal > 0 ? (convertedTotal / newClientsTotal) * 100 : 0;
   const maxBar = Math.max(1, ...recentMonthsForUser.map(m => m.count));
 
   // Goal for the selected month (server has per-month breakdown in goalsTimeline)
@@ -305,7 +306,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
   const goalForMonth = goalsTimeline.find(g => g.year === filterYear && g.month === filterMonthNum);
   const effectiveSalesGoal = goalForMonth?.meta ?? user.performance.salesGoal;
   const effectiveUtilidadGoal = goalForMonth?.metaUtilidad ?? user.performance.utilidadGoal;
-  const utilidadPct = effectiveUtilidadGoal > 0 ? Math.min(100, Math.round((utilidadReal / effectiveUtilidadGoal) * 100)) : 0;
+  const utilidadPct = effectiveUtilidadGoal > 0 ? Math.min(100, (utilidadReal / effectiveUtilidadGoal) * 100) : 0;
 
   const userTtfc = timeToFirstContact(userLeads);
   const userFunnelData = funnelByStage(userLeads);
@@ -337,7 +338,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Vendido (leads)</p>
-              <p className="text-xl font-bold text-green-600">${soldValue.toLocaleString()}</p>
+              <p className="text-xl font-bold text-green-600">${fmtNum(soldValue)}</p>
               <p className="text-xs font-medium text-slate-600">{soldCount} tratos cerrados</p>
             </div>
           </CardContent>
@@ -349,7 +350,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Total Cotizado</p>
-              <p className="text-xl font-bold text-amber-600">${quotedValue.toLocaleString()}</p>
+              <p className="text-xl font-bold text-amber-600">${fmtNum(quotedValue)}</p>
               <p className="text-xs font-medium text-slate-600">{quotedCount} cotizaciones activas</p>
             </div>
           </CardContent>
@@ -361,7 +362,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Total Perdido</p>
-              <p className="text-xl font-bold text-red-600">${lostValue.toLocaleString()}</p>
+              <p className="text-xl font-bold text-red-600">${fmtNum(lostValue)}</p>
               <p className="text-xs font-medium text-slate-600">{lostCount} tratos perdidos</p>
             </div>
           </CardContent>
@@ -373,8 +374,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Meta de Ventas</p>
-              <p className="text-xl font-bold text-slate-900">${effectiveSalesGoal.toLocaleString()}</p>
-              <p className="text-xs font-medium text-slate-600">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}% · ${metaVentas.toLocaleString()} ventas ERP</p>
+              <p className="text-xl font-bold text-slate-900">${fmtNum(effectiveSalesGoal)}</p>
+              <p className="text-xs font-medium text-slate-600">{fmtNum(effectiveSalesGoal > 0 ? Math.min(100, (metaVentas / effectiveSalesGoal) * 100) : 0)}% · ${fmtNum(metaVentas)} ventas ERP</p>
             </div>
           </CardContent>
         </Card>
@@ -385,8 +386,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">Meta de Utilidad</p>
-              <p className="text-xl font-bold text-slate-900">${effectiveUtilidadGoal.toLocaleString()}</p>
-              <p className="text-xs font-medium text-slate-600">{utilidadPct}% · ${utilidadReal.toLocaleString()} utilidad ERP</p>
+              <p className="text-xl font-bold text-slate-900">${fmtNum(effectiveUtilidadGoal)}</p>
+              <p className="text-xs font-medium text-slate-600">{fmtNum(utilidadPct)}% · ${fmtNum(utilidadReal)} utilidad ERP</p>
             </div>
           </CardContent>
         </Card>
@@ -415,7 +416,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500 font-medium">Progreso de Meta <span className="text-[10px] text-slate-400">(ventas ERP)</span></span>
-                <span className="font-bold">{effectiveSalesGoal > 0 ? Math.min(100, Math.round((metaVentas / effectiveSalesGoal) * 100)) : 0}%</span>
+                <span className="font-bold">{fmtNum(effectiveSalesGoal > 0 ? Math.min(100, (metaVentas / effectiveSalesGoal) * 100) : 0)}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
                 <motion.div
@@ -430,12 +431,12 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
 
               <div className="flex items-center justify-between text-sm pt-1">
                 <span className="text-slate-500 font-medium">Progreso de Utilidad <span className="text-[10px] text-slate-400">(utilidad ERP)</span></span>
-                <span className="font-bold">{utilidadPct}%</span>
+                <span className="font-bold">{fmtNum(utilidadPct)}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${utilidadPct}%` }}
+                  animate={{ width: `${fmtNum(utilidadPct)}%` }}
                   className={cn(
                     "h-full transition-all",
                     effectiveUtilidadGoal > 0 && utilidadReal >= effectiveUtilidadGoal ? "bg-emerald-500" : "bg-emerald-400"
@@ -443,14 +444,14 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                 />
               </div>
               <p className="text-[10px] text-slate-400">
-                Meta ${effectiveUtilidadGoal.toLocaleString()} · Utilidad ${utilidadReal.toLocaleString()}
+                Meta ${fmtNum(effectiveUtilidadGoal)} · Utilidad ${fmtNum(utilidadReal)}
               </p>
             </div>
 
             <div className="pt-4 border-t space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500">Tasa de Conversión</span>
-                <span className="text-sm font-bold">{(user.performance.conversionRate * 100).toFixed(1)}%</span>
+                <span className="text-sm font-bold">{fmtNum(user.performance.conversionRate * 100)}%</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500">Leads Activos</span>
@@ -467,17 +468,17 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                 <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2">
                   <p className="text-xs font-semibold text-blue-700">Cliente</p>
                   <p className="text-lg font-bold text-blue-700 leading-tight">{clientInitiatedCount}</p>
-                  <p className="text-[10px] text-blue-600/70">{clientInitiatedPct}% del total</p>
+                  <p className="text-[10px] text-blue-600/70">{fmtNum(clientInitiatedPct)}% del total</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                   <p className="text-xs font-semibold text-brand-gray">Vendedor</p>
                   <p className="text-lg font-bold text-slate-700 leading-tight">{sellerInitiatedCount}</p>
-                  <p className="text-[10px] text-slate-500">{100 - clientInitiatedPct}% del total</p>
+                  <p className="text-[10px] text-slate-500">{fmtNum(100 - clientInitiatedPct)}% del total</p>
                 </div>
               </div>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                <div className="h-full bg-blue-500" style={{ width: `${clientInitiatedPct}%` }} />
-                <div className="h-full bg-slate-400" style={{ width: `${100 - clientInitiatedPct}%` }} />
+                <div className="h-full bg-blue-500" style={{ width: `${fmtNum(clientInitiatedPct)}%` }} />
+                <div className="h-full bg-slate-400" style={{ width: `${fmtNum(100 - clientInitiatedPct)}%` }} />
               </div>
             </div>
 
@@ -512,7 +513,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-2">
                   <p className="text-xs font-semibold text-indigo-700">Convertidos</p>
                   <p className="text-lg font-bold text-indigo-700 leading-tight">{convertedForMonth}</p>
-                  <p className="text-[10px] text-indigo-600/70">{convertedTotal} total · {convertedPct}%</p>
+                  <p className="text-[10px] text-indigo-600/70">{convertedTotal} total · {fmtNum(convertedPct)}%</p>
                 </div>
               </div>
               <div className="flex items-end gap-1 h-12 pt-1">
@@ -571,7 +572,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                     ))}
                   </Pie>
                   <RechartsTooltip
-                    formatter={(value: number) => `$${value.toLocaleString()}`}
+                    formatter={(value: number) => `$${fmtNum(value)}`}
                     contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
                   />
                   <Legend verticalAlign="bottom" height={36} />
@@ -601,7 +602,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                   <div key={lead.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
                     <div className="flex justify-between items-start mb-1">
                       <p className="text-xs font-bold text-slate-700">{lead.company}</p>
-                      <span className="text-[10px] font-mono text-slate-400">${lead.value.toLocaleString()}</span>
+                      <span className="text-[10px] font-mono text-slate-400">${fmtNum(lead.value)}</span>
                     </div>
                     <p className="text-xs font-semibold text-red-700">
                       {motivo || "Sin motivo registrado"}
@@ -638,10 +639,10 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                     <span className="font-semibold text-slate-700">{s.stage}</span>
                     <div className="flex items-baseline gap-2">
                       {s.stepConversion !== null && (
-                        <span className="text-[10px] text-slate-400">{s.stepConversion.toFixed(0)}% ↓</span>
+                        <span className="text-[10px] text-slate-400">{fmtNum(s.stepConversion)}% ↓</span>
                       )}
                       <span className="font-bold text-slate-900">{s.count}</span>
-                      <span className="text-[10px] text-slate-500">{s.pctOfTop.toFixed(0)}%</span>
+                      <span className="text-[10px] text-slate-500">{fmtNum(s.pctOfTop)}%</span>
                     </div>
                   </div>
                   <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -679,7 +680,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-bold text-brand-navy">Pareto de Motivos</CardTitle>
             <CardDescription className="text-[10px]">
-              {totalLost > 0 ? `$${totalLost.toLocaleString()} en valor perdido` : "Sin valor perdido aún"}
+              {totalLost > 0 ? `$${fmtNum(totalLost)} en valor perdido` : "Sin valor perdido aún"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 max-h-[250px] overflow-y-auto">
@@ -693,7 +694,7 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                     <span className="font-medium text-slate-700 truncate pr-2">{m.name}</span>
                     <div className="flex items-baseline gap-2 shrink-0">
                       <span className="text-[10px] text-slate-500">×{m.count}</span>
-                      <span className="font-bold text-red-700">${m.lostValue.toLocaleString()}</span>
+                      <span className="font-bold text-red-700">${fmtNum(m.lostValue)}</span>
                     </div>
                   </div>
                   <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -715,8 +716,8 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {goalsTimeline.map((g) => {
-                  const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
-                  const uPct = g.metaUtilidad > 0 ? Math.min(100, Math.round((g.utilidad / g.metaUtilidad) * 100)) : 0;
+                  const pct = g.meta > 0 ? Math.min(100, (g.invoiced / g.meta) * 100) : 0;
+                  const uPct = g.metaUtilidad > 0 ? Math.min(100, (g.utilidad / g.metaUtilidad) * 100) : 0;
                   const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
                     : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
                     : g.status === "current" ? "bg-blue-50 text-blue-700 border-blue-200"
@@ -730,24 +731,24 @@ function UserScorecard({ user, leadsAll, faltantesAll, goalsTimeline, filterMont
                       </div>
                       {/* Ventas */}
                       <div className="flex justify-between text-[11px] text-slate-500">
-                        <span>Meta venta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
-                        <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
+                        <span>Meta venta: <span className="font-semibold text-slate-700">${fmtNum(g.meta)}</span></span>
+                        <span>Facturado: <span className="font-semibold text-slate-700">${fmtNum(g.invoiced)}</span></span>
                       </div>
                       <div className="space-y-0.5">
-                        <div className="flex justify-end text-[10px] font-bold">{pct}%</div>
+                        <div className="flex justify-end text-[10px] font-bold">{fmtNum(pct)}%</div>
                         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                          <div className={`h-full rounded-full ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${fmtNum(pct)}%` }} />
                         </div>
                       </div>
                       {/* Utilidad */}
                       <div className="flex justify-between text-[11px] text-slate-500 pt-1 border-t">
-                        <span>Meta util.: <span className="font-semibold text-slate-700">${g.metaUtilidad.toLocaleString()}</span></span>
-                        <span>Utilidad: <span className="font-semibold text-slate-700">${g.utilidad.toLocaleString()}</span></span>
+                        <span>Meta util.: <span className="font-semibold text-slate-700">${fmtNum(g.metaUtilidad)}</span></span>
+                        <span>Utilidad: <span className="font-semibold text-slate-700">${fmtNum(g.utilidad)}</span></span>
                       </div>
                       <div className="space-y-0.5">
-                        <div className="flex justify-end text-[10px] font-bold">{uPct}%</div>
+                        <div className="flex justify-end text-[10px] font-bold">{fmtNum(uPct)}%</div>
                         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${uPct}%` }} />
+                          <div className={`h-full rounded-full ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${fmtNum(uPct)}%` }} />
                         </div>
                       </div>
                     </div>
@@ -1064,11 +1065,11 @@ export function PerformanceTab() {
                     // Progreso Meta compares the goal to stored ERP sales (not leads).
                     const metaVentasUser = metaVentas(user.id);
                     const progress = user.performance.salesGoal > 0
-                      ? Math.min(100, Math.round((metaVentasUser / user.performance.salesGoal) * 100))
+                      ? Math.min(100, (metaVentasUser / user.performance.salesGoal) * 100)
                       : 0;
                     const utilidadUser = utilidadReal(user.id);
                     const uProgress = user.performance.utilidadGoal > 0
-                      ? Math.min(100, Math.round((utilidadUser / user.performance.utilidadGoal) * 100))
+                      ? Math.min(100, (utilidadUser / user.performance.utilidadGoal) * 100)
                       : 0;
                     const erp = erpVentas?.byVendedor[user.id];
                     const erpStale = erpVentas?.fromDevice ?? false;
@@ -1089,7 +1090,7 @@ export function PerformanceTab() {
                               : erp && !erp.error ? (
                                   <span className={erpStale ? "text-amber-600" : "text-indigo-700"}
                                     title={erpStale ? `En caché · ${formatFetched(erpVentas?.savedAt)}` : undefined}>
-                                    ${erp.subtotal.toLocaleString()}{erpStale ? " *" : ""}
+                                    ${fmtNum(erp.subtotal)}{erpStale ? " *" : ""}
                                   </span>
                                 )
                               : <span className="text-slate-300" title={erp?.error || "ERP no disponible"}>—</span>}
@@ -1100,10 +1101,10 @@ export function PerformanceTab() {
                               : <span className="text-slate-300">—</span>}
                           </TableCell>
                         </>)}
-                        <TableCell className="font-bold text-green-600">${soldValue.toLocaleString()}</TableCell>
-                        <TableCell className="text-amber-600">${quotedValue.toLocaleString()}</TableCell>
+                        <TableCell className="font-bold text-green-600">${fmtNum(soldValue)}</TableCell>
+                        <TableCell className="text-amber-600">${fmtNum(quotedValue)}</TableCell>
                         <TableCell className="text-red-600">
-                          <span className="text-sm font-bold">${lostValue.toLocaleString()}</span>
+                          <span className="text-sm font-bold">${fmtNum(lostValue)}</span>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-0.5 leading-tight">
@@ -1129,7 +1130,7 @@ export function PerformanceTab() {
                         </TableCell>
                         <TableCell>
                           {cotToFact !== null ? (
-                            <span className="text-xs font-bold text-slate-900">{cotToFact.toFixed(0)}%</span>
+                            <span className="text-xs font-bold text-slate-900">{fmtNum(cotToFact)}%</span>
                           ) : (
                             <span className="text-[11px] text-slate-400 italic">—</span>
                           )}
@@ -1139,7 +1140,7 @@ export function PerformanceTab() {
                             <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden border">
                               <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
                             </div>
-                            <span className="text-xs font-bold">{progress}%</span>
+                            <span className="text-xs font-bold">{fmtNum(progress)}%</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1147,10 +1148,10 @@ export function PerformanceTab() {
                             <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden border">
                               <div className="h-full bg-emerald-500" style={{ width: `${uProgress}%` }} />
                             </div>
-                            <span className="text-xs font-bold">{uProgress}%</span>
+                            <span className="text-xs font-bold">{fmtNum(uProgress)}%</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">{(user.performance.conversionRate * 100).toFixed(1)}%</TableCell>
+                        <TableCell className="text-right">{fmtNum(user.performance.conversionRate * 100)}%</TableCell>
                       </TableRow>
                     );
                   })}

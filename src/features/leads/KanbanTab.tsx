@@ -38,7 +38,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES, getLeadLastActivity, getStuckLevel } from "../../lib/helpers";
+import { MESES, getLeadLastActivity, getStuckLevel, fmtNum } from "../../lib/helpers";
 import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Lead, LeadStatus, User } from "../../types";
@@ -112,7 +112,7 @@ function SortableLeadCard({ lead, users, onUpdate }: { key?: string; lead: Lead;
             {lead.company || lead.name}
           </h4>
           <span className={`shrink-0 text-[11px] font-semibold font-mono px-2 py-0.5 rounded-md ${accent.valueBg} ${accent.valueText}`}>
-            ${lead.value.toLocaleString()}
+            ${fmtNum(lead.value)}
           </span>
         </div>
 
@@ -593,7 +593,7 @@ export function KanbanTab({ openStatusUpdate }: KanbanTabProps) {
               <div className="bg-white p-4 rounded-lg border-2 border-primary w-80 opacity-90">
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="font-bold text-sm text-primary">{leads.find(l => l.id === activeId)?.name}</h4>
-                  <span className="text-[10px] font-mono font-bold text-slate-400">${leads.find(l => l.id === activeId)?.value.toLocaleString()}</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400">${fmtNum(leads.find(l => l.id === activeId)?.value)}</span>
                 </div>
                 <p className="text-xs text-slate-500">{leads.find(l => l.id === activeId)?.company}</p>
               </div>

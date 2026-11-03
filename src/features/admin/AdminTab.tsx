@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES, getStuckLevel, getTimeStuck, getLeadLastActivity, facturadoMonth } from "../../lib/helpers";
+import { MESES, getStuckLevel, getTimeStuck, getLeadLastActivity, facturadoMonth, fmtNum, fmtMoney } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { Lead, LeadStatus, SalesGoal, User } from "../../types";
@@ -34,8 +34,6 @@ export interface AdminTabProps {
   setSubTab: (v: string) => void;
 }
 
-// Pesos formatter for the workload KPI cards (ventas / utilidad), whole pesos.
-const mxn0 = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
 
 // Actividad Global defaults to a recent window so the first render stays light —
 // the lead history ships with /api/leads, and showing every update at once lags.
@@ -618,7 +616,7 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                 </div>
                 <div className="rounded-lg bg-slate-50 p-3 text-center">
                   <p className="text-xs text-slate-400">Pipeline</p>
-                  <p className="text-xl font-bold">${((selectedUserDetail?.workload?.pipelineValue ?? 0) / 1000).toFixed(0)}k</p>
+                  <p className="text-xl font-bold">${fmtNum((selectedUserDetail?.workload?.pipelineValue ?? 0) / 1000)}k</p>
                 </div>
               </div>
 
@@ -629,15 +627,15 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                 </div>
                 <div>
                   <p className="text-xs font-medium text-brand-gray mb-1">Meta del mes</p>
-                  <p>${(selectedUserDetail?.performance.salesGoal ?? 0).toLocaleString()}</p>
+                  <p>${fmtNum(selectedUserDetail?.performance.salesGoal ?? 0)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-brand-gray mb-1">Valor cerrado</p>
-                  <p>${(selectedUserDetail?.performance.totalValue ?? 0).toLocaleString()}</p>
+                  <p>${fmtNum(selectedUserDetail?.performance.totalValue ?? 0)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-brand-gray mb-1">Conversión</p>
-                  <p>{((selectedUserDetail?.performance.conversionRate ?? 0) * 100).toFixed(0)}%</p>
+                  <p>{fmtNum((selectedUserDetail?.performance.conversionRate ?? 0) * 100)}%</p>
                 </div>
               </div>
 
@@ -651,8 +649,8 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                   <div className="space-y-2">
                     {userGoalsTimeline.map((g) => {
                       const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-                      const pct = g.meta > 0 ? Math.min(100, Math.round((g.invoiced / g.meta) * 100)) : 0;
-                      const uPct = g.metaUtilidad > 0 ? Math.min(100, Math.round((g.utilidad / g.metaUtilidad) * 100)) : 0;
+                      const pct = g.meta > 0 ? Math.min(100, (g.invoiced / g.meta) * 100) : 0;
+                      const uPct = g.metaUtilidad > 0 ? Math.min(100, (g.utilidad / g.metaUtilidad) * 100) : 0;
                       const label = `${MONTHS[g.month - 1]} ${g.year}`;
                       const badgeClass = g.status === "achieved" ? "bg-green-50 text-green-700 border-green-200"
                         : g.status === "missed" ? "bg-red-50 text-red-700 border-red-200"
@@ -666,20 +664,20 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                             <Badge variant="outline" className={`text-[10px] ${badgeClass}`}>{badgeLabel}</Badge>
                           </div>
                           <div className="flex justify-between text-[11px] text-slate-500">
-                            <span>Meta venta: <span className="font-semibold text-slate-700">${g.meta.toLocaleString()}</span></span>
-                            <span>Facturado: <span className="font-semibold text-slate-700">${g.invoiced.toLocaleString()}</span></span>
-                            <span className="font-bold">{pct}%</span>
+                            <span>Meta venta: <span className="font-semibold text-slate-700">${fmtNum(g.meta)}</span></span>
+                            <span>Facturado: <span className="font-semibold text-slate-700">${fmtNum(g.invoiced)}</span></span>
+                            <span className="font-bold">{fmtNum(pct)}%</span>
                           </div>
                           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                            <div className={`h-full rounded-full transition-all ${g.status === "achieved" ? "bg-green-500" : g.status === "missed" ? "bg-red-400" : "bg-primary"}`} style={{ width: `${fmtNum(pct)}%` }} />
                           </div>
                           <div className="flex justify-between text-[11px] text-slate-500 pt-1 border-t">
-                            <span>Meta util.: <span className="font-semibold text-slate-700">${g.metaUtilidad.toLocaleString()}</span></span>
-                            <span>Utilidad: <span className="font-semibold text-slate-700">${g.utilidad.toLocaleString()}</span></span>
-                            <span className="font-bold">{uPct}%</span>
+                            <span>Meta util.: <span className="font-semibold text-slate-700">${fmtNum(g.metaUtilidad)}</span></span>
+                            <span>Utilidad: <span className="font-semibold text-slate-700">${fmtNum(g.utilidad)}</span></span>
+                            <span className="font-bold">{fmtNum(uPct)}%</span>
                           </div>
                           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${uPct}%` }} />
+                            <div className={`h-full rounded-full transition-all ${g.utilidadStatus === "achieved" ? "bg-emerald-500" : g.utilidadStatus === "missed" ? "bg-red-400" : "bg-emerald-400"}`} style={{ width: `${fmtNum(uPct)}%` }} />
                           </div>
                         </div>
                       );
@@ -731,9 +729,9 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                     <div>
                       <span className="inline-block text-[10px] font-bold tracking-wider uppercase text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 mb-1">Mes</span>
                       <p className="text-sm font-medium text-slate-500">Ventas · {MESES[wlMonth - 1]}</p>
-                      <h3 className="text-2xl font-bold">{mxn0.format(ventas.mes.importe)}</h3>
+                      <h3 className="text-2xl font-bold">{fmtMoney(ventas.mes.importe)}</h3>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Utilidad <span className={ventas.mes.utilidad < 0 ? "text-red-600 font-semibold" : "text-emerald-700 font-semibold"}>{mxn0.format(ventas.mes.utilidad)}</span>
+                        Utilidad <span className={ventas.mes.utilidad < 0 ? "text-red-600 font-semibold" : "text-emerald-700 font-semibold"}>{fmtMoney(ventas.mes.utilidad)}</span>
                       </p>
                     </div>
                     <div className="bg-emerald-50 p-2 rounded-lg"><Wallet className="w-5 h-5 text-emerald-600" /></div>
@@ -748,9 +746,9 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                     <div>
                       <span className="inline-block text-[10px] font-bold tracking-wider uppercase text-white bg-white/15 border border-white/25 rounded px-1.5 py-0.5 mb-1">Año</span>
                       <p className="text-sm font-medium text-white/70">Ventas · {wlYear}</p>
-                      <h3 className="text-2xl font-bold">{mxn0.format(ventas.anio.importe)}</h3>
+                      <h3 className="text-2xl font-bold">{fmtMoney(ventas.anio.importe)}</h3>
                       <p className="text-[11px] text-white/60 mt-0.5">
-                        Utilidad <span className="font-semibold text-white">{mxn0.format(ventas.anio.utilidad)}</span>
+                        Utilidad <span className="font-semibold text-white">{fmtMoney(ventas.anio.utilidad)}</span>
                       </p>
                     </div>
                     <div className="bg-white/10 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-white" /></div>
@@ -830,7 +828,7 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                     <CardTitle className="text-base font-bold text-brand-navy">Carga por vendedor</CardTitle>
                     <CardDescription className="text-[11px]">
                       Volumen activo, valor de pipeline y conversión por persona. Conversión promedio del equipo:{" "}
-                      <span className="font-semibold text-brand-navy">{workloadInsights.teamAvgConv}%</span>
+                      <span className="font-semibold text-brand-navy">{fmtNum(workloadInsights.teamAvgConv)}%</span>
                     </CardDescription>
                   </div>
                 </div>
@@ -869,12 +867,12 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                                 <div className={`h-full ${loadBar}`} style={{ width: `${Math.min((s.activeLeads / 15) * 100, 100)}%` }} />
                               </div>
                             </TableCell>
-                            <TableCell className="text-right text-xs font-mono">${s.pipelineValue.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-xs font-mono">${fmtNum(s.pipelineValue)}</TableCell>
                             <TableCell className="text-right text-xs">
                               <span className={s.stuckCount > 0 ? "font-bold text-red-600" : "text-slate-400"}>{s.stuckCount}</span>
                             </TableCell>
                             <TableCell className="text-right text-xs font-semibold text-slate-700">{s.closedThisMonth}</TableCell>
-                            <TableCell className={`text-right text-xs font-bold ${convColor}`}>{s.convPct}%</TableCell>
+                            <TableCell className={`text-right text-xs font-bold ${convColor}`}>{fmtNum(s.convPct)}%</TableCell>
                           </TableRow>
                         );
                       })}
@@ -936,7 +934,7 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                         <CardContent className="p-4 pt-2 space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-slate-500">Valor</span>
-                            <span className="text-sm font-mono font-bold text-primary">${lead.value.toLocaleString()}</span>
+                            <span className="text-sm font-mono font-bold text-primary">${fmtNum(lead.value)}</span>
                           </div>
                           <div className="space-y-2 pt-2 border-t border-slate-50">
                             <div className="flex items-center justify-between">
@@ -988,9 +986,9 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                     <p className="text-sm font-medium text-white/70">
                       {isSingleDay ? "Ventas del día" : "Ventas del periodo"}
                     </p>
-                    <h3 className="text-2xl font-bold mt-0.5">{mxn0.format(dailyRent.importe)}</h3>
+                    <h3 className="text-2xl font-bold mt-0.5">{fmtMoney(dailyRent.importe)}</h3>
                     <p className="text-[11px] text-white/60 mt-1">
-                      Utilidad <span className="font-semibold text-white">{mxn0.format(dailyRent.utilidad)}</span>
+                      Utilidad <span className="font-semibold text-white">{fmtMoney(dailyRent.utilidad)}</span>
                     </p>
                     <p className="text-[10px] text-white/50 mt-1">
                       {isSingleDay
@@ -1208,12 +1206,12 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                           <TableCell>
                             {update.quotedAmount !== undefined && (
                               <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
-                                C: ${update.quotedAmount.toLocaleString()}
+                                C: ${fmtNum(update.quotedAmount)}
                               </span>
                             )}
                             {update.invoicedAmount !== undefined && (
                               <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                F: ${update.invoicedAmount.toLocaleString()}
+                                F: ${fmtNum(update.invoicedAmount)}
                               </span>
                             )}
                             {update.quotedAmount === undefined && update.invoicedAmount === undefined && (
@@ -1347,10 +1345,10 @@ export function AdminTab({ openStatusUpdate, subTab, setSubTab }: AdminTabProps)
                               <TableCell className="font-medium text-slate-600">{idx === 0 ? s.name : ""}</TableCell>
                               <TableCell>{u.name}</TableCell>
                               <TableCell className="text-right font-mono">
-                                {u.performance.salesGoal ? `$${u.performance.salesGoal.toLocaleString()}` : <span className="text-slate-400 text-xs">Sin meta</span>}
+                                {u.performance.salesGoal ? `$${fmtNum(u.performance.salesGoal)}` : <span className="text-slate-400 text-xs">Sin meta</span>}
                               </TableCell>
                               <TableCell className="text-right font-mono">
-                                {u.performance.utilidadGoal ? `$${u.performance.utilidadGoal.toLocaleString()}` : <span className="text-slate-400 text-xs">Sin meta</span>}
+                                {u.performance.utilidadGoal ? `$${fmtNum(u.performance.utilidadGoal)}` : <span className="text-slate-400 text-xs">Sin meta</span>}
                               </TableCell>
                             </TableRow>
                           ))

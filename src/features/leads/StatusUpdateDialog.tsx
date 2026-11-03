@@ -31,7 +31,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
-import { isCrmClientId } from "../../lib/helpers";
+import { isCrmClientId, fmtNum } from "../../lib/helpers";
 import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Client, Lead, LeadStatus } from "../../types";
@@ -219,12 +219,12 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
                             <div className="flex gap-2 mt-2">
                               {item.quotedAmount !== undefined && (
                                 <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-100 text-[9px] py-0">
-                                  Cotizado: ${item.quotedAmount.toLocaleString()}
+                                  Cotizado: ${fmtNum(item.quotedAmount)}
                                 </Badge>
                               )}
                               {item.invoicedAmount !== undefined && (
                                 <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-100 text-[9px] py-0">
-                                  Facturado: ${item.invoicedAmount.toLocaleString()}
+                                  Facturado: ${fmtNum(item.invoicedAmount)}
                                 </Badge>
                               )}
                             </div>
@@ -474,21 +474,34 @@ export const StatusUpdateDialog = forwardRef<StatusUpdateDialogHandle>((_, ref) 
                 )}
               </div>
               <DialogFooter className="p-6 bg-white border-t flex items-center justify-between sm:justify-between">
-                <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>Cancelar</Button>
-                <Button
-                  size="sm"
-                  onClick={() => submitStatusChange()}
-                  disabled={
-                    isSubmitting ||
-                    !form.comment ||
-                    (form.status === "RECHAZADO" && !form.rechazoMotivoId) ||
-                    (form.status === "FACTURADO" && selectedLead != null && isCrmClientId(selectedLead.clientId) && !form.erpClientId)
-                  }
-                  className="gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Confirmar Actualización
-                </Button>
+                {currentUser?.role === "Admin" && selectedLead && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 gap-1"
+                    onClick={handleDeleteLead}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Eliminar lead
+                  </Button>
+                )}
+                <div className="flex justify-end gap-2 ml-auto">
+                  <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>Cancelar</Button>
+                  <Button
+                    size="sm"
+                    onClick={() => submitStatusChange()}
+                    disabled={
+                      isSubmitting ||
+                      !form.comment ||
+                      (form.status === "RECHAZADO" && !form.rechazoMotivoId) ||
+                      (form.status === "FACTURADO" && selectedLead != null && isCrmClientId(selectedLead.clientId) && !form.erpClientId)
+                    }
+                    className="gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmar Actualización
+                  </Button>
+                </div>
               </DialogFooter>
             </div>
           )}

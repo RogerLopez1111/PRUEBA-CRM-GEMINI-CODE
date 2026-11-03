@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES } from "../../lib/helpers";
+import { MESES, fmtNum } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { Client, Product, ProductoFaltante } from "../../types";
@@ -550,7 +550,7 @@ export function FaltantesTab() {
               </CardHeader>
               <CardContent className="pt-1 pb-3">
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-2xl font-bold ${faltantesRollup.freeTextPct >= 30 ? "text-amber-700" : "text-brand-navy"}`}>{faltantesRollup.freeTextPct}%</span>
+                  <span className={`text-2xl font-bold ${faltantesRollup.freeTextPct >= 30 ? "text-amber-700" : "text-brand-navy"}`}>{fmtNum(faltantesRollup.freeTextPct)}%</span>
                   <span className="text-[10px] text-slate-500">descripciones libres</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">

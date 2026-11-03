@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES } from "../../lib/helpers";
+import { MESES, fmtNum } from "../../lib/helpers";
 import { useAppData } from "../../state/AppDataContext";
 import { apiFetch } from "../../lib/api";
 import type { Lead, Product, PedidoExtraordinario, PedidoExtraordinarioEstado } from "../../types";
@@ -309,7 +309,7 @@ export function PedidosTab() {
                                     >
                                       <div className="flex flex-col">
                                         <span className="text-sm font-medium">{l.company || l.name}</span>
-                                        <span className="text-[10px] text-slate-500">{l.id} · {l.status} · ${l.value.toLocaleString()}</span>
+                                        <span className="text-[10px] text-slate-500">{l.id} · {l.status} · ${fmtNum(l.value)}</span>
                                       </div>
                                     </CommandItem>
                                   ))}
@@ -511,7 +511,7 @@ export function PedidosTab() {
                 <span className="text-2xl font-bold text-amber-700">{pedidosRollup.pendientes}</span>
                 <span className="text-[10px] text-slate-500">solicitudes</span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">${pedidosRollup.valorPendienteTotal.toLocaleString()} en juego</p>
+              <p className="text-[11px] text-slate-500 mt-1">${fmtNum(pedidosRollup.valorPendienteTotal)} en juego</p>
             </CardContent>
           </Card>
           <Card className="bg-white">
@@ -520,7 +520,7 @@ export function PedidosTab() {
             </CardHeader>
             <CardContent className="pt-1 pb-3">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-brand-navy">${pedidosRollup.valorAprobadoMes.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-brand-navy">${fmtNum(pedidosRollup.valorAprobadoMes)}</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">Ventas potenciales rescatadas con pedidos extraordinarios.</p>
             </CardContent>
@@ -531,7 +531,7 @@ export function PedidosTab() {
             </CardHeader>
             <CardContent className="pt-1 pb-3">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-brand-navy">{pedidosRollup.aprobacionPct}%</span>
+                <span className="text-2xl font-bold text-brand-navy">{fmtNum(pedidosRollup.aprobacionPct)}%</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">{pedidosRollup.aprobados} aprobados · {pedidosRollup.rechazados} rechazados</p>
             </CardContent>
@@ -542,7 +542,7 @@ export function PedidosTab() {
             </CardHeader>
             <CardContent className="pt-1 pb-3">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-brand-navy">{pedidosRollup.tiempoPromedioDias === null ? "—" : `${pedidosRollup.tiempoPromedioDias}d`}</span>
+                <span className="text-2xl font-bold text-brand-navy">{pedidosRollup.tiempoPromedioDias === null ? "—" : `${fmtNum(pedidosRollup.tiempoPromedioDias)}d`}</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">Desde solicitud hasta aprobado/rechazado.</p>
             </CardContent>
@@ -578,7 +578,7 @@ export function PedidosTab() {
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                       <span>Cantidad: <span className="font-semibold text-slate-700">{p.cantidad}</span></span>
-                      <span>Valor: <span className="font-semibold text-slate-700">${p.valorEstimado.toLocaleString()}</span></span>
+                      <span>Valor: <span className="font-semibold text-slate-700">${fmtNum(p.valorEstimado)}</span></span>
                       <span>Lead: <span className="font-medium text-slate-700">{p.leadCompany || p.leadId}</span></span>
                       {(isAdmin || isCompras) && p.vendedorName && <span>Vendedor: <span className="font-medium text-slate-700">{p.vendedorName}</span></span>}
                       {p.sucursalName && <span>Sucursal: <span className="font-medium text-slate-700">{p.sucursalName}</span></span>}
