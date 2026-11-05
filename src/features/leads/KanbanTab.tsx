@@ -38,7 +38,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-import { MESES, getLeadLastActivity, getStuckLevel, fmtNum } from "../../lib/helpers";
+import { MESES, getLeadLastActivity, getStuckLevel, fmtNum, calendarDaysSince } from "../../lib/helpers";
 import { apiFetch } from "../../lib/api";
 import { useAppData } from "../../state/AppDataContext";
 import type { Lead, LeadStatus, User } from "../../types";
@@ -90,7 +90,8 @@ function SortableLeadCard({ lead, users, onUpdate }: { key?: string; lead: Lead;
   // Last-activity based (newest history entry), consistent with the admin tab —
   // not Cl_UpdatedAt_CRM, which doesn't move on every stage change / comment.
   const lastActivity = getLeadLastActivity(lead);
-  const daysSince = Math.floor((Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24));
+  // Calendar days, not 24h blocks: "Hoy" = same local date, "Ayer" = previous date.
+  const daysSince = calendarDaysSince(lastActivity);
   const stuckLevel = leadStuckLevel(lead);
   const stale = stuckLevel !== "normal" ? STALE_STYLE[stuckLevel] : null;
   const timeLabel = daysSince === 0 ? "Hoy" : daysSince === 1 ? "Ayer" : `${daysSince}d`;

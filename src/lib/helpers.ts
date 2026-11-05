@@ -98,6 +98,16 @@ export const getTimeStuck = (updatedAt: string) => {
   return `${diffInMinutes}m`;
 };
 
+// Calendar days (local time) between a timestamp and today: 0 = hoy, 1 = ayer.
+// Unlike elapsed-ms / 24h, an update at 17:00 yesterday is "ayer" at 16:00 today.
+export const calendarDaysSince = (iso: string) => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 0;
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return Math.max(0, Math.round((startOf(now) - startOf(d)) / (1000 * 60 * 60 * 24)));
+};
+
 // Staleness thresholds for the "atrasado" metric, in days since a lead's last
 // real activity. warning = "Retrasado", critical = "Retraso Crítico".
 export const STUCK_WARNING_DAYS = 3;
